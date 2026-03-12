@@ -1,0 +1,386 @@
+"""
+Utilitários de parsing HTML para extração de SKU e metadados de página.
+
+A estratégia de SKU segue ordem de fallback para robustez:
+1) query param da URL
+2) padrões textuais no HTML
+3) dados estruturados no HTML
+4) fallback configurável
+"""
+
+from __future__ import annotations
+
+import json
+import re
+from dataclasses import dataclass
+from html import unescape
+from typing import Iterable, Optional
+from urllib.parse import parse_qs, urlparse
+
+
+@dataclass(slots=True)
+class PageData:
+    """
+    Responsabilidade:
+        Representar dados mínimos extraídos da página para validação e resolução.
+
+    Parâmetros:
+        url: URL final da página após fetch/redirecionamentos.
+        title: Título HTML da página, útil para matching e depuração.
+        brand: Marca inferida da página por metadados/padrões textuais.
+        name: Nome do produto inferido da página por metadados/título.
+        variant: Variante inferida (ex.: 200ml) para reforçar validação.
+        sku: SKU extraído pela estratégia de fallback configurada.
+
+    Retorno:
+        Instância de PageData com campos opcionais em caso de ausência de sinais.
+
+    Contexto de uso:
+        Usado pelo matcher e pelo resolver para validar identidade antes de
+        atualizar SKU e URL no armazenamento.
+    """
+
+    url: str
+    title: Optional[str]
+    brand: Optional[str]
+    name: Optional[str]
+    variant: Optional[str]
+    sku: Optional[str]
+
+
+def _normalize_spaces(text: str) -> str:
+    """
+    Responsabilidade:
+        Normalizar espaços e entidades HTML em texto bruto extraído da página.
+
+    Parâmetros:
+        text: Texto bruto potencialmente com entidades e espaçamento irregular.
+
+    Retorno:
+        Texto limpo com espaços colapsados para facilitar comparações.
+
+    Contexto de uso:
+        Função utilitária de parsing para reduzir ruído no conteúdo HTML antes
+        da inferência de campos como title, brand e name.
+    """
+
+    decoded_text = unescape(text)
+    return re.sub(r"\s+", " ", decoded_text).strip()
+
+
+def extract_sku_from_url_query(page_url: str, candidate_keys: Optional[Iterable[str]] = None) -> Optional[str]:
+    """
+    Responsabilidade:
+        Extrair SKU diretamente dos parâmetros da URL quando presente.
+
+    Parâmetros:
+        page_url: URL da página de produto onde o SKU pode estar na query.
+        candidate_keys: Lista de chaves aceitas para SKU (ex.: sku, id, productId).
+
+    Retorno:
+        SKU encontrado como string ou None quando não existe correspondência.
+
+    Contexto de uso:
+        Primeiro fallback por ser barato e menos sensível a mudanças de HTML.
+    """
+
+    keys_to_check = ["sku", "id", "productId", "product_id"]
+    if candidate_keys:
+        keys_to_check = list(candidate_keys)
+
+    parsed = urlparse(page_url)
+    query_map = parse_qs(parsed.query)
+
+    for key in keys_to_check:
+        values = query_map.get(key)
+        if values and values[0].strip():
+            return values[0].strip()
+
+    return None
+
+
+def extract_sku_from_text_patterns(html_content: str) -> Optional[str]:
+    """
+    Responsabilidade:
+        Encontrar SKU em padrões textuais comuns presentes no HTML bruto.
+
+    Parâmetros:
+        html_content: Documento HTML completo em formato string.
+
+    Retorno:
+        SKU identificado por regex ou None quando nenhum padrão casar.
+
+    Contexto de uso:
+        Segundo fallback, útil quando o SKU aparece em scripts inline, atributos
+        de dados ou trechos textuais não estruturados.
+    """
+
+    patterns = [
+        re.compile(r'"sku"\s*[:=]\s*"?(\w[\w\-\.]+)"?', re.IGNORECASE),
+        re.compile(r"sku\s*[:=]\s*'?(\w[\w\-\.]+)'?", re.IGNORECASE),
+        re.compile(r"data-sku\s*=\s*\"([^\"]+)\"", re.IGNORECASE),
+        re.compile(r"SKU\s*[:#]\s*([A-Za-z0-9\-\.]+)", re.IGNORECASE),
+    ]
+
+    for pattern in patterns:
+        matched = pattern.search(html_content)
+        if matched:
+            candidate_sku = matched.group(1).strip()
+            if candidate_sku:
+                return candidate_sku
+
+    return None
+
+
+def extract_sku_from_structured_data(html_content: str) -> Optional[str]:
+    """
+    Responsabilidade:
+        Extrair SKU a partir de blocos estruturados (JSON-LD em script).
+
+    Parâmetros:
+        html_content: HTML completo da página de produto.
+
+    Retorno:
+        SKU encontrado no JSON estruturado ou None quando indisponível.
+
+    Contexto de uso:
+        Terceiro fallback, priorizando fontes semânticas mais estáveis que CSS.
+    """
+
+    script_pattern = re.compile(
+        r'<script[^>]*type=["\']application/ld\+json["\'][^>]*>(.*?)</script>',
+        re.IGNORECASE | re.DOTALL,
+    )
+
+    for matched_script in script_pattern.finditer(html_content):
+        raw_json = matched_script.group(1).strip()
+        if not raw_json:
+            continue
+
+        try:
+            parsed_data = json.loads(raw_json)
+        except json.JSONDecodeError:
+            continue
+
+        possible_sku = _find_sku_in_json(parsed_data)
+        if possible_sku:
+            return possible_sku
+
+    return None
+
+
+def _find_sku_in_json(data: object) -> Optional[str]:
+    """
+    Responsabilidade:
+        Percorrer estrutura JSON arbitrária para localizar chave 'sku'.
+
+    Parâmetros:
+        data: Estrutura JSON já convertida para tipos Python.
+
+    Retorno:
+        SKU encontrado em qualquer nível da estrutura ou None.
+
+    Contexto de uso:
+        Função auxiliar para suportar variações de JSON-LD entre varejistas.
+    """
+
+    if isinstance(data, dict):
+        for key, value in data.items():
+            if key.lower() == "sku" and isinstance(value, str) and value.strip():
+                return value.strip()
+
+            nested_sku = _find_sku_in_json(value)
+            if nested_sku:
+                return nested_sku
+
+    if isinstance(data, list):
+        for item in data:
+            nested_sku = _find_sku_in_json(item)
+            if nested_sku:
+                return nested_sku
+
+    return None
+
+
+def extract_sku_basic(
+    page_url: str,
+    html_content: str,
+    configured_fallback_sku: Optional[str] = None,
+) -> Optional[str]:
+    """
+    Responsabilidade:
+        Executar extração básica de SKU usando fallback em ordem definida.
+
+    Parâmetros:
+        page_url: URL atual da página para extração por query param.
+        html_content: HTML da página para padrões textuais e estruturados.
+        configured_fallback_sku: SKU de fallback configurável por ambiente.
+
+    Retorno:
+        SKU encontrado pela primeira estratégia válida ou None se tudo falhar.
+
+    Contexto de uso:
+        Entrada principal para camada resolver e para parse_page_data.
+    """
+
+    sku_from_query = extract_sku_from_url_query(page_url)
+    if sku_from_query:
+        return sku_from_query
+
+    sku_from_text = extract_sku_from_text_patterns(html_content)
+    if sku_from_text:
+        return sku_from_text
+
+    sku_from_structured_data = extract_sku_from_structured_data(html_content)
+    if sku_from_structured_data:
+        return sku_from_structured_data
+
+    if configured_fallback_sku and configured_fallback_sku.strip():
+        return configured_fallback_sku.strip()
+
+    return None
+
+
+def _extract_title(html_content: str) -> Optional[str]:
+    """
+    Responsabilidade:
+        Extrair título da página pelo elemento HTML <title>.
+
+    Parâmetros:
+        html_content: HTML bruto da página.
+
+    Retorno:
+        Título normalizado ou None quando não encontrado.
+
+    Contexto de uso:
+        Fornece sinal simples para matcher e observabilidade do resolver.
+    """
+
+    title_match = re.search(r"<title[^>]*>(.*?)</title>", html_content, re.IGNORECASE | re.DOTALL)
+    if not title_match:
+        return None
+
+    return _normalize_spaces(title_match.group(1)) or None
+
+
+def _extract_meta_content(html_content: str, meta_name: str) -> Optional[str]:
+    """
+    Responsabilidade:
+        Extrair conteúdo de metatags por name/property com regex tolerante.
+
+    Parâmetros:
+        html_content: HTML bruto da página.
+        meta_name: Nome/property procurado (ex.: og:title, product:brand).
+
+    Retorno:
+        Conteúdo da metatag normalizado ou None.
+
+    Contexto de uso:
+        Permite inferir brand/name/variant sem depender de parser HTML pesado.
+    """
+
+    # Decisão técnica:
+    # O padrão cobre as ordens mais comuns de atributos em meta tags.
+    patterns = [
+        re.compile(
+            rf'<meta[^>]+(?:name|property)=["\']{re.escape(meta_name)}["\'][^>]+content=["\'](.*?)["\']',
+            re.IGNORECASE | re.DOTALL,
+        ),
+        re.compile(
+            rf'<meta[^>]+content=["\'](.*?)["\'][^>]+(?:name|property)=["\']{re.escape(meta_name)}["\']',
+            re.IGNORECASE | re.DOTALL,
+        ),
+    ]
+
+    for pattern in patterns:
+        matched = pattern.search(html_content)
+        if matched:
+            return _normalize_spaces(matched.group(1)) or None
+
+    return None
+
+
+def _extract_variant_from_text(text: str) -> Optional[str]:
+    """
+    Responsabilidade:
+        Inferir variante textual simples (ml, g, kg, l) em um bloco de texto.
+
+    Parâmetros:
+        text: Texto candidato para inferência de variante.
+
+    Retorno:
+        Variante encontrada (ex.: "200ml") ou None.
+
+    Contexto de uso:
+        Auxilia parse_page_data quando não existe campo estruturado de variante.
+    """
+
+    variant_pattern = re.compile(r"\b(\d+[\.,]?\d*)\s*(ml|g|kg|l)\b", re.IGNORECASE)
+    match = variant_pattern.search(text)
+    if not match:
+        return None
+
+    numeric_part = match.group(1).replace(",", ".")
+    unit_part = match.group(2).lower()
+    return f"{numeric_part}{unit_part}"
+
+
+def parse_page_data(
+    page_url: str,
+    html_content: str,
+    configured_fallback_sku: Optional[str] = None,
+) -> PageData:
+    """
+    Responsabilidade:
+        Consolidar parsing básico de página em uma estrutura PageData.
+
+    Parâmetros:
+        page_url: URL final da página utilizada na extração de sinais.
+        html_content: HTML completo para extração de metadados e SKU.
+        configured_fallback_sku: SKU opcional para último fallback.
+
+    Retorno:
+        PageData com campos extraídos e prontos para matching/resolução.
+
+    Contexto de uso:
+        Função de entrada principal para o resolver antes da validação de match.
+    """
+
+    extracted_title = _extract_title(html_content)
+
+    # Parsing de HTML com prioridade de fontes:
+    # 1) Metatags específicas de produto.
+    # 2) Open Graph title como fallback de nome.
+    # 3) Título da página como último recurso textual.
+    extracted_brand = (
+        _extract_meta_content(html_content, "product:brand")
+        or _extract_meta_content(html_content, "brand")
+        or _extract_meta_content(html_content, "og:brand")
+    )
+
+    extracted_name = (
+        _extract_meta_content(html_content, "product:name")
+        or _extract_meta_content(html_content, "og:title")
+        or extracted_title
+    )
+
+    extracted_variant = (
+        _extract_meta_content(html_content, "product:variant")
+        or _extract_variant_from_text(extracted_name or "")
+        or _extract_variant_from_text(extracted_title or "")
+    )
+
+    extracted_sku = extract_sku_basic(
+        page_url=page_url,
+        html_content=html_content,
+        configured_fallback_sku=configured_fallback_sku,
+    )
+
+    return PageData(
+        url=page_url.strip(),
+        title=extracted_title,
+        brand=extracted_brand,
+        name=extracted_name,
+        variant=extracted_variant,
+        sku=extracted_sku,
+    )

@@ -257,3 +257,30 @@ MIT
 
 
 
+
+---
+
+Fluxo manual (cadastro + resolução sem API)
+
+Para testar rapidamente o pipeline atual sem endpoints REST, use:
+
+```bash
+python examples/manual_flow.py \
+  --alias one_million_200ml \
+  --brand "Paco Rabanne" \
+  --name "One Million" \
+  --variant "200ml" \
+  --url "https://www.exemplo.com/produto?sku=546594103" \
+  --seed-sku "unknown"
+```
+
+O script irá:
+
+1. cadastrar/atualizar o produto no `data/products.json`
+2. executar o resolver com `last_known_url`
+3. imprimir resultado de sucesso/erro, score de matching e SKU final
+
+Observação:
+
+- Se a página não corresponder ao produto esperado, o sistema **não atualiza** SKU.
+- Nesta versão ainda não há busca automática de nova URL.
