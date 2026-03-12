@@ -1,4 +1,4 @@
-
+⚠️ Projeto experimental para estudo de automação e scraping.
 ---
 
 product-sku-resolver
