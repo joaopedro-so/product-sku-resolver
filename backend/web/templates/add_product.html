@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+
+{% block title %}Adicionar Produto{% endblock %}
+
+{% block content %}
+<section>
+  <h2>Cadastrar novo produto</h2>
+
+  {% if error_message %}
+  <p class="alert error">{{ error_message }}</p>
+  {% endif %}
+
+  <form class="form-grid" method="post" action="/dashboard/products">
+    <label>
+      Alias
+      <input type="text" name="alias" required value="{{ submitted_data.get('alias', '') }}" />
+    </label>
+
+    <label>
+      Marca
+      <input type="text" name="brand" required value="{{ submitted_data.get('brand', '') }}" />
+    </label>
+
+    <label>
+      Nome
+      <input type="text" name="name" required value="{{ submitted_data.get('name', '') }}" />
+    </label>
+
+    <label>
+      Variante
+      <input type="text" name="variant" required value="{{ submitted_data.get('variant', '') }}" />
+    </label>
+
+    <label class="full-width">
+      Last known URL
+      <input type="url" name="last_known_url" required value="{{ submitted_data.get('last_known_url', '') }}" />
+    </label>
+
+    <div class="action-row">
+      <button type="submit">Salvar produto</button>
+      <a class="button-link" href="/dashboard">Cancelar</a>
+    </div>
+  </form>
+</section>
+{% endblock %}

@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+
+{% block title %}Detalhe do Produto{% endblock %}
+
+{% block content %}
+<section>
+  <h2>Detalhe do produto</h2>
+
+  {% if error_message %}
+  <p class="alert error">{{ error_message }}</p>
+  {% else %}
+  <dl class="detail-grid">
+    <dt>Alias</dt>
+    <dd>{{ product.alias }}</dd>
+
+    <dt>Marca</dt>
+    <dd>{{ product.brand }}</dd>
+
+    <dt>Nome</dt>
+    <dd>{{ product.name }}</dd>
+
+    <dt>Variante</dt>
+    <dd>{{ product.variant }}</dd>
+
+    <dt>SKU atual</dt>
+    <dd>{{ product.last_known_sku }}</dd>
+
+    <dt>URL atual</dt>
+    <dd><a href="{{ product.last_known_url }}" target="_blank" rel="noreferrer">{{ product.last_known_url }}</a></dd>
+  </dl>
+
+  <div class="action-row">
+    <form method="post" action="/dashboard/products/{{ product.alias }}/update">
+      <button type="submit">Atualizar agora</button>
+    </form>
+    <a class="button-link" href="/dashboard">Voltar</a>
+  </div>
+
+  {% if last_update %}
+  <section class="update-box">
+    <h3>Resultado mais recente</h3>
+    <p class="status {{ 'success' if last_update.success else 'error' }}">{{ last_update.message }}</p>
+    {% if last_update.error_code %}
+    <p><strong>Código:</strong> {{ last_update.error_code }}</p>
+    {% endif %}
+
+    {% if last_update.match_result %}
+    <h4>Dados de match</h4>
+    <pre>{{ last_update.match_result | tojson(indent=2) }}</pre>
+    {% endif %}
+
+    {% if last_update.page_data %}
+    <h4>Dados da página</h4>
+    <pre>{{ last_update.page_data | tojson(indent=2) }}</pre>
+    {% endif %}
+  </section>
+  {% endif %}
+
+  {% endif %}
+</section>
+{% endblock %}

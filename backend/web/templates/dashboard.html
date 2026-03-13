@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard de Produtos{% endblock %}
+
+{% block content %}
+<section class="actions">
+  <h2>Produtos monitorados</h2>
+  <div class="action-row">
+    <form method="post" action="/dashboard/update-all">
+      <button type="submit">Atualizar todos</button>
+    </form>
+    <a class="button-link" href="/dashboard/products/new">Adicionar produto</a>
+  </div>
+</section>
+
+<section class="table-wrapper">
+  <table>
+    <thead>
+      <tr>
+        <th>Alias</th>
+        <th>Marca</th>
+        <th>Nome</th>
+        <th>Variante</th>
+        <th>SKU</th>
+        <th>URL</th>
+        <th>Ações</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for product in products %}
+      <tr>
+        <td>{{ product.alias }}</td>
+        <td>{{ product.brand }}</td>
+        <td>{{ product.name }}</td>
+        <td>{{ product.variant }}</td>
+        <td>{{ product.last_known_sku }}</td>
+        <td><a href="{{ product.last_known_url }}" target="_blank" rel="noreferrer">abrir</a></td>
+        <td>
+          <div class="action-row compact">
+            <form method="post" action="/dashboard/products/{{ product.alias }}/update">
+              <button type="submit">Atualizar</button>
+            </form>
+            <a class="button-link" href="/dashboard/products/{{ product.alias }}">Detalhe</a>
+          </div>
+          {% set status = last_update_by_alias.get(product.alias) %}
+          {% if status %}
+          <small class="status {{ 'success' if status.success else 'error' }}">
+            {{ status.message }}
+          </small>
+          {% endif %}
+        </td>
+      </tr>
+      {% else %}
+      <tr>
+        <td colspan="7">Nenhum produto cadastrado.</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endblock %}
