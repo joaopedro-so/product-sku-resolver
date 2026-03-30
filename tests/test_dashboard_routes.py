@@ -309,6 +309,56 @@ def test_dashboard_abre_detalhe_da_prateleira_com_produtos_alocados(tmp_path: Pa
     assert "Abrir" in content
 
 
+def test_dashboard_respeita_prateleira_manual_no_cadastro(tmp_path: Path) -> None:
+    """
+    Responsabilidade:
+        Garantir que o produto use a prateleira escolhida manualmente.
+
+    Parametros:
+        tmp_path: Diretorio temporario para isolamento da base.
+
+    Retorno:
+        Nenhum; valida persistencia e exibicao da localizacao manual.
+
+    Contexto de uso:
+        Cobertura do novo fluxo de atribuicao de prateleira no formulario.
+    """
+
+    app = _build_app_with_temp_storage(tmp_path)
+    payload = urlencode(
+        {
+            "alias": "produto_manual",
+            "brand": "Marca Y",
+            "name": "Produto Manual",
+            "variant": "50ml",
+            "last_known_url": "https://example.com/manual",
+            "last_known_sku": "sku-manual",
+            "shelf_number": "8",
+            "display_order": "2",
+        }
+    ).encode("utf-8")
+    request = _build_request(
+        app,
+        method="POST",
+        path="/dashboard/products",
+        body=payload,
+        content_type="application/x-www-form-urlencoded",
+    )
+
+    response = asyncio.run(routes_dashboard.dashboard_create_product(request))
+    stored_product = app.state.product_store_service.get_by_alias("produto_manual")
+
+    assert isinstance(response, RedirectResponse)
+    assert stored_product is not None
+    assert stored_product.shelf_number == 8
+    assert stored_product.display_order == 2
+
+    shelf_request = _build_request(app, method="GET", path="/dashboard/prateleiras/8")
+    shelf_response = routes_dashboard.dashboard_shelf_detail(shelf_request, shelf_number=8)
+    shelf_content = shelf_response.body.decode("utf-8")
+    assert "Produto Manual" in shelf_content
+
+
 def test_dashboard_search_renderiza_lista_operacional(tmp_path: Path) -> None:
     """
     Responsabilidade:
@@ -605,6 +655,58 @@ def test_dashboard_salva_edicao_de_produto_com_novo_alias(tmp_path: Path) -> Non
     assert updated_product is not None
     assert updated_product.brand == "Marca Z"
     assert updated_product.last_known_sku == "sku-editado"
+
+
+def test_dashboard_salva_edicao_de_produto_com_prateleira_manual(tmp_path: Path) -> None:
+    """
+    Responsabilidade:
+        Garantir que a edicao permita redefinir a prateleira manual do produto.
+
+    Parametros:
+        tmp_path: Diretorio temporario para isolamento da base de produtos.
+
+    Retorno:
+        Nenhum; valida persistencia e reflexo da nova localizacao na interface.
+
+    Contexto de uso:
+        Protege o fluxo operacional em que o time reorganiza produtos fisicamente
+        e precisa ajustar a prateleira sem depender da inferencia automatica.
+    """
+
+    app = _build_app_with_temp_storage(tmp_path)
+    _seed_product(app)
+    payload = urlencode(
+        {
+            "alias": "produto_teste",
+            "brand": "Paco Rabanne",
+            "name": "Produto X",
+            "variant": "100ml",
+            "last_known_url": "https://example.com/produto",
+            "last_known_sku": "sku-inicial",
+            "shelf_number": "9",
+            "display_order": "1",
+        }
+    ).encode("utf-8")
+    request = _build_request(
+        app,
+        method="POST",
+        path="/dashboard/products/produto_teste/edit",
+        body=payload,
+        content_type="application/x-www-form-urlencoded",
+    )
+
+    response = asyncio.run(routes_dashboard.dashboard_edit_product(request, alias="produto_teste"))
+    updated_product = app.state.product_store_service.get_by_alias("produto_teste")
+
+    assert isinstance(response, RedirectResponse)
+    assert updated_product is not None
+    assert updated_product.shelf_number == 9
+    assert updated_product.display_order == 1
+
+    shelf_request = _build_request(app, method="GET", path="/dashboard/prateleiras/9")
+    shelf_response = routes_dashboard.dashboard_shelf_detail(shelf_request, shelf_number=9)
+    shelf_content = shelf_response.body.decode("utf-8")
+    assert "Produto X" in shelf_content
 
 
 def test_dashboard_preenche_produto_automaticamente_por_url(tmp_path: Path) -> None:

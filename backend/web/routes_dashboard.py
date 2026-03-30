@@ -561,6 +561,49 @@ def _build_new_product_form_context(
     }
 
 
+def _build_shelf_options(request: Request) -> List[Dict[str, Any]]:
+    """
+    Responsabilidade:
+        Montar a lista de opcoes de prateleira para formularios de produto.
+
+    Parametros:
+        request: Requisicao atual para acessar o ShelfService.
+
+    Retorno:
+        Lista de opcoes com numero e titulo de cada prateleira.
+
+    Contexto de uso:
+        Reutilizada no cadastro e na edicao para atribuicao manual.
+    """
+
+    return [
+        {
+            "value": shelf.shelf_number,
+            "label": f"Prateleira {shelf.shelf_number:02d} — {shelf.shelf_title}",
+        }
+        for shelf in _get_shelf_service(request).list_shelves()
+    ]
+
+
+def _normalize_optional_numeric_text(raw_value: Any) -> str:
+    """
+    Responsabilidade:
+        Padronizar texto numerico opcional vindo de formulario HTML.
+
+    Parametros:
+        raw_value: Valor bruto do formulario.
+
+    Retorno:
+        String limpa ou vazia quando nao houver conteudo.
+
+    Contexto de uso:
+        Mantem o estado do formulario consistente antes da conversao final.
+    """
+
+    normalized_value = str(raw_value or "").strip()
+    return normalized_value
+
+
 def _build_submitted_data_from_product(product: ProductRecord) -> Dict[str, str]:
     """
     Responsabilidade:
@@ -583,6 +626,8 @@ def _build_submitted_data_from_product(product: ProductRecord) -> Dict[str, str]
         "variant": product.variant,
         "last_known_url": product.last_known_url,
         "last_known_sku": product.last_known_sku,
+        "shelf_number": str(product.shelf_number or ""),
+        "display_order": str(product.display_order or ""),
     }
 
 
@@ -1678,6 +1723,7 @@ def dashboard_new_product_form(request: Request) -> Any:
                 "request": request,
                 "page_title": "Novo produto",
                 **_build_new_product_form_context(),
+                "shelf_options": _build_shelf_options(request),
             },
         ),
     )
@@ -1711,7 +1757,11 @@ async def dashboard_autofill_product_form(request: Request) -> Any:
         return templates.TemplateResponse(
             request,
             "add_product.html",
-            _with_app_shell(request, {"request": request, "page_title": "Novo produto", **context}, active_tab="search"),
+            _with_app_shell(
+                request,
+                {"request": request, "page_title": "Novo produto", **context, "shelf_options": _build_shelf_options(request)},
+                active_tab="search",
+            ),
         )
 
     draft_service = ProductDraftService(fetcher=fetcher, product_store=_get_store_service(request))
@@ -1732,7 +1782,11 @@ async def dashboard_autofill_product_form(request: Request) -> Any:
         return templates.TemplateResponse(
             request,
             "add_product.html",
-            _with_app_shell(request, {"request": request, "page_title": "Novo produto", **context}, active_tab="search"),
+            _with_app_shell(
+                request,
+                {"request": request, "page_title": "Novo produto", **context, "shelf_options": _build_shelf_options(request)},
+                active_tab="search",
+            ),
         )
 
     submitted_data = {
@@ -1756,7 +1810,11 @@ async def dashboard_autofill_product_form(request: Request) -> Any:
     return templates.TemplateResponse(
         request,
         "add_product.html",
-        _with_app_shell(request, {"request": request, "page_title": "Novo produto", **context}, active_tab="search"),
+        _with_app_shell(
+            request,
+            {"request": request, "page_title": "Novo produto", **context, "shelf_options": _build_shelf_options(request)},
+            active_tab="search",
+        ),
     )
 
 
@@ -1807,7 +1865,7 @@ def dashboard_edit_product_form(request: Request, alias: str) -> Any:
         _with_app_shell(
             request=request,
             active_tab="search",
-            context={"request": request, "page_title": "Editar produto", **context},
+            context={"request": request, "page_title": "Editar produto", **context, "shelf_options": _build_shelf_options(request)},
         ),
     )
 
@@ -1888,6 +1946,8 @@ async def dashboard_create_product(request: Request) -> Any:
         "last_known_url",
         "last_known_sku",
     ]}
+    submitted_data["shelf_number"] = _normalize_optional_numeric_text(form_data.get("shelf_number"))
+    submitted_data["display_order"] = _normalize_optional_numeric_text(form_data.get("display_order"))
     submitted_data["last_known_sku"] = submitted_data["last_known_sku"] or "unknown"
 
     alias_error = _validate_alias_availability(_get_store_service(request), submitted_data["alias"])
@@ -1896,7 +1956,11 @@ async def dashboard_create_product(request: Request) -> Any:
         return templates.TemplateResponse(
             request,
             "add_product.html",
-            _with_app_shell(request, {"request": request, "page_title": "Novo produto", **context}, active_tab="search"),
+            _with_app_shell(
+                request,
+                {"request": request, "page_title": "Novo produto", **context, "shelf_options": _build_shelf_options(request)},
+                active_tab="search",
+            ),
             status_code=400,
         )
 
@@ -1907,6 +1971,8 @@ async def dashboard_create_product(request: Request) -> Any:
         variant=submitted_data["variant"],
         last_known_url=submitted_data["last_known_url"],
         last_known_sku=submitted_data["last_known_sku"],
+        shelf_number=int(submitted_data["shelf_number"]) if submitted_data["shelf_number"] else None,
+        display_order=int(submitted_data["display_order"]) if submitted_data["display_order"] else None,
     )
     _get_store_service(request).upsert_product(saved_product)
     return RedirectResponse(url="/dashboard", status_code=status.HTTP_303_SEE_OTHER)
@@ -1955,6 +2021,8 @@ async def dashboard_edit_product(request: Request, alias: str) -> Any:
         "last_known_url",
         "last_known_sku",
     ]}
+    submitted_data["shelf_number"] = _normalize_optional_numeric_text(form_data.get("shelf_number"))
+    submitted_data["display_order"] = _normalize_optional_numeric_text(form_data.get("display_order"))
     submitted_data["last_known_sku"] = submitted_data["last_known_sku"] or "unknown"
 
     alias_error = _validate_alias_availability(
@@ -1974,7 +2042,11 @@ async def dashboard_edit_product(request: Request, alias: str) -> Any:
         return templates.TemplateResponse(
             request,
             "add_product.html",
-            _with_app_shell(request, {"request": request, "page_title": "Editar produto", **context}, active_tab="search"),
+            _with_app_shell(
+                request,
+                {"request": request, "page_title": "Editar produto", **context, "shelf_options": _build_shelf_options(request)},
+                active_tab="search",
+            ),
             status_code=400,
         )
 
@@ -1985,6 +2057,8 @@ async def dashboard_edit_product(request: Request, alias: str) -> Any:
         variant=submitted_data["variant"],
         last_known_url=submitted_data["last_known_url"],
         last_known_sku=submitted_data["last_known_sku"],
+        shelf_number=int(submitted_data["shelf_number"]) if submitted_data["shelf_number"] else None,
+        display_order=int(submitted_data["display_order"]) if submitted_data["display_order"] else None,
     )
     _get_store_service(request).replace_product(current_alias=alias, updated_product=updated_product)
     return RedirectResponse(

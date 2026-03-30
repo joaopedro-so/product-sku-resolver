@@ -170,6 +170,17 @@ class ShelfService:
             Usado pela tela inicial, detalhe de prateleira e detalhe do produto.
         """
 
+        if product.shelf_number is not None:
+            explicit_shelf = self.get_shelf(product.shelf_number)
+            if explicit_shelf is not None:
+                explicit_display_order = product.display_order or self._build_display_order(product)
+                return ShelfPlacement(
+                    explicit_shelf.shelf_number,
+                    explicit_shelf.shelf_title,
+                    explicit_shelf.brand_group,
+                    explicit_display_order,
+                )
+
         normalized_brand = normalize_text(product.brand)
         if self._is_arabic_brand(normalized_brand):
             return ShelfPlacement(1, "Perfumes Árabes", "Perfumes Árabes", self._build_display_order(product))

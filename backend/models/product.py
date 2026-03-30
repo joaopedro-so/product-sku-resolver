@@ -39,6 +39,8 @@ class ProductRecord:
     variant: str
     last_known_url: str
     last_known_sku: str
+    shelf_number: int | None = None
+    display_order: int | None = None
 
     @classmethod
     def from_dict(cls, source: Dict[str, Any]) -> "ProductRecord":
@@ -83,9 +85,11 @@ class ProductRecord:
             variant=str(source["variant"]).strip(),
             last_known_url=str(source["last_known_url"]).strip(),
             last_known_sku=str(source["last_known_sku"]).strip(),
+            shelf_number=_optional_to_int(source.get("shelf_number")),
+            display_order=_optional_to_int(source.get("display_order")),
         )
 
-    def to_dict(self) -> Dict[str, str]:
+    def to_dict(self) -> Dict[str, Any]:
         """
         Responsabilidade:
             Serializar ProductRecord para formato dicionário persistível.
@@ -101,7 +105,7 @@ class ProductRecord:
             mantendo formato consistente para integrações externas.
         """
 
-        return {
+        payload: Dict[str, Any] = {
             "alias": self.alias,
             "brand": self.brand,
             "name": self.name,
@@ -109,3 +113,33 @@ class ProductRecord:
             "last_known_url": self.last_known_url,
             "last_known_sku": self.last_known_sku,
         }
+        if self.shelf_number is not None:
+            payload["shelf_number"] = self.shelf_number
+        if self.display_order is not None:
+            payload["display_order"] = self.display_order
+        return payload
+
+
+def _optional_to_int(raw_value: Any) -> int | None:
+    """
+    Responsabilidade:
+        Normalizar um valor opcional para inteiro de forma resiliente.
+
+    ParÃ¢metros:
+        raw_value: Valor bruto vindo de JSON ou formulÃ¡rio.
+
+    Retorno:
+        Inteiro quando houver conteÃºdo vÃ¡lido; caso contrÃ¡rio, None.
+
+    Contexto de uso:
+        MantÃ©m compatibilidade com produtos antigos que ainda nÃ£o tinham
+        localizaÃ§Ã£o de prateleira persistida.
+    """
+
+    if raw_value in (None, ""):
+        return None
+
+    try:
+        return int(raw_value)
+    except (TypeError, ValueError):
+        return None

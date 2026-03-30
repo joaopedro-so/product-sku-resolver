@@ -281,6 +281,8 @@ class ProductStoreService:
             variant=existing_product.variant,
             last_known_url=new_url.strip(),
             last_known_sku=new_sku.strip(),
+            shelf_number=existing_product.shelf_number,
+            display_order=existing_product.display_order,
         )
 
         self.upsert_product(updated_product)

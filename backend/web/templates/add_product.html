@@ -100,6 +100,23 @@
         <input type="text" name="last_known_sku" value="{{ submitted_data.get('last_known_sku', '') }}" placeholder="ex.: 546594103" />
       </label>
 
+      <label class="form-field">
+        <span>Prateleira</span>
+        <select name="shelf_number">
+          <option value="">Definir automaticamente</option>
+          {% for option in shelf_options %}
+          <option value="{{ option.value }}" {% if submitted_data.get('shelf_number', '') == option.value|string %}selected{% endif %}>
+            {{ option.label }}
+          </option>
+          {% endfor %}
+        </select>
+      </label>
+
+      <label class="form-field">
+        <span>Ordem na prateleira</span>
+        <input type="number" min="1" name="display_order" value="{{ submitted_data.get('display_order', '') }}" placeholder="ex.: 3" />
+      </label>
+
       <label class="form-field form-field--full">
         <span>URL conhecida</span>
         <input type="url" name="last_known_url" required value="{{ submitted_data.get('last_known_url', '') }}" placeholder="https://www.exemplo.com/produto" />
