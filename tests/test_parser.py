@@ -3,6 +3,7 @@ Testes das estratégias básicas de extração de SKU e parsing de PageData.
 """
 
 from backend.utils.parser import (
+    extract_product_image_url,
     extract_sku_basic,
     extract_sku_from_structured_data,
     extract_sku_from_text_patterns,
@@ -119,6 +120,7 @@ def test_parse_page_data_extracts_core_fields() -> None:
         <title>One Million 200 ml - Loja Exemplo</title>
         <meta property="product:brand" content="Paco Rabanne" />
         <meta property="og:title" content="One Million 200 ml" />
+        <meta property="og:image" content="//cdn.loja.exemplo/produto.jpg" />
       </head>
       <body>
         <span data-sku="546594103"></span>
@@ -132,3 +134,33 @@ def test_parse_page_data_extracts_core_fields() -> None:
     assert page_data.name == "One Million 200 ml"
     assert page_data.variant == "200ml"
     assert page_data.sku == "546594103"
+    assert page_data.image_url == "https://cdn.loja.exemplo/produto.jpg"
+
+
+def test_extract_product_image_url_normalizes_protocol_relative_path() -> None:
+    """
+    Responsabilidade:
+        Garantir normalização de imagem principal para URL absoluta utilizável.
+
+    Parâmetros:
+        Nenhum.
+
+    Retorno:
+        Nenhum.
+
+    Contexto de uso:
+        Protege a renderização do dashboard quando o varejista usa URLs de
+        imagem com protocolo omitido em metadados Open Graph.
+    """
+
+    html = """
+    <html>
+      <head>
+        <meta property="og:image" content="//cdn.loja.exemplo/imagem-principal.jpg" />
+      </head>
+    </html>
+    """
+
+    image_url = extract_product_image_url("https://loja.exemplo/produto", html)
+
+    assert image_url == "https://cdn.loja.exemplo/imagem-principal.jpg"

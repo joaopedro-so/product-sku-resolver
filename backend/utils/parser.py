@@ -15,7 +15,7 @@ import re
 from dataclasses import dataclass
 from html import unescape
 from typing import Iterable, Optional
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, urljoin, urlparse
 
 
 @dataclass(slots=True)
@@ -31,6 +31,7 @@ class PageData:
         name: Nome do produto inferido da página por metadados/título.
         variant: Variante inferida (ex.: 200ml) para reforçar validação.
         sku: SKU extraído pela estratégia de fallback configurada.
+        image_url: URL absoluta da imagem principal do produto quando disponível.
 
     Retorno:
         Instância de PageData com campos opcionais em caso de ausência de sinais.
@@ -46,6 +47,7 @@ class PageData:
     name: Optional[str]
     variant: Optional[str]
     sku: Optional[str]
+    image_url: Optional[str] = None
 
 
 def _normalize_spaces(text: str) -> str:
@@ -336,6 +338,55 @@ def _extract_meta_content(html_content: str, meta_name: str) -> Optional[str]:
     return None
 
 
+def _normalize_asset_url(page_url: str, raw_asset_url: Optional[str]) -> Optional[str]:
+    """
+    Responsabilidade:
+        Transformar URL de asset em caminho absoluto utilizável no frontend.
+
+    Parâmetros:
+        page_url: URL base da página do produto para resolver caminhos relativos.
+        raw_asset_url: URL bruta extraída de metatags ou atributos HTML.
+
+    Retorno:
+        URL absoluta do asset quando válida; caso contrário, None.
+
+    Contexto de uso:
+        Utilizada para imagens de produto vindas em formato relativo ou com
+        protocolo omitido, comum em páginas de e-commerce.
+    """
+
+    normalized_asset_url = str(raw_asset_url or "").strip()
+    if not normalized_asset_url:
+        return None
+
+    return urljoin(page_url, normalized_asset_url)
+
+
+def extract_product_image_url(page_url: str, html_content: str) -> Optional[str]:
+    """
+    Responsabilidade:
+        Extrair a imagem principal do produto a partir de metadados da página.
+
+    Parâmetros:
+        page_url: URL da página usada como base para normalização.
+        html_content: HTML bruto completo da página.
+
+    Retorno:
+        URL absoluta da imagem principal ou None quando ausente.
+
+    Contexto de uso:
+        Alimenta o dashboard web com uma prévia visual do produto sem depender
+        de parsing pesado do corpo inteiro da página.
+    """
+
+    candidate_image_url = (
+        _extract_meta_content(html_content, "og:image")
+        or _extract_meta_content(html_content, "twitter:image")
+        or _extract_meta_content(html_content, "twitter:image:src")
+    )
+    return _normalize_asset_url(page_url=page_url, raw_asset_url=candidate_image_url)
+
+
 def _extract_variant_from_text(text: str) -> Optional[str]:
     """
     Responsabilidade:
@@ -411,6 +462,10 @@ def parse_page_data(
         html_content=html_content,
         configured_fallback_sku=configured_fallback_sku,
     )
+    extracted_image_url = extract_product_image_url(
+        page_url=page_url,
+        html_content=html_content,
+    )
 
     return PageData(
         url=page_url.strip(),
@@ -419,4 +474,5 @@ def parse_page_data(
         name=extracted_name,
         variant=extracted_variant,
         sku=extracted_sku,
+        image_url=extracted_image_url,
     )

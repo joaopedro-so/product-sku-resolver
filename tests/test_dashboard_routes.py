@@ -186,7 +186,9 @@ def test_dashboard_home_carrega_lista_de_produtos(tmp_path: Path) -> None:
 
     assert isinstance(response, _TemplateResponse)
     assert response.status_code == 200
-    assert "produto_teste" in response.body.decode("utf-8")
+    content = response.body.decode("utf-8")
+    assert "produto_teste" in content
+    assert "data:image/svg+xml" in content
 
 
 def test_dashboard_detalhe_abre_produto_existente(tmp_path: Path) -> None:
@@ -215,6 +217,9 @@ def test_dashboard_detalhe_abre_produto_existente(tmp_path: Path) -> None:
     content = response.body.decode("utf-8")
     assert "Produto X" in content
     assert "sku-inicial" in content
+    assert "data:image/svg+xml" in content
+    assert "imagem do produto" in content
+    assert "summary-box--barcode" in content
 
 
 def test_dashboard_cria_produto_via_formulario(tmp_path: Path) -> None:

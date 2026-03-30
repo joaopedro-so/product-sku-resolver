@@ -33,7 +33,19 @@
         <td>{{ product.brand }}</td>
         <td>{{ product.name }}</td>
         <td>{{ product.variant }}</td>
-        <td>{{ product.last_known_sku }}</td>
+        <td>
+          <div class="sku-block">
+            <strong class="sku-value">{{ product.last_known_sku }}</strong>
+            {% set sku_barcode = build_code128_svg_data_uri(product.last_known_sku, module_width_px=2, bar_height_px=88) %}
+            {% if sku_barcode %}
+            <img
+              class="sku-barcode sku-barcode--table"
+              src="{{ sku_barcode }}"
+              alt="Código de barras Code 128 do SKU {{ product.last_known_sku }}"
+            />
+            {% endif %}
+          </div>
+        </td>
         <td><a href="{{ product.last_known_url }}" target="_blank" rel="noreferrer">abrir</a></td>
         <td>
           <div class="action-row compact">

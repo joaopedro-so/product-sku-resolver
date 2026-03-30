@@ -9,25 +9,62 @@
   {% if error_message %}
   <p class="alert error">{{ error_message }}</p>
   {% else %}
-  <dl class="detail-grid">
-    <dt>Alias</dt>
-    <dd>{{ product.alias }}</dd>
+  <section class="product-visual-layout">
+    <article class="product-image-panel">
+      {% if product_preview and product_preview.image_url %}
+      <img
+        class="product-image"
+        src="{{ product_preview.image_url }}"
+        alt="Imagem do produto {{ product.name }}"
+      />
+      {% else %}
+      <div class="product-image product-image--placeholder">
+        <span>imagem do produto</span>
+      </div>
+      {% endif %}
+    </article>
 
-    <dt>Marca</dt>
-    <dd>{{ product.brand }}</dd>
+    <aside class="product-summary-panel">
+      <section class="summary-box summary-box--alias">
+        <div class="summary-label">alias</div>
+        <div class="summary-value">{{ product.alias }}</div>
+      </section>
 
-    <dt>Nome</dt>
-    <dd>{{ product.name }}</dd>
+      <section class="summary-box summary-box--identity">
+        <div class="summary-title">{{ product.name }}</div>
+        <div class="summary-subtitle">{{ product.brand }}{% if product.variant %} • {{ product.variant }}{% endif %}</div>
+        <div class="summary-sku-row">
+          <span class="summary-sku-label">sku</span>
+          <strong class="summary-sku-value">{{ product.last_known_sku }}</strong>
+        </div>
+      </section>
 
-    <dt>Variante</dt>
-    <dd>{{ product.variant }}</dd>
+      <section class="summary-box summary-box--barcode">
+        {% set sku_barcode = build_code128_svg_data_uri(product.last_known_sku, module_width_px=3, bar_height_px=136) %}
+        {% if sku_barcode %}
+        <img
+          class="sku-barcode sku-barcode--detail"
+          src="{{ sku_barcode }}"
+          alt="Código de barras Code 128 do SKU {{ product.last_known_sku }}"
+        />
+        {% else %}
+        <div class="barcode-empty-state">código de barras indisponível</div>
+        {% endif %}
+      </section>
+    </aside>
+  </section>
 
-    <dt>SKU atual</dt>
-    <dd>{{ product.last_known_sku }}</dd>
+  <section class="product-meta-box">
+    <dl class="product-meta-grid">
+      <dt>URL atual</dt>
+      <dd><a href="{{ product.last_known_url }}" target="_blank" rel="noreferrer">{{ product.last_known_url }}</a></dd>
 
-    <dt>URL atual</dt>
-    <dd><a href="{{ product.last_known_url }}" target="_blank" rel="noreferrer">{{ product.last_known_url }}</a></dd>
-  </dl>
+      {% if product_preview and product_preview.title %}
+      <dt>Título da página</dt>
+      <dd>{{ product_preview.title }}</dd>
+      {% endif %}
+    </dl>
+  </section>
 
   <div class="action-row">
     <form method="post" action="/dashboard/products/{{ product.alias }}/update">

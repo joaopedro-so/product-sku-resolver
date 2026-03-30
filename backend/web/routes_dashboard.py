@@ -17,9 +17,13 @@ from fastapi.templating import Jinja2Templates
 from backend.models.product import ProductRecord
 from backend.services.product_store_service import ProductStoreService
 from backend.services.resolver import ProductResolver, ResolveResult
+from backend.utils.barcode import build_code128_svg_data_uri
+from backend.utils.fetcher import FetchResult
+from backend.utils.parser import PageData, parse_page_data
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard-web"])
 templates = Jinja2Templates(directory="backend/web/templates")
+templates.env.globals["build_code128_svg_data_uri"] = build_code128_svg_data_uri
 
 # Decisão técnica:
 # Armazenamos em memória o último resultado de atualização por alias para
@@ -61,6 +65,43 @@ def _get_resolver_service(request: Request) -> ProductResolver:
     """
 
     return request.app.state.product_resolver
+
+
+def _build_product_visual_snapshot(request: Request, product: ProductRecord) -> Optional[PageData]:
+    """
+    Responsabilidade:
+        Buscar imagem e metadados visuais do produto para o dashboard.
+
+    Parâmetros:
+        request: Requisição atual para acesso ao resolver e ao fetcher.
+        product: Produto persistido que terá a URL atual consultada.
+
+    Retorno:
+        PageData com sinais visuais da página, ou None em caso de falha.
+
+    Contexto de uso:
+        Utilizada na tela de detalhe para exibir imagem do produto e manter a
+        experiência operacional mais próxima de uma etiqueta visual.
+    """
+
+    resolver_service = _get_resolver_service(request)
+    fetcher = getattr(resolver_service, "fetcher", None)
+    if fetcher is None or not product.last_known_url.strip():
+        return None
+
+    try:
+        fetch_result: FetchResult = fetcher.fetch_page(product.last_known_url)
+    except Exception:
+        # Tratamento de erro:
+        # A prévia visual não pode derrubar a tela de detalhe; quando o fetch
+        # falha, mantemos o restante da interface funcional com placeholder.
+        return None
+
+    return parse_page_data(
+        page_url=fetch_result.final_url,
+        html_content=fetch_result.html_content,
+        configured_fallback_sku=product.last_known_sku,
+    )
 
 
 def _build_update_snapshot(resolve_result: ResolveResult) -> Dict[str, Any]:
@@ -181,6 +222,7 @@ def dashboard_product_detail(request: Request, alias: str) -> Any:
             "product": product,
             "alias": alias,
             "last_update": last_update_by_alias.get(alias),
+            "product_preview": _build_product_visual_snapshot(request, product),
             "error_message": None,
         },
     )
