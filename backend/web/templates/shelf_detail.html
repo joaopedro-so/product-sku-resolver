@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+
+{% block title %}{{ shelf.shelf_title if shelf else 'Prateleira' }}{% endblock %}
+
+{% block content %}
+{% if error_message %}
+<section class="page-section">
+  <article class="empty-card">
+    <h1>Prateleira não encontrada</h1>
+    <p>{{ error_message }}</p>
+    <a class="button" href="/dashboard">Voltar para as prateleiras</a>
+  </article>
+</section>
+{% else %}
+<section class="page-section">
+  <div class="search-entry-card">
+    <p class="section-kicker">Prateleira {{ "%02d"|format(shelf.shelf_number) }}</p>
+    <h1 class="page-title">{{ shelf.shelf_title }}</h1>
+    <form class="search-entry-form" method="get" action="/dashboard/prateleiras/{{ shelf.shelf_number }}">
+      <input
+        type="search"
+        name="q"
+        value="{{ query_text }}"
+        placeholder="Buscar dentro da prateleira"
+        aria-label="Buscar dentro da prateleira"
+      />
+      <button class="button" type="submit">Filtrar</button>
+    </form>
+  </div>
+</section>
+
+<section class="page-section">
+  <div class="shelf-product-list">
+    {% for card in products %}
+    <article class="shelf-product-card">
+      <a class="shelf-product-card__media" href="{{ card.detail_href }}">
+        {% if card.image_url %}
+        <img src="{{ card.image_url }}" alt="Imagem do produto {{ card.name }}" loading="lazy" />
+        {% else %}
+        <div class="product-card__placeholder">Sem imagem</div>
+        {% endif %}
+      </a>
+
+      <div class="shelf-product-card__content">
+        <a class="shelf-product-card__title" href="{{ card.detail_href }}">{{ card.name }}</a>
+        <p class="shelf-product-card__meta">{{ card.brand }}{% if card.variant %} • {{ card.variant }}{% endif %}</p>
+        <p class="shelf-product-card__sku" title="{{ card.sku }}">SKU {{ card.sku }}</p>
+        <div class="shelf-product-card__actions">
+          <a class="button button--secondary button--small" href="{{ card.barcode_href }}">Código</a>
+          <a class="button button--small" href="{{ card.detail_href }}">Abrir</a>
+        </div>
+      </div>
+    </article>
+    {% else %}
+    <article class="empty-card">
+      <h3>Nenhum produto encontrado nesta prateleira.</h3>
+      <p>Ajuste o filtro ou volte para a lista principal de prateleiras.</p>
+    </article>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+{% endblock %}

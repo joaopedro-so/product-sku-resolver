@@ -31,6 +31,9 @@
 
       <h1 class="page-title">{{ product.name }}</h1>
       <p class="detail-subtitle">{{ product.brand }}{% if product.variant %} • {{ product.variant }}{% endif %}</p>
+      {% if shelf_placement %}
+      <p class="detail-location">Prateleira {{ "%02d"|format(shelf_placement.shelf_number) }} — {{ shelf_placement.shelf_title }}</p>
+      {% endif %}
 
       <div class="detail-summary">
         <div>
@@ -88,6 +91,16 @@
         <div>
           <dt>Variante</dt>
           <dd>{{ product.variant or 'Sem variante informada' }}</dd>
+        </div>
+        <div>
+          <dt>Localização</dt>
+          <dd>
+            {% if shelf_placement %}
+            Prateleira {{ "%02d"|format(shelf_placement.shelf_number) }} — {{ shelf_placement.shelf_title }}
+            {% else %}
+            Não mapeada
+            {% endif %}
+          </dd>
         </div>
         <div>
           <dt>Página atual</dt>

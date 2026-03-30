@@ -23,6 +23,7 @@ from backend.models.product import ProductRecord
 from backend.models.sku_event import SkuEvent
 from backend.services.product_draft_service import ProductDraftService
 from backend.services.product_preview_service import ProductPreview, ProductPreviewService
+from backend.services.shelf_service import ShelfPlacement, ShelfService
 from backend.services.product_store_service import ProductStoreService
 from backend.services.resolver import ProductResolver, ResolveResult
 from backend.services.saved_product_service import SavedProductService
@@ -276,6 +277,30 @@ def _get_preview_service(request: Request) -> Optional[ProductPreviewService]:
     )
     request.app.state.product_preview_service = initialized_preview_service
     return initialized_preview_service
+
+
+def _get_shelf_service(request: Request) -> ShelfService:
+    """
+    Responsabilidade:
+        Recuperar ou inicializar o servico derivado de organizacao por prateleira.
+
+    Parametros:
+        request: Requisicao HTTP atual.
+
+    Retorno:
+        ShelfService compartilhado pelo dashboard.
+
+    Contexto de uso:
+        Permite abrir o app pela visao fisica sem alterar o storage principal.
+    """
+
+    cached_shelf_service = getattr(request.app.state, "shelf_service", None)
+    if isinstance(cached_shelf_service, ShelfService):
+        return cached_shelf_service
+
+    initialized_shelf_service = ShelfService()
+    request.app.state.shelf_service = initialized_shelf_service
+    return initialized_shelf_service
 
 
 def _parse_iso_timestamp(raw_timestamp: Optional[str]) -> Optional[datetime]:
@@ -924,6 +949,157 @@ def _build_brand_chips(products: Iterable[ProductRecord]) -> List[Dict[str, Any]
     return chips[:8]
 
 
+def _build_short_product_name(product_name: str, product_brand: str) -> str:
+    """
+    Responsabilidade:
+        Encurtar nome exibido no card sem perder a identidade principal.
+
+    Parametros:
+        product_name: Nome principal persistido do produto.
+        product_brand: Marca usada para remover repeticao desnecessaria.
+
+    Retorno:
+        Titulo curto e mais facil de escanear na prateleira.
+
+    Contexto de uso:
+        Aplicado na tela de detalhe da prateleira para ganhar densidade.
+    """
+
+    normalized_name = str(product_name).strip()
+    normalized_brand = str(product_brand).strip()
+    if not normalized_name:
+        return ""
+
+    if normalized_brand and normalized_name.lower().startswith(normalized_brand.lower()):
+        shortened_name = normalized_name[len(normalized_brand):].strip(" -")
+        if shortened_name:
+            return shortened_name
+
+    return normalized_name
+
+
+def _build_shelves_context(request: Request) -> Dict[str, Any]:
+    """
+    Responsabilidade:
+        Montar a tela inicial baseada nas prateleiras fisicas da perfumaria.
+
+    Parametros:
+        request: Requisicao atual para acesso ao catalogo e ao servico de prateleiras.
+
+    Retorno:
+        Dicionario pronto para renderizacao da tela inicial por prateleiras.
+
+    Contexto de uso:
+        Substitui a Home generica por uma navegacao fisica orientada a loja.
+    """
+
+    products = _get_store_service(request).list_products()
+    shelf_service = _get_shelf_service(request)
+
+    shelf_cards = []
+    for shelf in shelf_service.list_shelves():
+        shelf_products = shelf_service.list_products_for_shelf(products, shelf.shelf_number)
+        shelf_cards.append(
+            {
+                "shelf_number": shelf.shelf_number,
+                "shelf_title": shelf.shelf_title,
+                "brand_group": shelf.brand_group,
+                "product_count": len(shelf_products),
+                "href": f"/dashboard/prateleiras/{shelf.shelf_number}",
+            }
+        )
+
+    return _with_app_shell(
+        request=request,
+        active_tab="home",
+        context={
+            "request": request,
+            "page_title": "Prateleiras",
+            "shelves": shelf_cards,
+        },
+    )
+
+
+def _build_shelf_detail_context(request: Request, shelf_number: int) -> Dict[str, Any]:
+    """
+    Responsabilidade:
+        Montar o detalhe de uma prateleira com os produtos alocados nela.
+
+    Parametros:
+        request: Requisicao atual para acesso a produtos, historico e previews.
+        shelf_number: Numero fisico da prateleira aberta.
+
+    Retorno:
+        Dicionario pronto para a tela de detalhe da prateleira.
+
+    Contexto de uso:
+        Fluxo principal do app quando o operador busca localizacao fisica primeiro.
+    """
+
+    shelf_service = _get_shelf_service(request)
+    shelf_definition = shelf_service.get_shelf(shelf_number)
+    if shelf_definition is None:
+        return _with_app_shell(
+            request=request,
+            active_tab="home",
+            context={
+                "request": request,
+                "page_title": "Prateleira não encontrada",
+                "error_message": "A prateleira informada não foi encontrada.",
+            },
+        )
+
+    products = _get_store_service(request).list_products()
+    shelf_products = shelf_service.list_products_for_shelf(products, shelf_number)
+    latest_events = _build_latest_event_map(_get_history_store(request).list_events())
+    preview_map = _build_preview_map(request, shelf_products, fetch_limit=12)
+    query_text = request.query_params.get("q", "").strip().lower()
+
+    shelf_product_cards = []
+    for product in shelf_products:
+        if query_text:
+            searchable_text = " ".join(
+                [
+                    product.name,
+                    product.brand,
+                    product.variant,
+                    product.last_known_sku,
+                ]
+            ).lower()
+            if query_text not in searchable_text:
+                continue
+
+        preview = preview_map.get(product.alias)
+        placement = shelf_service.get_product_placement(product=product, all_products=products)
+        activity = _build_product_activity(product, latest_events.get(product.alias), last_update_by_alias.get(product.alias))
+        shelf_product_cards.append(
+            {
+                "alias": product.alias,
+                "name": _build_short_product_name(product.name, product.brand),
+                "brand": product.brand,
+                "variant": product.variant,
+                "sku": product.last_known_sku,
+                "image_url": preview.image_url if preview else None,
+                "barcode_href": f"/dashboard/products/{product.alias}/barcode",
+                "detail_href": f"/dashboard/products/{product.alias}",
+                "status_label": activity["status_label"],
+                "placement": placement,
+            }
+        )
+
+    return _with_app_shell(
+        request=request,
+        active_tab="home",
+        context={
+            "request": request,
+            "page_title": shelf_definition.shelf_title,
+            "shelf": shelf_definition,
+            "products": shelf_product_cards,
+            "query_text": request.query_params.get("q", ""),
+        },
+    )
+
+
 def _build_home_context(request: Request) -> Dict[str, Any]:
     """
     Responsabilidade:
@@ -1264,6 +1440,10 @@ def _build_product_detail_context(request: Request, alias: str) -> Dict[str, Any
     product_preview = preview_service.ensure_preview(product) if preview_service else None
     visual_snapshot = _build_product_visual_snapshot(request, product)
     activity = _build_product_activity(product, latest_event, last_update_by_alias.get(alias))
+    shelf_placement = _get_shelf_service(request).get_product_placement(
+        product=product,
+        all_products=_get_store_service(request).list_products(),
+    )
 
     related_products = []
     for related_product in _get_store_service(request).list_products():
@@ -1293,7 +1473,7 @@ def _build_product_detail_context(request: Request, alias: str) -> Dict[str, Any
 
     return _with_app_shell(
         request=request,
-        active_tab="search",
+        active_tab="home",
         context={
             "request": request,
             "page_title": product.name,
@@ -1301,6 +1481,7 @@ def _build_product_detail_context(request: Request, alias: str) -> Dict[str, Any
             "product_preview": product_preview,
             "visual_snapshot": visual_snapshot,
             "activity": activity,
+            "shelf_placement": shelf_placement,
             "barcode_data_uri": build_code128_svg_data_uri(product.last_known_sku, module_width_px=3, bar_height_px=124),
             "is_saved": _get_saved_service(request).is_saved(alias),
             "history_cards": history_cards,
@@ -1314,19 +1495,41 @@ def _build_product_detail_context(request: Request, alias: str) -> Dict[str, Any
 def dashboard_home(request: Request) -> Any:
     """
     Responsabilidade:
-        Renderizar a Home principal do dashboard mobile-first.
+        Renderizar a tela inicial baseada nas prateleiras da perfumaria.
 
     Parametros:
         request: Requisicao HTTP atual.
 
     Retorno:
-        TemplateResponse da tela Home.
+        TemplateResponse da tela inicial por prateleiras.
 
     Contexto de uso:
-        Ponto de entrada operacional do app no navegador.
+        Ponto de entrada principal do app para localizar a prateleira primeiro.
     """
 
-    return templates.TemplateResponse(request, "dashboard.html", _build_home_context(request))
+    return templates.TemplateResponse(request, "dashboard.html", _build_shelves_context(request))
+
+
+@router.get("/prateleiras/{shelf_number}")
+def dashboard_shelf_detail(request: Request, shelf_number: int) -> Any:
+    """
+    Responsabilidade:
+        Renderizar uma prateleira fisica com os produtos nela alocados.
+
+    Parametros:
+        request: Requisicao HTTP atual.
+        shelf_number: Numero da prateleira aberta pelo operador.
+
+    Retorno:
+        TemplateResponse do detalhe da prateleira.
+
+    Contexto de uso:
+        Fluxo principal de navegacao da perfumaria prestigio.
+    """
+
+    context = _build_shelf_detail_context(request, shelf_number)
+    status_code = 404 if context.get("error_message") else 200
+    return templates.TemplateResponse(request, "shelf_detail.html", context, status_code=status_code)
 
 
 @router.get("/search")

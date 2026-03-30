@@ -233,7 +233,7 @@ def _seed_product(app: FastAPI) -> None:
     app.state.product_store_service.upsert_product(
         ProductRecord(
             alias="produto_teste",
-            brand="Marca X",
+            brand="Paco Rabanne",
             name="Produto X",
             variant="100ml",
             last_known_url="https://example.com/produto",
@@ -266,9 +266,47 @@ def test_dashboard_home_carrega_lista_de_produtos(tmp_path: Path) -> None:
     assert isinstance(response, _TemplateResponse)
     assert response.status_code == 200
     content = response.body.decode("utf-8")
-    assert "produto_teste" in content
-    assert "Buscar por nome do produto, SKU ou código" in content
-    assert "Resumo do último ciclo" in content
+    assert "Perfumaria Prestígio" in content
+    assert "Prateleira 01 — Perfumes Árabes" in content
+    assert "Prateleira 02 — Azzaro" in content
+    assert "Prateleira 03 — Calvin Klein" in content
+    assert "Prateleira 04 — Paco Rabanne" in content
+    assert "Prateleira 05 — Carolina Herrera A" in content
+    assert "Prateleira 06 — Carolina Herrera B" in content
+    assert "Prateleira 07 — Lancôme" in content
+    assert "Prateleira 08 — Giorgio Armani" in content
+    assert "Prateleira 09 — Ralph Lauren" in content
+    assert "Buscar produto, marca ou SKU" in content
+
+
+def test_dashboard_abre_detalhe_da_prateleira_com_produtos_alocados(tmp_path: Path) -> None:
+    """
+    Responsabilidade:
+        Garantir que a rota da prateleira mostra os produtos nela alocados.
+
+    Parametros:
+        tmp_path: Diretorio temporario para isolamento do storage.
+
+    Retorno:
+        Nenhum; valida shelf correta e produto renderizado.
+
+    Contexto de uso:
+        Cobertura da rota GET `/dashboard/prateleiras/{numero}`.
+    """
+
+    app = _build_app_with_temp_storage(tmp_path)
+    _seed_product(app)
+    request = _build_request(app, method="GET", path="/dashboard/prateleiras/4")
+
+    response = routes_dashboard.dashboard_shelf_detail(request, shelf_number=4)
+
+    assert isinstance(response, _TemplateResponse)
+    assert response.status_code == 200
+    content = response.body.decode("utf-8")
+    assert "Paco Rabanne" in content
+    assert "Produto X" in content
+    assert "Código" in content
+    assert "Abrir" in content
 
 
 def test_dashboard_search_renderiza_lista_operacional(tmp_path: Path) -> None:
@@ -296,7 +334,7 @@ def test_dashboard_search_renderiza_lista_operacional(tmp_path: Path) -> None:
     assert response.status_code == 200
     content = response.body.decode("utf-8")
     assert "Resultados" in content
-    assert "produto_teste" in content
+    assert "Produto X" in content
     assert "SKU" in content
 
 
@@ -325,6 +363,7 @@ def test_dashboard_detalhe_abre_produto_existente(tmp_path: Path) -> None:
     assert response.status_code == 200
     content = response.body.decode("utf-8")
     assert "Produto X" in content
+    assert "Prateleira 04 — Paco Rabanne" in content
     assert "sku-inicial" in content
     assert "Imagem do produto" in content
     assert "Código de barras" in content
