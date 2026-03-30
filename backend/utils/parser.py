@@ -68,6 +68,39 @@ def _normalize_spaces(text: str) -> str:
     return re.sub(r"\s+", " ", decoded_text).strip()
 
 
+def _extract_html_head(html_content: str, max_fallback_chars: int = 50000) -> str:
+    """
+    Responsabilidade:
+        Isolar o trecho do `<head>` para reduzir custo de parsing textual.
+
+    Parâmetros:
+        html_content: Documento HTML bruto completo.
+        max_fallback_chars: Quantidade máxima usada quando `<head>` não existir.
+
+    Retorno:
+        String contendo o bloco `<head>` ou um recorte inicial do HTML.
+
+    Contexto de uso:
+        Utilizada por extrações de título e metatags para evitar regex custosa
+        sobre páginas muito grandes e com muitos scripts inline.
+    """
+
+    lowered_html = html_content.lower()
+    head_start = lowered_html.find("<head")
+    if head_start == -1:
+        return html_content[:max_fallback_chars]
+
+    head_open_end = lowered_html.find(">", head_start)
+    if head_open_end == -1:
+        return html_content[:max_fallback_chars]
+
+    head_close_start = lowered_html.find("</head>", head_open_end)
+    if head_close_start == -1:
+        return html_content[:max_fallback_chars]
+
+    return html_content[head_start : head_close_start + len("</head>")]
+
+
 def extract_sku_from_url_query(page_url: str, candidate_keys: Optional[Iterable[str]] = None) -> Optional[str]:
     """
     Responsabilidade:
@@ -256,7 +289,8 @@ def _extract_title(html_content: str) -> Optional[str]:
         Fornece sinal simples para matcher e observabilidade do resolver.
     """
 
-    title_match = re.search(r"<title[^>]*>(.*?)</title>", html_content, re.IGNORECASE | re.DOTALL)
+    head_content = _extract_html_head(html_content)
+    title_match = re.search(r"<title[^>]*>(.*?)</title>", head_content, re.IGNORECASE | re.DOTALL)
     if not title_match:
         return None
 
@@ -279,6 +313,8 @@ def _extract_meta_content(html_content: str, meta_name: str) -> Optional[str]:
         Permite inferir brand/name/variant sem depender de parser HTML pesado.
     """
 
+    head_content = _extract_html_head(html_content)
+
     # Decisão técnica:
     # O padrão cobre as ordens mais comuns de atributos em meta tags.
     patterns = [
@@ -293,7 +329,7 @@ def _extract_meta_content(html_content: str, meta_name: str) -> Optional[str]:
     ]
 
     for pattern in patterns:
-        matched = pattern.search(html_content)
+        matched = pattern.search(head_content)
         if matched:
             return _normalize_spaces(matched.group(1)) or None
 

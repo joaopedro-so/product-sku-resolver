@@ -161,6 +161,52 @@ http://localhost:8000
 
 ---
 
+Rodando o projeto em desenvolvimento
+
+Arquitetura do bootstrap:
+
+- `scripts/run_dev.sh` é o ponto de entrada para Linux/macOS
+- `scripts/run_dev.bat` é o ponto de entrada para Windows
+- ambos garantem uso de Python 3.11, criam a `.venv` apenas quando necessário,
+  instalam dependências e sobem o servidor via `uvicorn api.main:app --reload`
+
+Observações importantes:
+
+- se `python3.11` não existir no Linux/macOS, o script tenta instalar com
+  `apt-get`, `dnf` ou `brew`
+- se Python 3.11 não existir no Windows, o script tenta instalar com `winget`
+- se a pasta `.venv` já existir, ela **não será recriada**
+- se a `.venv` existente não usar Python 3.11, o script interrompe a execução
+  e pede para remover a pasta `.venv` antes de tentar novamente
+
+Linux/macOS:
+
+```bash
+chmod +x ./scripts/run_dev.sh
+./scripts/run_dev.sh
+```
+
+Windows:
+
+```bat
+scripts\run_dev.bat
+```
+
+Servidor disponível em:
+
+```text
+http://127.0.0.1:8000
+```
+
+Dashboard web:
+
+```text
+http://127.0.0.1:8000/dashboard
+```
+
+
+---
+
 Testes
 
 Rodar testes:

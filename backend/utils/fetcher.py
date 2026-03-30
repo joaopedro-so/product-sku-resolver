@@ -8,6 +8,7 @@ configuração em camadas superiores e facilitar testes/mocks no futuro.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from socket import timeout as SocketTimeout
 from typing import Dict, Optional
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
@@ -53,7 +54,7 @@ class Fetcher:
         Utilizado pelo resolver para baixar páginas de produto antes da extração.
     """
 
-    def __init__(self, default_timeout_seconds: float = 15.0, user_agent: str = "ProductSkuResolver/1.0") -> None:
+    def __init__(self, default_timeout_seconds: float = 8.0, user_agent: str = "ProductSkuResolver/1.0") -> None:
         """
         Responsabilidade:
             Configurar parâmetros padrão de requisição para o cliente HTTP.
@@ -112,6 +113,14 @@ class Fetcher:
                 html_content = response.read().decode("utf-8", errors="replace")
                 final_url = response.geturl()
                 status_code = getattr(response, "status", 200)
+        except TimeoutError as error:
+            raise RuntimeError(
+                f"Timeout ao buscar URL após {self.default_timeout_seconds:.0f}s: {sanitized_url}"
+            ) from error
+        except SocketTimeout as error:
+            raise RuntimeError(
+                f"Timeout ao buscar URL após {self.default_timeout_seconds:.0f}s: {sanitized_url}"
+            ) from error
         except HTTPError as error:
             raise RuntimeError(f"HTTP {error.code} ao buscar URL: {sanitized_url}") from error
         except URLError as error:

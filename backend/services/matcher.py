@@ -128,6 +128,31 @@ def _contains_or_equals(expected: str, observed: str) -> bool:
     return expected == observed or expected in observed or observed in expected
 
 
+def _build_observed_identity_text(observed_page_data: PageData) -> str:
+    """
+    Responsabilidade:
+        Consolidar sinais textuais observados da página em um único campo.
+
+    Parâmetros:
+        observed_page_data: Dados extraídos do HTML pelo parser.
+
+    Retorno:
+        Texto normalizado contendo título, nome e marca observados.
+
+    Contexto de uso:
+        Permite matching mais robusto quando o varejista distribui a identidade
+        do produto entre múltiplos campos semânticos da página.
+    """
+
+    candidate_parts = [
+        normalize_text(observed_page_data.brand),
+        normalize_text(observed_page_data.name),
+        normalize_text(observed_page_data.title),
+    ]
+    populated_parts = [part for part in candidate_parts if part]
+    return " ".join(populated_parts).strip()
+
+
 def match_product_with_page(
     expected_product: ProductRecord,
     observed_page_data: PageData,
@@ -159,9 +184,26 @@ def match_product_with_page(
     normalized_observed_brand = normalize_text(observed_page_data.brand)
     normalized_observed_name = normalize_text(observed_page_data.name)
     normalized_observed_variant = normalize_variant(observed_page_data.variant)
+    normalized_observed_identity_text = _build_observed_identity_text(observed_page_data)
 
-    brand_matched = _contains_or_equals(normalized_expected_brand, normalized_observed_brand)
-    name_matched = _contains_or_equals(normalized_expected_name, normalized_observed_name)
+    # Decisão técnica:
+    # Alguns varejistas expõem marca e nome em campos diferentes do HTML
+    # (ex.: título da página, og:title e alt de imagem). Por isso usamos
+    # também um texto agregado como fallback para reduzir falsos negativos.
+    brand_matched = _contains_or_equals(
+        normalized_expected_brand,
+        normalized_observed_brand,
+    ) or _contains_or_equals(
+        normalized_expected_brand,
+        normalized_observed_identity_text,
+    )
+    name_matched = _contains_or_equals(
+        normalized_expected_name,
+        normalized_observed_name,
+    ) or _contains_or_equals(
+        normalized_expected_name,
+        normalized_observed_identity_text,
+    )
     variant_matched = _contains_or_equals(normalized_expected_variant, normalized_observed_variant)
 
     score = 0.0
