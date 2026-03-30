@@ -1023,6 +1023,94 @@ def _build_short_product_name(product_name: str, product_brand: str) -> str:
     return normalized_name
 
 
+def _build_shelf_card_visual_metadata(shelf_number: int, shelf_title: str) -> Dict[str, str]:
+    """
+    Responsabilidade:
+        Definir textos e variantes visuais das prateleiras da perfumaria.
+
+    Parametros:
+        shelf_number: Numero fixo da prateleira fisica.
+        shelf_title: Titulo operacional persistido para a prateleira.
+
+    Retorno:
+        Dicionario com wordmark do banner, rotulos auxiliares e estilo visual.
+
+    Contexto de uso:
+        Mantem a camada de template enxuta e centraliza o mapeamento entre a
+        prateleira operacional e a apresentacao inspirada nos expositores reais.
+    """
+
+    shelf_visual_map: Dict[int, Dict[str, str]] = {
+        1: {
+            "banner_wordmark": "PERFUMES ÁRABES",
+            "banner_sublabel": "",
+            "body_label": "",
+            "banner_variant": "arabes",
+        },
+        2: {
+            "banner_wordmark": "AZZARO",
+            "banner_sublabel": "",
+            "body_label": "",
+            "banner_variant": "azzaro",
+        },
+        3: {
+            "banner_wordmark": "CALVIN KLEIN",
+            "banner_sublabel": "",
+            "body_label": "",
+            "banner_variant": "calvin-klein",
+        },
+        4: {
+            "banner_wordmark": "paco rabanne",
+            "banner_sublabel": "",
+            "body_label": "",
+            "banner_variant": "paco-rabanne",
+        },
+        5: {
+            "banner_wordmark": "CAROLINA HERRERA",
+            "banner_sublabel": "FEMININO",
+            "body_label": "Feminino",
+            "banner_variant": "carolina-herrera",
+            "legacy_title": "Carolina Herrera A",
+        },
+        6: {
+            "banner_wordmark": "CAROLINA HERRERA",
+            "banner_sublabel": "MASCULINO",
+            "body_label": "Masculino",
+            "banner_variant": "carolina-herrera",
+            "legacy_title": "Carolina Herrera B",
+        },
+        7: {
+            "banner_wordmark": "LANCÔME",
+            "banner_sublabel": "",
+            "body_label": "",
+            "banner_variant": "lancome",
+        },
+        8: {
+            "banner_wordmark": "GIORGIO ARMANI",
+            "banner_sublabel": "",
+            "body_label": "",
+            "banner_variant": "giorgio-armani",
+        },
+        9: {
+            "banner_wordmark": "RALPH LAUREN",
+            "banner_sublabel": "",
+            "body_label": "",
+            "banner_variant": "ralph-lauren",
+        },
+    }
+
+    return shelf_visual_map.get(
+        shelf_number,
+        {
+            "banner_wordmark": shelf_title.upper(),
+            "banner_sublabel": "",
+            "body_label": "",
+            "banner_variant": "default",
+            "legacy_title": "",
+        },
+    )
+
+
 def _build_shelves_context(request: Request) -> Dict[str, Any]:
     """
     Responsabilidade:
@@ -1044,13 +1132,16 @@ def _build_shelves_context(request: Request) -> Dict[str, Any]:
     shelf_cards = []
     for shelf in shelf_service.list_shelves():
         shelf_products = shelf_service.list_products_for_shelf(products, shelf.shelf_number)
+        visual_metadata = _build_shelf_card_visual_metadata(shelf.shelf_number, shelf.shelf_title)
         shelf_cards.append(
             {
                 "shelf_number": shelf.shelf_number,
                 "shelf_title": shelf.shelf_title,
+                "full_title": f"Prateleira {shelf.shelf_number:02d} — {shelf.shelf_title}",
                 "brand_group": shelf.brand_group,
                 "product_count": len(shelf_products),
                 "href": f"/dashboard/prateleiras/{shelf.shelf_number}",
+                **visual_metadata,
             }
         )
 

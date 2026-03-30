@@ -23,13 +23,29 @@
 <section class="page-section">
   <div class="shelf-list">
     {% for shelf in shelves %}
-    <article class="shelf-card">
-      <div>
-        <p class="section-kicker">Prateleira {{ "%02d"|format(shelf.shelf_number) }}</p>
-        <h2 class="section-title">Prateleira {{ "%02d"|format(shelf.shelf_number) }} — {{ shelf.shelf_title }}</h2>
-        <p class="section-text">{{ shelf.product_count }} produto(s)</p>
+    <article
+      class="shelf-card"
+      aria-label="{{ shelf.full_title }}"
+      {% if shelf.legacy_title %}
+      data-legacy-title="Prateleira {{ '%02d'|format(shelf.shelf_number) }} — {{ shelf.legacy_title }}"
+      {% endif %}
+    >
+      <div class="shelf-card__banner shelf-card__banner--{{ shelf.banner_variant }}">
+        <strong class="shelf-card__wordmark">{{ shelf.banner_wordmark }}</strong>
+        {% if shelf.banner_sublabel %}
+        <span class="shelf-card__subwordmark">{{ shelf.banner_sublabel }}</span>
+        {% endif %}
       </div>
-      <a class="button button--secondary" href="{{ shelf.href }}">Abrir</a>
+      <div class="shelf-card__body">
+        <div class="shelf-card__meta">
+          <p class="section-kicker">Prateleira {{ "%02d"|format(shelf.shelf_number) }}</p>
+          {% if shelf.body_label %}
+          <p class="shelf-card__body-label">{{ shelf.body_label }}</p>
+          {% endif %}
+          <p class="section-text">{{ shelf.product_count }} produto(s)</p>
+        </div>
+        <a class="button button--secondary" href="{{ shelf.href }}">Ver produtos</a>
+      </div>
     </article>
     {% endfor %}
   </div>

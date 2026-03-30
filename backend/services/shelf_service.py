@@ -99,8 +99,8 @@ class ShelfService:
             ShelfDefinition(2, "Azzaro", "Azzaro", 2),
             ShelfDefinition(3, "Calvin Klein", "Calvin Klein", 3),
             ShelfDefinition(4, "Paco Rabanne", "Paco Rabanne", 4),
-            ShelfDefinition(5, "Carolina Herrera A", "Carolina Herrera", 5),
-            ShelfDefinition(6, "Carolina Herrera B", "Carolina Herrera", 6),
+            ShelfDefinition(5, "Carolina Herrera Feminino", "Carolina Herrera", 5),
+            ShelfDefinition(6, "Carolina Herrera Masculino", "Carolina Herrera", 6),
             ShelfDefinition(7, "Lancôme", "Lancôme", 7),
             ShelfDefinition(8, "Giorgio Armani", "Giorgio Armani", 8),
             ShelfDefinition(9, "Ralph Lauren", "Ralph Lauren", 9),
@@ -252,9 +252,9 @@ class ShelfService:
         )
 
         if product_position <= midpoint_index:
-            return ShelfPlacement(5, "Carolina Herrera A", "Carolina Herrera", product_position)
+            return ShelfPlacement(5, "Carolina Herrera Feminino", "Carolina Herrera", product_position)
 
-        return ShelfPlacement(6, "Carolina Herrera B", "Carolina Herrera", product_position - midpoint_index)
+        return ShelfPlacement(6, "Carolina Herrera Masculino", "Carolina Herrera", product_position - midpoint_index)
 
     def _is_arabic_brand(self, normalized_brand: str) -> bool:
         """
