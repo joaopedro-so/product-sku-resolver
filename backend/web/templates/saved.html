@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+
+{% block title %}Saved{% endblock %}
+
+{% block content %}
+<section class="page-section">
+  <div class="section-heading">
+    <div>
+      <p class="section-kicker">Saved</p>
+      <h1 class="section-title">Atalhos do operador</h1>
+      <p class="section-text">Use esta area para acessar rapidamente os itens mais consultados.</p>
+    </div>
+    <a class="button button--secondary button--small" href="/dashboard/search">Buscar mais</a>
+  </div>
+
+  <div class="product-list">
+    {% for card in products %}
+      {% include "partials/product_card.html" %}
+    {% else %}
+    <article class="empty-card">
+      <h3>Nenhum produto salvo.</h3>
+      <p>Salve um item pela Home, Search ou detalhe para ele aparecer aqui.</p>
+    </article>
+    {% endfor %}
+  </div>
+</section>
+{% endblock %}

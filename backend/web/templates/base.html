@@ -3,60 +3,53 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>{% block title %}Dashboard SKU{% endblock %}</title>
+    <title>{% block title %}{{ page_title or 'Product SKU Resolver' }}{% endblock %}</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link rel="stylesheet" href="/dashboard/static/styles.css" />
   </head>
-  <body>
-    <div class="app-shell">
-      <!--
-        Estrutura global:
-        A barra superior cria um contexto mais comercial e confiavel, enquanto
-        o header principal concentra marca e navegacao para manter consistencia
-        entre todas as telas do dashboard.
-      -->
-      <div class="utility-strip">
-        <div class="utility-strip__content">
-          <div class="utility-strip__text">
-            <strong>Operacao de catalogo</strong>
-            <span>Monitoramento visual e atualizacao manual de SKU em um fluxo mais claro.</span>
-          </div>
-          <span class="utility-strip__badge">Retail Ops</span>
-        </div>
-      </div>
-
-      <header class="site-header">
-        <div class="site-header__inner">
-          <a class="brand-lockup" href="/dashboard">
-            <span class="brand-lockup__mark">SR</span>
+  <body class="{{ body_class or '' }}">
+    <div class="mobile-shell">
+      {% if not hide_app_chrome %}
+      <header class="app-header">
+        <div class="app-header__row">
+          <a class="brand" href="/dashboard">
+            <span class="brand__mark">SR</span>
             <span>
-              <span class="brand-lockup__title">Product SKU Resolver</span>
-              <span class="brand-lockup__subtitle">Painel operacional com foco em clareza comercial</span>
+              <strong class="brand__title">SKU Resolver</strong>
+              <span class="brand__subtitle">Catalogo operacional</span>
             </span>
           </a>
-
-          <nav class="site-nav" aria-label="Navegacao principal do dashboard">
-            <a
-              class="site-nav__link {% if request.url.path == '/dashboard' %}site-nav__link--active{% endif %}"
-              href="/dashboard"
-            >
-              Dashboard
-            </a>
-            <a
-              class="site-nav__link {% if request.url.path == '/dashboard/products/new' %}site-nav__link--active{% endif %}"
-              href="/dashboard/products/new"
-            >
-              Adicionar produto
-            </a>
-          </nav>
+          <a class="button button--secondary button--small" href="/dashboard/products/new">Novo</a>
         </div>
       </header>
+      {% endif %}
 
-      <main class="page-shell">
-        {% block page_intro %}{% endblock %}
+      <main class="app-main">
         {% block content %}{% endblock %}
       </main>
+
+      {% if not hide_app_chrome %}
+      <nav class="bottom-nav" aria-label="Navegacao principal">
+        <a class="bottom-nav__item {% if active_tab == 'home' %}bottom-nav__item--active{% endif %}" href="/dashboard">
+          <span>Home</span>
+        </a>
+        <a class="bottom-nav__item {% if active_tab == 'search' %}bottom-nav__item--active{% endif %}" href="/dashboard/search">
+          <span>Search</span>
+        </a>
+        <a class="bottom-nav__item {% if active_tab == 'updates' %}bottom-nav__item--active{% endif %}" href="/dashboard/updates">
+          <span>Updates</span>
+        </a>
+        <a class="bottom-nav__item {% if active_tab == 'saved' %}bottom-nav__item--active{% endif %}" href="/dashboard/saved">
+          <span>Saved</span>
+          {% if saved_count %}
+          <small>{{ saved_count }}</small>
+          {% endif %}
+        </a>
+      </nav>
+      {% endif %}
     </div>
+
+    <script src="/dashboard/static/dashboard.js" defer></script>
   </body>
 </html>

@@ -1,50 +1,60 @@
 """
-Rotas do dashboard web para operação manual do resolvedor de SKU.
+Rotas do dashboard web mobile-first para operacao manual do resolvedor de SKU.
 
-Este módulo mantém a camada web separada da API REST, reutilizando os
-serviços existentes para evitar duplicação de regras de negócio.
+Este modulo reorganiza a experiencia em torno de Home, Search, Updates,
+Saved e detalhe operacional, preservando a logica existente de produtos,
+barcode, update de SKU e preview visual.
 """
 
 from __future__ import annotations
 
+import os
 from dataclasses import asdict
-from typing import Any, Dict, Optional
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any, Dict, Iterable, List, Optional
+from urllib.parse import urlencode
 
 from fastapi import APIRouter, Request, status
 from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from backend.models.product import ProductRecord
+from backend.models.sku_event import SkuEvent
 from backend.services.product_draft_service import ProductDraftService
+from backend.services.product_preview_service import ProductPreview, ProductPreviewService
 from backend.services.product_store_service import ProductStoreService
 from backend.services.resolver import ProductResolver, ResolveResult
+from backend.services.saved_product_service import SavedProductService
 from backend.utils.barcode import build_code128_svg_data_uri
 from backend.utils.fetcher import FetchResult, Fetcher
 from backend.utils.parser import PageData, parse_page_data
+from history.history_store import HistoryStore
+from monitoring.monitor_service import MonitorRunSummary, MonitorService
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard-web"])
 templates = Jinja2Templates(directory="backend/web/templates")
 templates.env.globals["build_code128_svg_data_uri"] = build_code128_svg_data_uri
 
-# Decisão técnica:
-# Armazenamos em memória o último resultado de atualização por alias para
-# exibir feedback operacional rápido sem alterar o schema atual do storage.
+# Decisao tecnica:
+# Mantemos feedbacks recentes em memoria para exibir status imediato apos
+# interacoes manuais, sem exigir nova persistencia no contrato de dominio.
 last_update_by_alias: Dict[str, Dict[str, Any]] = {}
 
 
 def _get_store_service(request: Request) -> ProductStoreService:
     """
     Responsabilidade:
-        Obter instância compartilhada do serviço de armazenamento no app state.
+        Obter a instancia compartilhada de armazenamento de produtos.
 
-    Parâmetros:
-        request: Requisição HTTP atual para acessar `request.app.state`.
+    Parametros:
+        request: Requisicao HTTP atual com acesso ao `app.state`.
 
     Retorno:
-        Instância de ProductStoreService previamente inicializada no bootstrap.
+        ProductStoreService inicializado no bootstrap da aplicacao.
 
     Contexto de uso:
-        Utilizada por todas as rotas web para centralizar o acesso ao storage.
+        Base para listagem, cadastro, edicao e detalhes do dashboard.
     """
 
     return request.app.state.product_store_service
@@ -53,49 +63,347 @@ def _get_store_service(request: Request) -> ProductStoreService:
 def _get_resolver_service(request: Request) -> ProductResolver:
     """
     Responsabilidade:
-        Obter instância compartilhada do resolvedor no app state.
+        Obter o resolvedor compartilhado usado pelas acoes operacionais.
 
-    Parâmetros:
-        request: Requisição HTTP atual para acessar `request.app.state`.
+    Parametros:
+        request: Requisicao HTTP atual com acesso ao `app.state`.
 
     Retorno:
-        Instância de ProductResolver previamente inicializada no bootstrap.
+        ProductResolver pronto para execucao individual ou em lote.
 
     Contexto de uso:
-        Utilizada por rotas de atualização para acionar o pipeline completo.
+        Utilizada por update individual, update em lote e preview visual.
     """
 
     return request.app.state.product_resolver
 
 
-def _build_product_visual_snapshot(request: Request, product: ProductRecord) -> Optional[PageData]:
+def _get_fetcher_service(request: Request) -> Optional[Fetcher]:
     """
     Responsabilidade:
-        Buscar imagem e metadados visuais do produto para o dashboard.
+        Recuperar o fetcher compartilhado usado para leitura de paginas remotas.
 
-    Parâmetros:
-        request: Requisição atual para acesso ao resolver e ao fetcher.
-        product: Produto persistido que terá a URL atual consultada.
+    Parametros:
+        request: Requisicao HTTP atual.
 
     Retorno:
-        PageData com sinais visuais da página, ou None em caso de falha.
+        Fetcher quando disponivel; caso contrario, None.
 
     Contexto de uso:
-        Utilizada na tela de detalhe para exibir imagem do produto e manter a
-        experiência operacional mais próxima de uma etiqueta visual.
+        Necessario para preview de imagem e auto-preenchimento por URL.
     """
 
     resolver_service = _get_resolver_service(request)
     fetcher = getattr(resolver_service, "fetcher", None)
+    return fetcher if isinstance(fetcher, Fetcher) else fetcher
+
+
+def _resolve_history_storage_path() -> Path:
+    """
+    Responsabilidade:
+        Definir o caminho do arquivo de historico usado pelo dashboard.
+
+    Parametros:
+        Nenhum.
+
+    Retorno:
+        Path do arquivo de historico.
+
+    Contexto de uso:
+        Fallback para runtimes que nao inicializam `app.state.services`.
+    """
+
+    configured_path = os.getenv("PRODUCT_HISTORY_FILE", "").strip()
+    if configured_path:
+        return Path(configured_path)
+    return Path("data/history.json")
+
+
+def _resolve_saved_storage_path() -> Path:
+    """
+    Responsabilidade:
+        Definir o caminho persistente dos produtos salvos.
+
+    Parametros:
+        Nenhum.
+
+    Retorno:
+        Path do arquivo de favoritos operacionais.
+
+    Contexto de uso:
+        Permite deploy com override por variavel de ambiente.
+    """
+
+    configured_path = os.getenv("SAVED_PRODUCTS_FILE", "").strip()
+    if configured_path:
+        return Path(configured_path)
+    return Path("data/saved_products.json")
+
+
+def _resolve_preview_cache_path() -> Path:
+    """
+    Responsabilidade:
+        Definir o caminho do cache de previews visuais do dashboard.
+
+    Parametros:
+        Nenhum.
+
+    Retorno:
+        Path do arquivo de cache de imagem/titulo.
+
+    Contexto de uso:
+        Reduz latencia em listas mobile-first com muitos cards.
+    """
+
+    configured_path = os.getenv("PRODUCT_PREVIEW_CACHE_FILE", "").strip()
+    if configured_path:
+        return Path(configured_path)
+    return Path("data/product_previews.json")
+
+
+def _get_history_store(request: Request) -> HistoryStore:
+    """
+    Responsabilidade:
+        Recuperar ou inicializar o store de historico do dashboard.
+
+    Parametros:
+        request: Requisicao HTTP atual.
+
+    Retorno:
+        HistoryStore compartilhado pela aplicacao web.
+
+    Contexto de uso:
+        Necessario para a tela Updates e para status de sincronizacao.
+    """
+
+    runtime_services = getattr(request.app.state, "services", None)
+    history_store = getattr(runtime_services, "history_store", None)
+    if isinstance(history_store, HistoryStore):
+        return history_store
+
+    cached_history_store = getattr(request.app.state, "history_store_service", None)
+    if isinstance(cached_history_store, HistoryStore):
+        return cached_history_store
+
+    initialized_history_store = HistoryStore(_resolve_history_storage_path())
+    request.app.state.history_store_service = initialized_history_store
+    return initialized_history_store
+
+
+def _get_monitor_service(request: Request) -> MonitorService:
+    """
+    Responsabilidade:
+        Recuperar ou inicializar o monitor service usado pela tela Updates.
+
+    Parametros:
+        request: Requisicao HTTP atual.
+
+    Retorno:
+        MonitorService pronto para update em lote com historico.
+
+    Contexto de uso:
+        Alimenta o resumo de sincronizacao e a acao "Update all".
+    """
+
+    runtime_services = getattr(request.app.state, "services", None)
+    monitor_service = getattr(runtime_services, "monitor_service", None)
+    if isinstance(monitor_service, MonitorService):
+        return monitor_service
+
+    cached_monitor_service = getattr(request.app.state, "monitor_service", None)
+    if isinstance(cached_monitor_service, MonitorService):
+        return cached_monitor_service
+
+    initialized_monitor_service = MonitorService(
+        product_store=_get_store_service(request),
+        resolver=_get_resolver_service(request),
+        history_store=_get_history_store(request),
+    )
+    request.app.state.monitor_service = initialized_monitor_service
+    return initialized_monitor_service
+
+
+def _get_saved_service(request: Request) -> SavedProductService:
+    """
+    Responsabilidade:
+        Recuperar ou inicializar o storage de produtos salvos.
+
+    Parametros:
+        request: Requisicao HTTP atual.
+
+    Retorno:
+        SavedProductService compartilhado pela interface web.
+
+    Contexto de uso:
+        Base da aba Saved e do botao de salvar produto.
+    """
+
+    cached_saved_service = getattr(request.app.state, "saved_product_service", None)
+    if isinstance(cached_saved_service, SavedProductService):
+        return cached_saved_service
+
+    initialized_saved_service = SavedProductService(_resolve_saved_storage_path())
+    request.app.state.saved_product_service = initialized_saved_service
+    return initialized_saved_service
+
+
+def _get_preview_service(request: Request) -> Optional[ProductPreviewService]:
+    """
+    Responsabilidade:
+        Recuperar ou inicializar o cache de previews visuais.
+
+    Parametros:
+        request: Requisicao HTTP atual.
+
+    Retorno:
+        ProductPreviewService quando houver fetcher disponivel; senao None.
+
+    Contexto de uso:
+        Reutilizado por Home, Search, Saved e detalhe do produto.
+    """
+
+    cached_preview_service = getattr(request.app.state, "product_preview_service", None)
+    if isinstance(cached_preview_service, ProductPreviewService):
+        return cached_preview_service
+
+    fetcher = _get_fetcher_service(request)
+    if fetcher is None:
+        return None
+
+    initialized_preview_service = ProductPreviewService(
+        storage_file_path=_resolve_preview_cache_path(),
+        fetcher=fetcher,
+    )
+    request.app.state.product_preview_service = initialized_preview_service
+    return initialized_preview_service
+
+
+def _parse_iso_timestamp(raw_timestamp: Optional[str]) -> Optional[datetime]:
+    """
+    Responsabilidade:
+        Converter timestamp ISO8601 em datetime tolerante a formatos comuns.
+
+    Parametros:
+        raw_timestamp: Texto vindo de historico ou snapshots em memoria.
+
+    Retorno:
+        Datetime timezone-aware quando o parse for bem-sucedido; senao None.
+
+    Contexto de uso:
+        Usado para ordenacao, badges de recencia e resumos da tela Updates.
+    """
+
+    normalized_timestamp = str(raw_timestamp or "").strip()
+    if not normalized_timestamp:
+        return None
+
+    try:
+        return datetime.fromisoformat(normalized_timestamp.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
+def _format_timestamp_label(raw_timestamp: Optional[str]) -> str:
+    """
+    Responsabilidade:
+        Traduzir timestamp bruto em texto curto e amigavel ao uso operacional.
+
+    Parametros:
+        raw_timestamp: Texto ISO8601 vindo do historico ou estado em memoria.
+
+    Retorno:
+        Rotulo curto para interface, como "Hoje 14:20" ou "Sem sync recente".
+
+    Contexto de uso:
+        Reforca leitura rapida de status em listas e detalhe.
+    """
+
+    parsed_timestamp = _parse_iso_timestamp(raw_timestamp)
+    if parsed_timestamp is None:
+        return "Sem sync recente"
+
+    localized_timestamp = parsed_timestamp.astimezone()
+    now = datetime.now(localized_timestamp.tzinfo)
+    if localized_timestamp.date() == now.date():
+        return f"Hoje {localized_timestamp:%H:%M}"
+
+    if (now.date() - localized_timestamp.date()).days == 1:
+        return f"Ontem {localized_timestamp:%H:%M}"
+
+    return localized_timestamp.strftime("%d/%m %H:%M")
+
+
+def _is_today(raw_timestamp: Optional[str]) -> bool:
+    """
+    Responsabilidade:
+        Indicar se um timestamp ocorreu no dia corrente local.
+
+    Parametros:
+        raw_timestamp: Texto ISO8601 a ser avaliado.
+
+    Retorno:
+        True quando o evento ocorreu hoje; False nos demais casos.
+
+    Contexto de uso:
+        Utilizado em filtros rapidos e contadores da Home/Updates.
+    """
+
+    parsed_timestamp = _parse_iso_timestamp(raw_timestamp)
+    if parsed_timestamp is None:
+        return False
+
+    localized_timestamp = parsed_timestamp.astimezone()
+    return localized_timestamp.date() == datetime.now(localized_timestamp.tzinfo).date()
+
+
+def _build_update_snapshot(resolve_result: ResolveResult) -> Dict[str, Any]:
+    """
+    Responsabilidade:
+        Converter resultado de resolucao em estrutura serializavel para a UI.
+
+    Parametros:
+        resolve_result: Resultado retornado por `resolve_sku_for_alias`.
+
+    Retorno:
+        Dicionario com status, mensagem, timestamp e dados auxiliares.
+
+    Contexto de uso:
+        Mantem feedback manual imediato entre navegacoes do dashboard.
+    """
+
+    return {
+        "success": resolve_result.success,
+        "message": resolve_result.message,
+        "error_code": resolve_result.error_code,
+        "page_data": asdict(resolve_result.page_data) if resolve_result.page_data else None,
+        "match_result": asdict(resolve_result.match_result) if resolve_result.match_result else None,
+        "recorded_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+def _build_product_visual_snapshot(request: Request, product: ProductRecord) -> Optional[PageData]:
+    """
+    Responsabilidade:
+        Buscar sinais visuais completos da pagina do produto para a tela de detalhe.
+
+    Parametros:
+        request: Requisicao atual para obter fetcher compartilhado.
+        product: Produto persistido que tera a URL atual consultada.
+
+    Retorno:
+        PageData com imagem, titulo, sku e sinais extras; ou None em falha.
+
+    Contexto de uso:
+        Alimenta a confirmacao visual do detalhe e do fullscreen barcode.
+    """
+
+    fetcher = _get_fetcher_service(request)
     if fetcher is None or not product.last_known_url.strip():
         return None
 
     try:
         fetch_result: FetchResult = fetcher.fetch_page(product.last_known_url)
     except Exception:
-        # Tratamento de erro:
-        # A prévia visual não pode derrubar a tela de detalhe; quando o fetch
-        # falha, mantemos o restante da interface funcional com placeholder.
         return None
 
     return parse_page_data(
@@ -105,28 +413,39 @@ def _build_product_visual_snapshot(request: Request, product: ProductRecord) -> 
     )
 
 
-def _get_fetcher_service(request: Request) -> Optional[Fetcher]:
+def _with_app_shell(
+    request: Request,
+    context: Dict[str, Any],
+    active_tab: str = "home",
+    hide_app_chrome: bool = False,
+    body_class: str = "",
+) -> Dict[str, Any]:
     """
     Responsabilidade:
-        Recuperar o fetcher compartilhado usado pelas rotas web.
+        Enriquecer contexto dos templates com dados globais da shell mobile-first.
 
     Parametros:
-        request: Requisicao HTTP atual com acesso ao app state.
+        request: Requisicao atual para acessar servicos globais.
+        context: Contexto especifico da tela.
+        active_tab: Identificador da navegacao principal ativa.
+        hide_app_chrome: Define se header/bottom nav devem ser ocultados.
+        body_class: Classe opcional para ajustes pontuais de layout.
 
     Retorno:
-        Instancia de Fetcher quando disponivel; caso contrario, None.
+        Dicionario pronto para renderizacao do template base.
 
     Contexto de uso:
-        Necessario para gerar rascunhos automaticos a partir de uma URL.
+        Garante navegacao consistente entre Home, Search, Updates e Saved.
     """
 
-    resolver_service = _get_resolver_service(request)
-    fetcher = getattr(resolver_service, "fetcher", None)
-    if fetcher is not None:
-        return fetcher
-
-    runtime_services = getattr(request.app.state, "services", None)
-    return getattr(runtime_services, "fetcher", None)
+    saved_count = len(_get_saved_service(request).list_saved_aliases())
+    return {
+        **context,
+        "active_tab": active_tab,
+        "hide_app_chrome": hide_app_chrome,
+        "body_class": body_class,
+        "saved_count": saved_count,
+    }
 
 
 def _build_new_product_form_context(
@@ -142,24 +461,24 @@ def _build_new_product_form_context(
 ) -> Dict[str, Any]:
     """
     Responsabilidade:
-        Padronizar o contexto da tela de cadastro manual e automatico.
+        Padronizar contexto da tela de formulario de produto.
 
     Parametros:
         submitted_data: Valores atuais do formulario para re-renderizacao.
-        error_message: Erro de validacao ao salvar o cadastro final.
-        autofill_message: Mensagem de sucesso do preenchimento automatico.
-        autofill_error_message: Erro ocorrido ao montar o rascunho automatico.
-        autofill_preview: Dados auxiliares extraidos da pagina para exibicao.
-        form_mode: Modo visual do formulario (`create` ou `edit`).
-        form_action_url: Endpoint que recebera o submit final do formulario.
-        submit_button_label: Texto do botao principal de salvamento.
-        cancel_url: Destino do CTA secundario ao cancelar a operacao.
+        error_message: Mensagem de erro de validacao final.
+        autofill_message: Feedback de sucesso do auto-preenchimento.
+        autofill_error_message: Feedback de falha do auto-preenchimento.
+        autofill_preview: Dados auxiliares extraidos da pagina.
+        form_mode: Modo do formulario (`create` ou `edit`).
+        form_action_url: Endpoint que recebera o submit principal.
+        submit_button_label: Texto do botao principal.
+        cancel_url: Destino do CTA secundario de cancelamento.
 
     Retorno:
-        Dicionario compativel com o template `add_product.html`.
+        Dicionario compativel com `add_product.html`.
 
     Contexto de uso:
-        Evita duplicacao de estrutura entre o fluxo manual e o assistido por URL.
+        Reutilizado pelos fluxos de criacao, auto-preenchimento e edicao.
     """
 
     return {
@@ -178,7 +497,7 @@ def _build_new_product_form_context(
 def _build_submitted_data_from_product(product: ProductRecord) -> Dict[str, str]:
     """
     Responsabilidade:
-        Converter ProductRecord em payload pronto para preencher formulario.
+        Converter ProductRecord em payload pronto para preencher o formulario.
 
     Parametros:
         product: Produto persistido que sera exibido para edicao.
@@ -187,7 +506,7 @@ def _build_submitted_data_from_product(product: ProductRecord) -> Dict[str, str]
         Dicionario com os campos esperados pelo template de formulario.
 
     Contexto de uso:
-        Reaproveitado pelo fluxo de edicao para evitar mapear campos manualmente.
+        Evita duplicacao na abertura da tela de editar produto.
     """
 
     return {
@@ -211,14 +530,14 @@ def _validate_alias_availability(
 
     Parametros:
         product_store: Storage usado para consultar aliases existentes.
-        desired_alias: Alias informado pelo operador no formulario.
+        desired_alias: Alias informado no formulario.
         current_alias: Alias atual do produto em edicao, quando houver.
 
     Retorno:
-        Mensagem de erro quando houver colisao; caso contrario, None.
+        Mensagem de erro em caso de colisao; caso contrario, None.
 
     Contexto de uso:
-        Evita sobrescrita silenciosa de outro produto ao salvar o formulario.
+        Impede sobrescrita silenciosa de outro produto ao editar alias.
     """
 
     normalized_desired_alias = desired_alias.strip()
@@ -233,81 +552,889 @@ def _validate_alias_availability(
     return f"Ja existe um produto cadastrado com o alias '{normalized_desired_alias}'."
 
 
-def _build_update_snapshot(resolve_result: ResolveResult) -> Dict[str, Any]:
+def _build_latest_event_map(events: Iterable[SkuEvent]) -> Dict[str, SkuEvent]:
     """
     Responsabilidade:
-        Converter resultado de resolução em estrutura serializável para template.
+        Consolidar o ultimo evento conhecido por alias.
 
-    Parâmetros:
-        resolve_result: Resultado retornado por `resolve_sku_for_alias`.
+    Parametros:
+        events: Colecao de eventos historicos carregados do store.
 
     Retorno:
-        Dicionário com campos de status, mensagem e dados de match/page.
+        Mapa de alias para o evento mais recente encontrado.
 
     Contexto de uso:
-        Padroniza os dados exibidos no dashboard e na tela de detalhe.
+        Base para status de sync, listas recentes e tela Updates.
     """
 
+    latest_event_by_alias: Dict[str, SkuEvent] = {}
+    for event in sorted(
+        events,
+        key=lambda item: _parse_iso_timestamp(item.timestamp) or datetime.min.replace(tzinfo=timezone.utc),
+    ):
+        latest_event_by_alias[event.alias] = event
+    return latest_event_by_alias
+
+
+def _build_preview_map(
+    request: Request,
+    products: List[ProductRecord],
+    fetch_limit: int = 0,
+) -> Dict[str, Optional[ProductPreview]]:
+    """
+    Responsabilidade:
+        Carregar previews cached e buscar alguns faltantes de forma controlada.
+
+    Parametros:
+        request: Requisicao atual para acessar o servico de preview.
+        products: Produtos que precisam de sinais visuais.
+        fetch_limit: Quantidade maxima de previews faltantes a buscar agora.
+
+    Retorno:
+        Mapa de alias para ProductPreview ou None.
+
+    Contexto de uso:
+        Balanceia qualidade visual com custo de rede em listas mobile-first.
+    """
+
+    preview_service = _get_preview_service(request)
+    if preview_service is None:
+        return {product.alias: None for product in products}
+
+    preview_map: Dict[str, Optional[ProductPreview]] = {}
+    fetched_count = 0
+    for product in products:
+        preview = preview_service.get_cached_preview(product)
+        if preview is None and fetched_count < fetch_limit:
+            preview = preview_service.ensure_preview(product)
+            if preview is not None:
+                fetched_count += 1
+        preview_map[product.alias] = preview
+
+    return preview_map
+
+
+def _build_product_activity(
+    product: ProductRecord,
+    latest_event: Optional[SkuEvent],
+    manual_snapshot: Optional[Dict[str, Any]],
+) -> Dict[str, Any]:
+    """
+    Responsabilidade:
+        Traduzir historico e feedback manual em um status unico para a UI.
+
+    Parametros:
+        product: Produto em analise.
+        latest_event: Ultimo evento persistido do historico para o alias.
+        manual_snapshot: Feedback recente em memoria apos update manual.
+
+    Retorno:
+        Dicionario com chave de status, tom visual e mensagens amigaveis.
+
+    Contexto de uso:
+        Reutilizado por Home, Search, Saved e detalhe do produto.
+    """
+
+    if manual_snapshot:
+        recorded_at = manual_snapshot.get("recorded_at")
+        if manual_snapshot.get("success"):
+            return {
+                "status_key": "manual_ok",
+                "status_tone": "success",
+                "status_label": "Atualizado agora",
+                "status_message": manual_snapshot.get("message") or "Atualizacao manual concluida.",
+                "timestamp": recorded_at,
+                "timestamp_label": _format_timestamp_label(recorded_at),
+                "is_today": _is_today(recorded_at),
+            }
+
+        return {
+            "status_key": "manual_error",
+            "status_tone": "error",
+            "status_label": "Falha na tentativa",
+            "status_message": manual_snapshot.get("message") or "A atualizacao manual falhou.",
+            "timestamp": recorded_at,
+            "timestamp_label": _format_timestamp_label(recorded_at),
+            "is_today": _is_today(recorded_at),
+        }
+
+    if latest_event is None:
+        return {
+            "status_key": "idle",
+            "status_tone": "neutral",
+            "status_label": "Sem sync recente",
+            "status_message": "Ainda nao ha historico recente para este produto.",
+            "timestamp": None,
+            "timestamp_label": "Sem sync recente",
+            "is_today": False,
+        }
+
+    if latest_event.event_type == "error":
+        return {
+            "status_key": "failed",
+            "status_tone": "error",
+            "status_label": "Sync com falha",
+            "status_message": "A ultima verificacao terminou com erro e pede revisao.",
+            "timestamp": latest_event.timestamp,
+            "timestamp_label": _format_timestamp_label(latest_event.timestamp),
+            "is_today": _is_today(latest_event.timestamp),
+        }
+
+    if latest_event.event_type in {"sku_changed", "url_changed"}:
+        change_description = (
+            f"{latest_event.old_sku or 'sem SKU'} -> {latest_event.new_sku or 'sem SKU'}"
+            if latest_event.event_type == "sku_changed"
+            else "URL atualizada"
+        )
+        return {
+            "status_key": "changed",
+            "status_tone": "warning",
+            "status_label": "Codigo atualizado",
+            "status_message": change_description,
+            "timestamp": latest_event.timestamp,
+            "timestamp_label": _format_timestamp_label(latest_event.timestamp),
+            "is_today": _is_today(latest_event.timestamp),
+        }
+
     return {
-        "success": resolve_result.success,
-        "message": resolve_result.message,
-        "error_code": resolve_result.error_code,
-        "page_data": asdict(resolve_result.page_data) if resolve_result.page_data else None,
-        "match_result": asdict(resolve_result.match_result)
-        if resolve_result.match_result
-        else None,
+        "status_key": "synced",
+        "status_tone": "success",
+        "status_label": "Sincronizado",
+        "status_message": "O ultimo ciclo passou sem mudancas relevantes.",
+        "timestamp": latest_event.timestamp,
+        "timestamp_label": _format_timestamp_label(latest_event.timestamp),
+        "is_today": _is_today(latest_event.timestamp),
     }
+
+
+def _build_product_card(
+    product: ProductRecord,
+    preview: Optional[ProductPreview],
+    activity: Dict[str, Any],
+    is_saved: bool,
+) -> Dict[str, Any]:
+    """
+    Responsabilidade:
+        Montar a estrutura enxuta consumida pelos cards de produto.
+
+    Parametros:
+        product: Produto persistido.
+        preview: Preview visual cached ou recem-buscado.
+        activity: Status operacional consolidado do produto.
+        is_saved: Indica se o produto esta salvo como atalho.
+
+    Retorno:
+        Dicionario com campos prontos para os templates de lista.
+
+    Contexto de uso:
+        Padroniza exibicao entre Home, Search e Saved.
+    """
+
+    variant_summary_parts = [part for part in [product.brand, product.variant] if str(part).strip()]
+    return {
+        "alias": product.alias,
+        "name": product.name,
+        "brand": product.brand,
+        "variant": product.variant,
+        "variant_summary": " • ".join(variant_summary_parts) if variant_summary_parts else "Sem variante",
+        "sku": product.last_known_sku,
+        "url": product.last_known_url,
+        "image_url": preview.image_url if preview else None,
+        "preview_title": preview.title if preview else None,
+        "activity": activity,
+        "is_saved": is_saved,
+    }
+
+
+def _sort_product_cards(cards: List[Dict[str, Any]], sort_key: str) -> List[Dict[str, Any]]:
+    """
+    Responsabilidade:
+        Ordenar cards conforme criterio de navegacao escolhido pelo operador.
+
+    Parametros:
+        cards: Lista de cards ja montados.
+        sort_key: Chave de ordenacao recebida da querystring.
+
+    Retorno:
+        Lista ordenada sem mutar a colecao original recebida.
+
+    Contexto de uso:
+        Utilizado pela tela Search e por listas derivadas da Home.
+    """
+
+    sortable_cards = list(cards)
+
+    if sort_key == "name":
+        return sorted(sortable_cards, key=lambda card: (card["name"].lower(), card["alias"]))
+
+    if sort_key == "sku":
+        return sorted(sortable_cards, key=lambda card: (str(card["sku"]).lower(), card["name"].lower()))
+
+    return sorted(
+        sortable_cards,
+        key=lambda card: _parse_iso_timestamp(card["activity"].get("timestamp"))
+        or datetime.min.replace(tzinfo=timezone.utc),
+        reverse=True,
+    )
+
+
+def _apply_search_filters(
+    cards: List[Dict[str, Any]],
+    search_query: str,
+    brand_filter: str,
+    sync_status_filter: str,
+    updated_scope: str,
+    saved_only: bool,
+    image_only: bool,
+) -> List[Dict[str, Any]]:
+    """
+    Responsabilidade:
+        Aplicar filtros operacionais na lista de produtos do Search.
+
+    Parametros:
+        cards: Cards ja montados para busca.
+        search_query: Texto livre de nome, SKU ou alias.
+        brand_filter: Marca selecionada pelo usuario.
+        sync_status_filter: Status de sync desejado.
+        updated_scope: Escopo temporal rapido como `today`.
+        saved_only: Restringe a lista aos produtos salvos.
+        image_only: Mantem apenas itens com imagem conhecida.
+
+    Retorno:
+        Lista filtrada conforme os criterios recebidos.
+
+    Contexto de uso:
+        Permite uma busca operacional simples sem introduzir stack JS pesado.
+    """
+
+    normalized_query = search_query.strip().lower()
+    normalized_brand = brand_filter.strip().lower()
+    normalized_sync_status = sync_status_filter.strip().lower()
+    normalized_updated_scope = updated_scope.strip().lower()
+
+    filtered_cards: List[Dict[str, Any]] = []
+    for card in cards:
+        haystack = " ".join(
+            [
+                card["alias"],
+                card["name"],
+                card["brand"],
+                card["variant"],
+                card["sku"],
+            ]
+        ).lower()
+        if normalized_query and normalized_query not in haystack:
+            continue
+
+        if normalized_brand and card["brand"].lower() != normalized_brand:
+            continue
+
+        if normalized_sync_status and card["activity"]["status_key"] != normalized_sync_status:
+            continue
+
+        if normalized_updated_scope == "today" and not card["activity"].get("is_today"):
+            continue
+
+        if normalized_updated_scope == "recent" and not card["activity"].get("timestamp"):
+            continue
+
+        if saved_only and not card["is_saved"]:
+            continue
+
+        if image_only and not card["image_url"]:
+            continue
+
+        filtered_cards.append(card)
+
+    return filtered_cards
+
+
+def _build_brand_chips(products: Iterable[ProductRecord]) -> List[Dict[str, Any]]:
+    """
+    Responsabilidade:
+        Transformar marcas existentes em chips de navegacao rapida.
+
+    Parametros:
+        products: Colecao de produtos persistidos no catalogo.
+
+    Retorno:
+        Lista de chips com marca, quantidade e URL de atalho.
+
+    Contexto de uso:
+        Substitui a ideia de categorias quando o modelo atual nao as oferece.
+    """
+
+    brand_counter: Dict[str, int] = {}
+    for product in products:
+        normalized_brand = product.brand.strip()
+        if not normalized_brand:
+            continue
+        brand_counter[normalized_brand] = brand_counter.get(normalized_brand, 0) + 1
+
+    chips = [
+        {
+            "label": brand_name,
+            "count": count,
+            "href": f"/dashboard/search?{urlencode({'brand': brand_name})}",
+        }
+        for brand_name, count in sorted(brand_counter.items(), key=lambda item: (-item[1], item[0].lower()))
+    ]
+    return chips[:8]
+
+
+def _build_home_context(request: Request) -> Dict[str, Any]:
+    """
+    Responsabilidade:
+        Montar contexto da Home com foco em descoberta rapida e status de sync.
+
+    Parametros:
+        request: Requisicao atual para acesso a servicos e query params.
+
+    Retorno:
+        Dicionario pronto para renderizacao da tela inicial.
+
+    Contexto de uso:
+        Alimenta a Home mobile-first com busca, atalhos e produtos recentes.
+    """
+
+    product_store = _get_store_service(request)
+    saved_service = _get_saved_service(request)
+    products = product_store.list_products()
+    history_events = _get_history_store(request).list_events()
+    latest_events = _build_latest_event_map(history_events)
+    saved_aliases = saved_service.get_saved_aliases_set()
+    preview_map = _build_preview_map(request, products, fetch_limit=6)
+
+    cards = [
+        _build_product_card(
+            product=product,
+            preview=preview_map.get(product.alias),
+            activity=_build_product_activity(product, latest_events.get(product.alias), last_update_by_alias.get(product.alias)),
+            is_saved=product.alias in saved_aliases,
+        )
+        for product in products
+    ]
+    recent_cards = _sort_product_cards(cards, "recent")[:8]
+
+    last_monitor_snapshot = getattr(request.app.state, "last_monitor_snapshot", None) or {}
+    changed_today_count = len(
+        [
+            event
+            for event in history_events
+            if event.event_type in {"sku_changed", "url_changed"} and _is_today(event.timestamp)
+        ]
+    )
+
+    sync_summary = {
+        "last_sync_label": _format_timestamp_label(last_monitor_snapshot.get("recorded_at")),
+        "processed_count": last_monitor_snapshot.get("processed_count", 0),
+        "changed_count": last_monitor_snapshot.get("changed_count", changed_today_count),
+        "error_count": last_monitor_snapshot.get("error_count", 0),
+    }
+
+    quick_actions = [
+        {"label": "Recentes", "href": "/dashboard/search?updated_scope=recent", "count": len(recent_cards)},
+        {"label": "Salvos", "href": "/dashboard/saved", "count": len(saved_aliases)},
+        {"label": "Atualizados hoje", "href": "/dashboard/search?updated_scope=today", "count": changed_today_count},
+    ]
+
+    return _with_app_shell(
+        request=request,
+        active_tab="home",
+        context={
+            "request": request,
+            "page_title": "Home",
+            "products_count": len(products),
+            "quick_actions": quick_actions,
+            "brand_chips": _build_brand_chips(products),
+            "recent_products": recent_cards,
+            "sync_summary": sync_summary,
+        },
+    )
+
+
+def _build_search_context(request: Request) -> Dict[str, Any]:
+    """
+    Responsabilidade:
+        Montar contexto da tela Search com filtros e ordenacao mobile-first.
+
+    Parametros:
+        request: Requisicao atual com query params de busca e filtro.
+
+    Retorno:
+        Dicionario pronto para renderizacao da lista pesquisavel.
+
+    Contexto de uso:
+        Centraliza logica da aba Search sem espalhar filtros pelo template.
+    """
+
+    product_store = _get_store_service(request)
+    saved_service = _get_saved_service(request)
+    products = product_store.list_products()
+    history_events = _get_history_store(request).list_events()
+    latest_events = _build_latest_event_map(history_events)
+    saved_aliases = saved_service.get_saved_aliases_set()
+    preview_map = _build_preview_map(request, products, fetch_limit=12)
+
+    all_cards = [
+        _build_product_card(
+            product=product,
+            preview=preview_map.get(product.alias),
+            activity=_build_product_activity(product, latest_events.get(product.alias), last_update_by_alias.get(product.alias)),
+            is_saved=product.alias in saved_aliases,
+        )
+        for product in products
+    ]
+
+    active_filters = {
+        "q": request.query_params.get("q", ""),
+        "brand": request.query_params.get("brand", ""),
+        "sync_status": request.query_params.get("sync_status", ""),
+        "updated_scope": request.query_params.get("updated_scope", ""),
+        "sort": request.query_params.get("sort", "recent"),
+        "saved_only": request.query_params.get("saved_only", "") == "1",
+        "image_only": request.query_params.get("image_only", "") == "1",
+    }
+    filtered_cards = _apply_search_filters(
+        cards=all_cards,
+        search_query=active_filters["q"],
+        brand_filter=active_filters["brand"],
+        sync_status_filter=active_filters["sync_status"],
+        updated_scope=active_filters["updated_scope"],
+        saved_only=active_filters["saved_only"],
+        image_only=active_filters["image_only"],
+    )
+    sorted_cards = _sort_product_cards(filtered_cards, active_filters["sort"])
+
+    return _with_app_shell(
+        request=request,
+        active_tab="search",
+        context={
+            "request": request,
+            "page_title": "Search",
+            "products": sorted_cards,
+            "filters": active_filters,
+            "brand_chips": _build_brand_chips(products),
+            "results_count": len(sorted_cards),
+            "available_statuses": [
+                {"value": "manual_ok", "label": "Atualizado agora"},
+                {"value": "manual_error", "label": "Falha manual"},
+                {"value": "changed", "label": "Codigo atualizado"},
+                {"value": "failed", "label": "Sync com falha"},
+                {"value": "idle", "label": "Sem sync recente"},
+            ],
+        },
+    )
+
+
+def _build_saved_context(request: Request) -> Dict[str, Any]:
+    """
+    Responsabilidade:
+        Montar contexto da aba Saved com atalhos persistidos do operador.
+
+    Parametros:
+        request: Requisicao atual para acesso a storage e historico.
+
+    Retorno:
+        Dicionario pronto para a tela de produtos salvos.
+
+    Contexto de uso:
+        Oferece acesso rapido aos itens usados com mais frequencia.
+    """
+
+    product_store = _get_store_service(request)
+    saved_service = _get_saved_service(request)
+    saved_aliases_in_order = saved_service.list_saved_aliases()
+    all_products_by_alias = {product.alias: product for product in product_store.list_products()}
+    saved_products = [all_products_by_alias[alias] for alias in saved_aliases_in_order if alias in all_products_by_alias]
+    history_events = _get_history_store(request).list_events()
+    latest_events = _build_latest_event_map(history_events)
+    preview_map = _build_preview_map(request, saved_products, fetch_limit=8)
+
+    cards = [
+        _build_product_card(
+            product=product,
+            preview=preview_map.get(product.alias),
+            activity=_build_product_activity(product, latest_events.get(product.alias), last_update_by_alias.get(product.alias)),
+            is_saved=True,
+        )
+        for product in saved_products
+    ]
+
+    return _with_app_shell(
+        request=request,
+        active_tab="saved",
+        context={
+            "request": request,
+            "page_title": "Saved",
+            "products": _sort_product_cards(cards, "recent"),
+        },
+    )
+
+
+def _build_updates_context(request: Request) -> Dict[str, Any]:
+    """
+    Responsabilidade:
+        Montar contexto da aba Updates com resumo claro de sincronizacao.
+
+    Parametros:
+        request: Requisicao atual para acesso ao historico e snapshot em memoria.
+
+    Retorno:
+        Dicionario pronto para renderizacao da tela operacional de updates.
+
+    Contexto de uso:
+        Consolida confianca do sync sem expor log tecnico excessivo.
+    """
+
+    product_store = _get_store_service(request)
+    products_by_alias = {product.alias: product for product in product_store.list_products()}
+    history_events = sorted(
+        _get_history_store(request).list_events(),
+        key=lambda item: _parse_iso_timestamp(item.timestamp) or datetime.min.replace(tzinfo=timezone.utc),
+        reverse=True,
+    )
+    last_monitor_snapshot = getattr(request.app.state, "last_monitor_snapshot", None) or {}
+
+    changed_items = []
+    latest_error_by_alias: Dict[str, SkuEvent] = {}
+    for event in history_events:
+        if event.event_type in {"sku_changed", "url_changed"}:
+            related_product = products_by_alias.get(event.alias)
+            changed_items.append(
+                {
+                    "alias": event.alias,
+                    "product_name": related_product.name if related_product else event.alias,
+                    "old_code": event.old_sku,
+                    "new_code": event.new_sku,
+                    "timestamp": event.timestamp,
+                    "timestamp_label": _format_timestamp_label(event.timestamp),
+                    "event_type": event.event_type,
+                }
+            )
+
+        if event.event_type == "error" and event.alias not in latest_error_by_alias:
+            latest_error_by_alias[event.alias] = event
+
+    failed_items = []
+    for alias, event in latest_error_by_alias.items():
+        related_product = products_by_alias.get(alias)
+        failed_items.append(
+            {
+                "alias": alias,
+                "product_name": related_product.name if related_product else alias,
+                "reason": "Nao foi possivel validar um codigo atualizado para este produto.",
+                "timestamp": event.timestamp,
+                "timestamp_label": _format_timestamp_label(event.timestamp),
+            }
+        )
+
+    summary_metrics = {
+        "checked_items": last_monitor_snapshot.get("processed_count", len(products_by_alias)),
+        "changed_codes": last_monitor_snapshot.get("changed_count", len(changed_items)),
+        "failed_items": last_monitor_snapshot.get("error_count", len(failed_items)),
+        "last_sync_label": _format_timestamp_label(last_monitor_snapshot.get("recorded_at")),
+    }
+
+    return _with_app_shell(
+        request=request,
+        active_tab="updates",
+        context={
+            "request": request,
+            "page_title": "Updates",
+            "summary_metrics": summary_metrics,
+            "changed_items": changed_items[:30],
+            "failed_items": failed_items[:20],
+        },
+    )
+
+
+def _run_monitor_cycle(request: Request) -> Dict[str, Any]:
+    """
+    Responsabilidade:
+        Executar monitoramento em lote e salvar um snapshot resumido da rodada.
+
+    Parametros:
+        request: Requisicao atual para acesso ao monitor service.
+
+    Retorno:
+        Snapshot serializavel com metricas operacionais da execucao.
+
+    Contexto de uso:
+        Compartilhado pelas acoes "Update all" da Home e da aba Updates.
+    """
+
+    monitor_summary: MonitorRunSummary = _get_monitor_service(request).run()
+    changed_count = len(
+        [
+            event
+            for event in monitor_summary.emitted_events
+            if event.event_type in {"sku_changed", "url_changed"}
+        ]
+    )
+    snapshot = {
+        "recorded_at": datetime.now(timezone.utc).isoformat(),
+        "processed_count": monitor_summary.processed_count,
+        "success_count": monitor_summary.success_count,
+        "error_count": monitor_summary.error_count,
+        "changed_count": changed_count,
+    }
+    request.app.state.last_monitor_snapshot = snapshot
+    return snapshot
+
+
+def _build_product_detail_context(request: Request, alias: str) -> Dict[str, Any]:
+    """
+    Responsabilidade:
+        Montar contexto completo da tela de detalhe operacional do produto.
+
+    Parametros:
+        request: Requisicao atual para acesso a storage, historico e preview.
+        alias: Alias do produto solicitado.
+
+    Retorno:
+        Dicionario pronto para o template de detalhe ou contexto de erro.
+
+    Contexto de uso:
+        Centraliza a tela que confirma imagem, SKU e barcode acima da dobra.
+    """
+
+    product = _get_store_service(request).get_by_alias(alias)
+    if product is None:
+        return _with_app_shell(
+            request=request,
+            active_tab="search",
+            context={
+                "request": request,
+                "page_title": "Produto nao encontrado",
+                "error_message": "O produto informado nao foi encontrado no catalogo.",
+            },
+        )
+
+    history_events = _get_history_store(request).list_events_by_alias(alias)
+    history_events = sorted(
+        history_events,
+        key=lambda item: _parse_iso_timestamp(item.timestamp) or datetime.min.replace(tzinfo=timezone.utc),
+        reverse=True,
+    )
+    latest_event = history_events[0] if history_events else None
+    preview_service = _get_preview_service(request)
+    product_preview = preview_service.ensure_preview(product) if preview_service else None
+    visual_snapshot = _build_product_visual_snapshot(request, product)
+    activity = _build_product_activity(product, latest_event, last_update_by_alias.get(alias))
+
+    related_products = []
+    for related_product in _get_store_service(request).list_products():
+        if related_product.alias == product.alias:
+            continue
+        if related_product.brand != product.brand:
+            continue
+        related_products.append(
+            {
+                "alias": related_product.alias,
+                "name": related_product.name,
+                "variant": related_product.variant,
+                "sku": related_product.last_known_sku,
+            }
+        )
+
+    history_cards = [
+        {
+            "event_type": event.event_type,
+            "old_sku": event.old_sku,
+            "new_sku": event.new_sku,
+            "timestamp": event.timestamp,
+            "timestamp_label": _format_timestamp_label(event.timestamp),
+        }
+        for event in history_events[:6]
+    ]
+
+    return _with_app_shell(
+        request=request,
+        active_tab="search",
+        context={
+            "request": request,
+            "page_title": product.name,
+            "product": product,
+            "product_preview": product_preview,
+            "visual_snapshot": visual_snapshot,
+            "activity": activity,
+            "barcode_data_uri": build_code128_svg_data_uri(product.last_known_sku, module_width_px=3, bar_height_px=124),
+            "is_saved": _get_saved_service(request).is_saved(alias),
+            "history_cards": history_cards,
+            "related_products": related_products[:4],
+            "last_update": last_update_by_alias.get(alias),
+        },
+    )
 
 
 @router.get("")
 def dashboard_home(request: Request) -> Any:
     """
     Responsabilidade:
-        Renderizar página principal do dashboard com lista de produtos.
+        Renderizar a Home principal do dashboard mobile-first.
 
-    Parâmetros:
-        request: Requisição HTTP para renderização do template Jinja2.
+    Parametros:
+        request: Requisicao HTTP atual.
 
     Retorno:
-        TemplateResponse com tabela operacional e ações de atualização.
+        TemplateResponse da tela Home.
 
     Contexto de uso:
-        Página de entrada para operação diária de monitoramento de SKUs.
+        Ponto de entrada operacional do app no navegador.
     """
 
-    product_store = _get_store_service(request)
-    products = product_store.list_products()
+    return templates.TemplateResponse(request, "dashboard.html", _build_home_context(request))
 
-    return templates.TemplateResponse(
-        request=request,
-        name="dashboard.html",
-        context={
-            "products": products,
-            "last_update_by_alias": last_update_by_alias,
-        },
-    )
+
+@router.get("/search")
+def dashboard_search(request: Request) -> Any:
+    """
+    Responsabilidade:
+        Renderizar a tela Search com lista filtravel de produtos.
+
+    Parametros:
+        request: Requisicao HTTP atual.
+
+    Retorno:
+        TemplateResponse da aba Search.
+
+    Contexto de uso:
+        Tela principal para localizar produtos rapidamente por nome, SKU ou alias.
+    """
+
+    return templates.TemplateResponse(request, "search.html", _build_search_context(request))
+
+
+@router.get("/updates")
+def dashboard_updates(request: Request) -> Any:
+    """
+    Responsabilidade:
+        Renderizar a tela Updates com resumo e historico de mudancas.
+
+    Parametros:
+        request: Requisicao HTTP atual.
+
+    Retorno:
+        TemplateResponse da aba Updates.
+
+    Contexto de uso:
+        Exibe confianca do sync e mudancas recentes do catalogo.
+    """
+
+    return templates.TemplateResponse(request, "updates.html", _build_updates_context(request))
+
+
+@router.post("/updates/run")
+def dashboard_run_updates(request: Request) -> RedirectResponse:
+    """
+    Responsabilidade:
+        Disparar um ciclo manual de monitoramento e voltar para a tela Updates.
+
+    Parametros:
+        request: Requisicao HTTP atual.
+
+    Retorno:
+        RedirectResponse para a aba Updates apos executar o monitor.
+
+    Contexto de uso:
+        Acao principal do CTA "Update all" da nova IA.
+    """
+
+    _run_monitor_cycle(request)
+    return RedirectResponse(url="/dashboard/updates", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.post("/update-all")
+def dashboard_update_all_products(request: Request) -> RedirectResponse:
+    """
+    Responsabilidade:
+        Manter compatibilidade com a rota antiga de update em lote.
+
+    Parametros:
+        request: Requisicao HTTP atual.
+
+    Retorno:
+        RedirectResponse para a tela Updates.
+
+    Contexto de uso:
+        Preserva links antigos e testes existentes enquanto a IA evolui.
+    """
+
+    _run_monitor_cycle(request)
+    return RedirectResponse(url="/dashboard/updates", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.get("/saved")
+def dashboard_saved(request: Request) -> Any:
+    """
+    Responsabilidade:
+        Renderizar a aba Saved com atalhos do operador.
+
+    Parametros:
+        request: Requisicao HTTP atual.
+
+    Retorno:
+        TemplateResponse da aba Saved.
+
+    Contexto de uso:
+        Facilita acesso rapido aos produtos mais usados no dia a dia.
+    """
+
+    return templates.TemplateResponse(request, "saved.html", _build_saved_context(request))
+
+
+@router.post("/products/{alias}/toggle-saved")
+async def dashboard_toggle_saved_product(request: Request, alias: str) -> RedirectResponse:
+    """
+    Responsabilidade:
+        Alternar estado salvo de um produto e redirecionar para a origem.
+
+    Parametros:
+        request: Requisicao HTTP atual com possivel campo `next`.
+        alias: Produto alvo do toggle de favoritos.
+
+    Retorno:
+        RedirectResponse para a tela de origem.
+
+    Contexto de uso:
+        Acao operacional usada nos cards de lista e na tela de detalhe.
+    """
+
+    form_data = await request.form()
+    redirect_target = str(form_data.get("next") or request.headers.get("referer") or "/dashboard/saved")
+    _get_saved_service(request).toggle_alias(alias)
+    return RedirectResponse(url=redirect_target, status_code=status.HTTP_303_SEE_OTHER)
 
 
 @router.get("/products/new")
 def dashboard_new_product_form(request: Request) -> Any:
     """
     Responsabilidade:
-        Exibir formulário de cadastro de novo produto no dashboard.
+        Exibir formulario de cadastro de novo produto.
 
-    Parâmetros:
-        request: Requisição HTTP usada na renderização do template.
+    Parametros:
+        request: Requisicao HTTP atual.
 
     Retorno:
-        TemplateResponse com formulário vazio e mensagens opcionais.
+        TemplateResponse com o formulario em branco.
 
     Contexto de uso:
-        Fluxo web de cadastro manual sem necessidade de cliente externo.
+        Entrada de criacao manual do catalogo.
     """
 
     return templates.TemplateResponse(
-        request=request,
-        name="add_product.html",
-        context=_build_new_product_form_context(),
+        request,
+        "add_product.html",
+        _with_app_shell(
+            request=request,
+            active_tab="search",
+            context={
+                "request": request,
+                "page_title": "Novo produto",
+                **_build_new_product_form_context(),
+            },
+        ),
     )
 
 
@@ -315,69 +1442,76 @@ def dashboard_new_product_form(request: Request) -> Any:
 async def dashboard_autofill_product_form(request: Request) -> Any:
     """
     Responsabilidade:
-        Preencher automaticamente o formulario de produto a partir de uma URL.
+        Gerar rascunho de cadastro a partir de uma URL enviada pelo operador.
 
     Parametros:
-        request: Requisicao HTTP com a URL enviada pelo usuario.
+        request: Requisicao HTTP atual contendo `last_known_url`.
 
     Retorno:
-        TemplateResponse com o formulario preenchido ou erro explicavel.
+        TemplateResponse com o formulario pre-preenchido ou erro explicativo.
 
     Contexto de uso:
-        Reduz digitacao manual no cadastro sem salvar o produto imediatamente.
+        Reduz friccao do cadastro sem salvar automaticamente dados incertos.
     """
 
     form_data = await request.form()
-    last_known_url = str(form_data.get("last_known_url", "")).strip()
+    submitted_url = str(form_data.get("last_known_url", "")).strip()
     fetcher = _get_fetcher_service(request)
 
     if fetcher is None:
+        context = _build_new_product_form_context(
+            submitted_data={"last_known_url": submitted_url},
+            autofill_error_message="O ambiente atual nao possui fetcher configurado para auto-preenchimento.",
+        )
         return templates.TemplateResponse(
-            request=request,
-            name="add_product.html",
-            context=_build_new_product_form_context(
-                submitted_data={"last_known_url": last_known_url},
-                autofill_error_message="Nao foi possivel inicializar o servico de leitura da URL.",
-            ),
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            request,
+            "add_product.html",
+            _with_app_shell(request, {"request": request, "page_title": "Novo produto", **context}, active_tab="search"),
         )
 
-    product_store = _get_store_service(request)
-    draft_service = ProductDraftService(fetcher=fetcher, product_store=product_store)
-    draft_result = draft_service.build_from_url(last_known_url)
-
+    draft_service = ProductDraftService(fetcher=fetcher, product_store=_get_store_service(request))
+    draft_result = draft_service.build_from_url(submitted_url)
     if not draft_result.success or draft_result.draft is None:
+        context = _build_new_product_form_context(
+            submitted_data={"last_known_url": submitted_url},
+            autofill_error_message=draft_result.message,
+            autofill_preview={
+                "title": draft_result.page_data.title if draft_result.page_data else None,
+                "image_url": draft_result.page_data.image_url if draft_result.page_data else None,
+                "sku": draft_result.page_data.sku if draft_result.page_data else None,
+                "url": draft_result.page_data.url if draft_result.page_data else submitted_url,
+            }
+            if draft_result.page_data
+            else None,
+        )
         return templates.TemplateResponse(
-            request=request,
-            name="add_product.html",
-            context=_build_new_product_form_context(
-                submitted_data={"last_known_url": last_known_url},
-                autofill_error_message=draft_result.message,
-                autofill_preview=asdict(draft_result.page_data) if draft_result.page_data else None,
-            ),
-            status_code=status.HTTP_400_BAD_REQUEST,
+            request,
+            "add_product.html",
+            _with_app_shell(request, {"request": request, "page_title": "Novo produto", **context}, active_tab="search"),
         )
 
+    submitted_data = {
+        "alias": draft_result.draft.alias,
+        "brand": draft_result.draft.brand,
+        "name": draft_result.draft.name,
+        "variant": draft_result.draft.variant,
+        "last_known_url": draft_result.draft.last_known_url,
+        "last_known_sku": draft_result.draft.last_known_sku,
+    }
+    context = _build_new_product_form_context(
+        submitted_data=submitted_data,
+        autofill_message=draft_result.message,
+        autofill_preview={
+            "title": draft_result.draft.source_title,
+            "image_url": draft_result.draft.image_url,
+            "sku": draft_result.draft.last_known_sku,
+            "url": draft_result.draft.last_known_url,
+        },
+    )
     return templates.TemplateResponse(
-        request=request,
-        name="add_product.html",
-        context=_build_new_product_form_context(
-            submitted_data={
-                "alias": draft_result.draft.alias,
-                "brand": draft_result.draft.brand,
-                "name": draft_result.draft.name,
-                "variant": draft_result.draft.variant,
-                "last_known_url": draft_result.draft.last_known_url,
-                "last_known_sku": draft_result.draft.last_known_sku,
-            },
-            autofill_message=draft_result.message,
-            autofill_preview={
-                "title": draft_result.draft.source_title,
-                "image_url": draft_result.draft.image_url,
-                "sku": draft_result.draft.last_known_sku,
-                "url": draft_result.draft.last_known_url,
-            },
-        ),
+        request,
+        "add_product.html",
+        _with_app_shell(request, {"request": request, "page_title": "Novo produto", **context}, active_tab="search"),
     )
 
 
@@ -385,44 +1519,50 @@ async def dashboard_autofill_product_form(request: Request) -> Any:
 def dashboard_edit_product_form(request: Request, alias: str) -> Any:
     """
     Responsabilidade:
-        Exibir formulario de edicao para um produto ja cadastrado.
+        Exibir formulario de edicao para um produto ja existente.
 
     Parametros:
-        request: Requisicao HTTP usada na renderizacao do template.
-        alias: Alias atual do produto que sera editado.
+        request: Requisicao HTTP atual.
+        alias: Alias do produto que sera editado.
 
     Retorno:
-        TemplateResponse com dados preenchidos ou erro 404 renderizado.
+        TemplateResponse com dados atuais do produto ou erro de ausencia.
 
     Contexto de uso:
-        Fluxo manual de manutencao quando o operador precisa corrigir cadastro.
+        Permite manutencao segura de alias, URL, SKU e identidade do item.
     """
 
-    product_store = _get_store_service(request)
-    product = product_store.get_by_alias(alias)
-
+    product = _get_store_service(request).get_by_alias(alias)
     if product is None:
         return templates.TemplateResponse(
-            request=request,
-            name="product_detail.html",
-            context={
-                "product": None,
-                "alias": alias,
-                "last_update": None,
-                "error_message": "Produto nao encontrado para edicao.",
-            },
-            status_code=status.HTTP_404_NOT_FOUND,
+            request,
+            "product_detail.html",
+            _with_app_shell(
+                request=request,
+                active_tab="search",
+                context={
+                    "request": request,
+                    "page_title": "Produto nao encontrado",
+                    "error_message": "O produto informado nao foi encontrado no catalogo.",
+                },
+            ),
+            status_code=404,
         )
 
+    context = _build_new_product_form_context(
+        submitted_data=_build_submitted_data_from_product(product),
+        form_mode="edit",
+        form_action_url=f"/dashboard/products/{alias}/edit",
+        submit_button_label="Salvar alteracoes",
+        cancel_url=f"/dashboard/products/{alias}",
+    )
     return templates.TemplateResponse(
-        request=request,
-        name="add_product.html",
-        context=_build_new_product_form_context(
-            submitted_data=_build_submitted_data_from_product(product),
-            form_mode="edit",
-            form_action_url=f"/dashboard/products/{alias}/edit",
-            submit_button_label="Salvar alteracoes",
-            cancel_url=f"/dashboard/products/{alias}",
+        request,
+        "add_product.html",
+        _with_app_shell(
+            request=request,
+            active_tab="search",
+            context={"request": request, "page_title": "Editar produto", **context},
         ),
     )
 
@@ -431,134 +1571,99 @@ def dashboard_edit_product_form(request: Request, alias: str) -> Any:
 def dashboard_product_detail(request: Request, alias: str) -> Any:
     """
     Responsabilidade:
-        Mostrar detalhes de um produto e último status de atualização.
+        Renderizar detalhe operacional de um produto com barcode em destaque.
 
-    Parâmetros:
-        request: Requisição HTTP para renderização.
-        alias: Identificador único do produto no storage.
+    Parametros:
+        request: Requisicao HTTP atual.
+        alias: Alias do produto solicitado.
 
     Retorno:
-        TemplateResponse com detalhes do produto ou erro 404 renderizado.
+        TemplateResponse da tela de detalhe.
 
     Contexto de uso:
-        Página de inspeção operacional para diagnóstico de resolução.
+        Tela central para confirmacao visual e exibicao do barcode operavel.
     """
 
-    product_store = _get_store_service(request)
-    product = product_store.get_by_alias(alias)
+    context = _build_product_detail_context(request, alias)
+    status_code = 404 if context.get("error_message") else 200
+    return templates.TemplateResponse(request, "product_detail.html", context, status_code=status_code)
 
-    if product is None:
-        return templates.TemplateResponse(
-            request=request,
-            name="product_detail.html",
-            context={
-                "product": None,
-                "alias": alias,
-                "last_update": None,
-                "error_message": "Produto não encontrado para o alias informado.",
-            },
-            status_code=status.HTTP_404_NOT_FOUND,
-        )
 
-    return templates.TemplateResponse(
+@router.get("/products/{alias}/barcode")
+def dashboard_product_barcode_fullscreen(request: Request, alias: str) -> Any:
+    """
+    Responsabilidade:
+        Renderizar modo fullscreen de barcode com o minimo de distrações.
+
+    Parametros:
+        request: Requisicao HTTP atual.
+        alias: Alias do produto solicitado.
+
+    Retorno:
+        TemplateResponse da tela scan-ready.
+
+    Contexto de uso:
+        Usada em operacao mobile para leitura rapida por scanner.
+    """
+
+    context = _build_product_detail_context(request, alias)
+    status_code = 404 if context.get("error_message") else 200
+    fullscreen_context = _with_app_shell(
         request=request,
-        name="product_detail.html",
-        context={
-            "product": product,
-            "alias": alias,
-            "last_update": last_update_by_alias.get(alias),
-            "product_preview": _build_product_visual_snapshot(request, product),
-            "error_message": None,
-        },
+        active_tab="search",
+        hide_app_chrome=True,
+        body_class="barcode-screen-page",
+        context=context,
     )
+    return templates.TemplateResponse(request, "barcode_fullscreen.html", fullscreen_context, status_code=status_code)
 
 
 @router.post("/products")
 async def dashboard_create_product(request: Request) -> Any:
     """
     Responsabilidade:
-        Validar e criar produto via formulário HTML do dashboard.
+        Persistir um novo produto submetido pelo formulario.
 
-    Parâmetros:
-        request: Requisição HTTP atual.
-        alias: Alias único do produto.
-        brand: Marca esperada para validação de identidade.
-        name: Nome base do produto.
-        variant: Variante (volume, tamanho, etc.).
-        last_known_url: URL inicial para primeira resolução.
+    Parametros:
+        request: Requisicao HTTP atual contendo dados do formulario.
 
     Retorno:
-        Redirecionamento para dashboard em sucesso, ou formulário com erro.
+        RedirectResponse para a Home em caso de sucesso ou TemplateResponse em erro.
 
     Contexto de uso:
-        Permite cadastro operacional sem duplicar regras no frontend.
+        Fluxo principal de cadastro manual do catalogo.
     """
 
-    product_store = _get_store_service(request)
-
-    # Tratamento de entrada:
-    # Usamos `request.form()` para aceitar submissão HTML tradicional sem
-    # depender de validação de Form do FastAPI (que exigiria dependência extra).
     form_data = await request.form()
-    alias = str(form_data.get("alias", "")).strip()
-    brand = str(form_data.get("brand", "")).strip()
-    name = str(form_data.get("name", "")).strip()
-    variant = str(form_data.get("variant", "")).strip()
-    last_known_url = str(form_data.get("last_known_url", "")).strip()
-    last_known_sku = str(form_data.get("last_known_sku", "")).strip() or "unknown"
-    alias_conflict_message = _validate_alias_availability(product_store, alias)
+    submitted_data = {field: str(form_data.get(field, "")).strip() for field in [
+        "alias",
+        "brand",
+        "name",
+        "variant",
+        "last_known_url",
+        "last_known_sku",
+    ]}
+    submitted_data["last_known_sku"] = submitted_data["last_known_sku"] or "unknown"
 
-    if alias_conflict_message:
+    alias_error = _validate_alias_availability(_get_store_service(request), submitted_data["alias"])
+    if alias_error:
+        context = _build_new_product_form_context(submitted_data=submitted_data, error_message=alias_error)
         return templates.TemplateResponse(
-            request=request,
-            name="add_product.html",
-            context=_build_new_product_form_context(
-                submitted_data={
-                    "alias": alias,
-                    "brand": brand,
-                    "name": name,
-                    "variant": variant,
-                    "last_known_url": last_known_url,
-                    "last_known_sku": last_known_sku,
-                },
-                error_message=alias_conflict_message,
-            ),
-            status_code=status.HTTP_400_BAD_REQUEST,
+            request,
+            "add_product.html",
+            _with_app_shell(request, {"request": request, "page_title": "Novo produto", **context}, active_tab="search"),
+            status_code=400,
         )
 
-    try:
-        # Decisão técnica:
-        # Reutilizamos `ProductRecord.from_dict` para concentrar validação do
-        # contrato de domínio em um único ponto e evitar regras divergentes.
-        new_product = ProductRecord.from_dict(
-            {
-                "alias": alias,
-                "brand": brand,
-                "name": name,
-                "variant": variant,
-                "last_known_url": last_known_url,
-                "last_known_sku": last_known_sku,
-            }
-        )
-    except ValueError as error:
-        return templates.TemplateResponse(
-            request=request,
-            name="add_product.html",
-            context=_build_new_product_form_context(
-                submitted_data={
-                    "alias": alias,
-                    "brand": brand,
-                    "name": name,
-                    "variant": variant,
-                    "last_known_url": last_known_url,
-                    "last_known_sku": last_known_sku,
-                },
-                error_message=f"Dados invalidos para cadastro: {error}",
-            ),
-            status_code=status.HTTP_400_BAD_REQUEST,
-        )
-
-    product_store.upsert_product(new_product)
+    saved_product = ProductRecord(
+        alias=submitted_data["alias"],
+        brand=submitted_data["brand"],
+        name=submitted_data["name"],
+        variant=submitted_data["variant"],
+        last_known_url=submitted_data["last_known_url"],
+        last_known_sku=submitted_data["last_known_sku"],
+    )
+    _get_store_service(request).upsert_product(saved_product)
     return RedirectResponse(url="/dashboard", status_code=status.HTTP_303_SEE_OTHER)
 
 
@@ -566,96 +1671,77 @@ async def dashboard_create_product(request: Request) -> Any:
 async def dashboard_edit_product(request: Request, alias: str) -> Any:
     """
     Responsabilidade:
-        Validar e persistir alteracoes manuais de um produto existente.
+        Persistir alteracoes de um produto existente, inclusive novo alias.
 
     Parametros:
-        request: Requisicao HTTP atual com o formulario de edicao.
-        alias: Alias atual do produto antes da alteracao.
+        request: Requisicao HTTP atual contendo dados do formulario.
+        alias: Alias atual do produto em edicao.
 
     Retorno:
-        Redirecionamento para detalhe em sucesso, ou formulario com erro.
+        RedirectResponse para o detalhe atualizado ou TemplateResponse em erro.
 
     Contexto de uso:
-        Permite corrigir identidade, alias, URL e SKU inicial no dashboard.
+        Fluxo de manutencao do cadastro operacional.
     """
 
-    product_store = _get_store_service(request)
-    existing_product = product_store.get_by_alias(alias)
-
+    existing_product = _get_store_service(request).get_by_alias(alias)
     if existing_product is None:
         return templates.TemplateResponse(
-            request=request,
-            name="product_detail.html",
-            context={
-                "product": None,
-                "alias": alias,
-                "last_update": None,
-                "error_message": "Produto nao encontrado para edicao.",
-            },
-            status_code=status.HTTP_404_NOT_FOUND,
+            request,
+            "product_detail.html",
+            _with_app_shell(
+                request=request,
+                active_tab="search",
+                context={
+                    "request": request,
+                    "page_title": "Produto nao encontrado",
+                    "error_message": "O produto informado nao foi encontrado no catalogo.",
+                },
+            ),
+            status_code=404,
         )
 
     form_data = await request.form()
-    updated_alias = str(form_data.get("alias", "")).strip()
-    brand = str(form_data.get("brand", "")).strip()
-    name = str(form_data.get("name", "")).strip()
-    variant = str(form_data.get("variant", "")).strip()
-    last_known_url = str(form_data.get("last_known_url", "")).strip()
-    last_known_sku = str(form_data.get("last_known_sku", "")).strip() or "unknown"
-    submitted_data = {
-        "alias": updated_alias,
-        "brand": brand,
-        "name": name,
-        "variant": variant,
-        "last_known_url": last_known_url,
-        "last_known_sku": last_known_sku,
-    }
+    submitted_data = {field: str(form_data.get(field, "")).strip() for field in [
+        "alias",
+        "brand",
+        "name",
+        "variant",
+        "last_known_url",
+        "last_known_sku",
+    ]}
+    submitted_data["last_known_sku"] = submitted_data["last_known_sku"] or "unknown"
 
-    alias_conflict_message = _validate_alias_availability(
-        product_store=product_store,
-        desired_alias=updated_alias,
+    alias_error = _validate_alias_availability(
+        _get_store_service(request),
+        desired_alias=submitted_data["alias"],
         current_alias=alias,
     )
-    if alias_conflict_message:
+    if alias_error:
+        context = _build_new_product_form_context(
+            submitted_data=submitted_data,
+            error_message=alias_error,
+            form_mode="edit",
+            form_action_url=f"/dashboard/products/{alias}/edit",
+            submit_button_label="Salvar alteracoes",
+            cancel_url=f"/dashboard/products/{alias}",
+        )
         return templates.TemplateResponse(
-            request=request,
-            name="add_product.html",
-            context=_build_new_product_form_context(
-                submitted_data=submitted_data,
-                error_message=alias_conflict_message,
-                form_mode="edit",
-                form_action_url=f"/dashboard/products/{alias}/edit",
-                submit_button_label="Salvar alteracoes",
-                cancel_url=f"/dashboard/products/{alias}",
-            ),
-            status_code=status.HTTP_400_BAD_REQUEST,
+            request,
+            "add_product.html",
+            _with_app_shell(request, {"request": request, "page_title": "Editar produto", **context}, active_tab="search"),
+            status_code=400,
         )
 
-    try:
-        updated_product = ProductRecord.from_dict(submitted_data)
-    except ValueError as error:
-        return templates.TemplateResponse(
-            request=request,
-            name="add_product.html",
-            context=_build_new_product_form_context(
-                submitted_data=submitted_data,
-                error_message=f"Dados invalidos para edicao: {error}",
-                form_mode="edit",
-                form_action_url=f"/dashboard/products/{alias}/edit",
-                submit_button_label="Salvar alteracoes",
-                cancel_url=f"/dashboard/products/{alias}",
-            ),
-            status_code=status.HTTP_400_BAD_REQUEST,
-        )
-
-    product_store.replace_product(current_alias=alias, updated_product=updated_product)
-
-    if alias != updated_alias and alias in last_update_by_alias:
-        # Decisao tecnica:
-        # Quando o alias muda, migramos o ultimo status em memoria para manter
-        # coerencia visual na tela de detalhe sem depender de persistencia extra.
-        last_update_by_alias[updated_alias] = last_update_by_alias.pop(alias)
-
+    updated_product = ProductRecord(
+        alias=submitted_data["alias"],
+        brand=submitted_data["brand"],
+        name=submitted_data["name"],
+        variant=submitted_data["variant"],
+        last_known_url=submitted_data["last_known_url"],
+        last_known_sku=submitted_data["last_known_sku"],
+    )
+    _get_store_service(request).replace_product(current_alias=alias, updated_product=updated_product)
     return RedirectResponse(
         url=f"/dashboard/products/{updated_product.alias}",
         status_code=status.HTTP_303_SEE_OTHER,
@@ -663,56 +1749,22 @@ async def dashboard_edit_product(request: Request, alias: str) -> Any:
 
 
 @router.post("/products/{alias}/update")
-def dashboard_update_product(request: Request, alias: str) -> Any:
+def dashboard_update_product(request: Request, alias: str) -> RedirectResponse:
     """
     Responsabilidade:
-        Executar atualização manual de SKU para um produto específico.
+        Executar update manual de um produto e guardar feedback para a UI.
 
-    Parâmetros:
-        request: Requisição HTTP atual.
-        alias: Alias do produto a ser processado pelo resolver.
+    Parametros:
+        request: Requisicao HTTP atual.
+        alias: Alias do produto que deve ser reprocessado.
 
     Retorno:
-        Redirecionamento para tela de detalhe com status atualizado.
+        RedirectResponse para o detalhe do produto apos a tentativa.
 
     Contexto de uso:
-        Ação por linha da tabela e também da página de detalhe.
+        Acao operacional primaria da tela de detalhe e dos cards.
     """
 
-    resolver_service = _get_resolver_service(request)
-    resolve_result = resolver_service.resolve_sku_for_alias(alias)
+    resolve_result = _get_resolver_service(request).resolve_sku_for_alias(alias)
     last_update_by_alias[alias] = _build_update_snapshot(resolve_result)
-
-    return RedirectResponse(
-        url=f"/dashboard/products/{alias}",
-        status_code=status.HTTP_303_SEE_OTHER,
-    )
-
-
-@router.post("/update-all")
-def dashboard_update_all_products(request: Request) -> Any:
-    """
-    Responsabilidade:
-        Disparar atualização de todos os produtos cadastrados no storage.
-
-    Parâmetros:
-        request: Requisição HTTP atual para obter serviços compartilhados.
-
-    Retorno:
-        Redirecionamento para dashboard principal após processamento em lote.
-
-    Contexto de uso:
-        Ação global para operação manual quando se deseja forçar refresh geral.
-    """
-
-    product_store = _get_store_service(request)
-    resolver_service = _get_resolver_service(request)
-
-    for product in product_store.list_products():
-        # Tratamento de erro:
-        # O resolver já encapsula exceções em ResolveResult; portanto, aqui só
-        # registramos cada saída para exibição posterior no dashboard.
-        resolve_result = resolver_service.resolve_sku_for_alias(product.alias)
-        last_update_by_alias[product.alias] = _build_update_snapshot(resolve_result)
-
-    return RedirectResponse(url="/dashboard", status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse(url=f"/dashboard/products/{alias}", status_code=status.HTTP_303_SEE_OTHER)

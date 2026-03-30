@@ -14,9 +14,11 @@ from starlette.responses import RedirectResponse
 from starlette.templating import _TemplateResponse
 
 from backend.models.product import ProductRecord
+from backend.services.saved_product_service import SavedProductService
 from backend.services.product_store_service import ProductStoreService
 from backend.services.resolver import ResolveResult
 from backend.utils.fetcher import FetchResult
+from history.history_store import HistoryStore
 import pytest
 
 try:
@@ -158,6 +160,8 @@ def _build_app_with_temp_storage(tmp_path: Path) -> FastAPI:
     app = create_app()
     app.state.product_store_service = ProductStoreService(tmp_path / "products.json")
     app.state.product_resolver = FakeResolver()
+    app.state.history_store_service = HistoryStore(tmp_path / "history.json")
+    app.state.saved_product_service = SavedProductService(tmp_path / "saved_products.json")
     return app
 
 
@@ -263,7 +267,37 @@ def test_dashboard_home_carrega_lista_de_produtos(tmp_path: Path) -> None:
     assert response.status_code == 200
     content = response.body.decode("utf-8")
     assert "produto_teste" in content
-    assert "data:image/svg+xml" in content
+    assert "Search by product name, SKU, or code" in content
+    assert "Sync status" in content
+
+
+def test_dashboard_search_renderiza_lista_operacional(tmp_path: Path) -> None:
+    """
+    Responsabilidade:
+        Garantir que a tela Search exibe lista mobile-first com filtros.
+
+    Parametros:
+        tmp_path: Diretorio temporario para isolamento do storage.
+
+    Retorno:
+        Nenhum; valida campos essenciais da busca.
+
+    Contexto de uso:
+        Cobertura da rota GET `/dashboard/search`.
+    """
+
+    app = _build_app_with_temp_storage(tmp_path)
+    _seed_product(app)
+    request = _build_request(app, method="GET", path="/dashboard/search")
+
+    response = routes_dashboard.dashboard_search(request)
+
+    assert isinstance(response, _TemplateResponse)
+    assert response.status_code == 200
+    content = response.body.decode("utf-8")
+    assert "Resultados" in content
+    assert "produto_teste" in content
+    assert "SKU" in content
 
 
 def test_dashboard_detalhe_abre_produto_existente(tmp_path: Path) -> None:
@@ -292,9 +326,38 @@ def test_dashboard_detalhe_abre_produto_existente(tmp_path: Path) -> None:
     content = response.body.decode("utf-8")
     assert "Produto X" in content
     assert "sku-inicial" in content
-    assert "data:image/svg+xml" in content
     assert "imagem do produto" in content
-    assert "summary-box--barcode" in content
+    assert "Barcode" in content
+    assert "Fullscreen barcode" in content
+
+
+def test_dashboard_barcode_fullscreen_exibe_modo_operacional(tmp_path: Path) -> None:
+    """
+    Responsabilidade:
+        Validar a tela dedicada de barcode fullscreen para uso operacional.
+
+    Parametros:
+        tmp_path: Diretorio temporario para isolamento do storage.
+
+    Retorno:
+        Nenhum; valida a presenca do SKU e acoes principais.
+
+    Contexto de uso:
+        Cobertura da rota GET `/dashboard/products/{alias}/barcode`.
+    """
+
+    app = _build_app_with_temp_storage(tmp_path)
+    _seed_product(app)
+    request = _build_request(app, method="GET", path="/dashboard/products/produto_teste/barcode")
+
+    response = routes_dashboard.dashboard_product_barcode_fullscreen(request, alias="produto_teste")
+
+    assert isinstance(response, _TemplateResponse)
+    assert response.status_code == 200
+    content = response.body.decode("utf-8")
+    assert "Close" in content
+    assert "sku-inicial" in content
+    assert "Update" in content
 
 
 def test_dashboard_cria_produto_via_formulario(tmp_path: Path) -> None:
@@ -394,6 +457,68 @@ def test_dashboard_abre_formulario_de_edicao(tmp_path: Path) -> None:
     assert "produto_teste" in content
     assert "sku-inicial" in content
     assert "Salvar alteracoes" in content
+
+
+def test_dashboard_salva_produto_em_saved(tmp_path: Path) -> None:
+    """
+    Responsabilidade:
+        Garantir que a acao de salvar adiciona o produto na aba Saved.
+
+    Parametros:
+        tmp_path: Diretorio temporario para isolamento da base.
+
+    Retorno:
+        Nenhum; valida redirect e persistencia do alias salvo.
+
+    Contexto de uso:
+        Cobertura da rota POST `/dashboard/products/{alias}/toggle-saved`.
+    """
+
+    app = _build_app_with_temp_storage(tmp_path)
+    _seed_product(app)
+    payload = urlencode({"next": "/dashboard/saved"}).encode("utf-8")
+    request = _build_request(
+        app,
+        method="POST",
+        path="/dashboard/products/produto_teste/toggle-saved",
+        body=payload,
+        content_type="application/x-www-form-urlencoded",
+    )
+
+    response = asyncio.run(routes_dashboard.dashboard_toggle_saved_product(request, alias="produto_teste"))
+
+    assert isinstance(response, RedirectResponse)
+    assert response.status_code == 303
+    assert response.headers["location"] == "/dashboard/saved"
+    assert app.state.saved_product_service.is_saved("produto_teste") is True
+
+
+def test_dashboard_updates_renderiza_resumo_operacional(tmp_path: Path) -> None:
+    """
+    Responsabilidade:
+        Garantir que a tela Updates carrega com resumo operacional compreensivel.
+
+    Parametros:
+        tmp_path: Diretorio temporario para isolamento da base.
+
+    Retorno:
+        Nenhum; valida se a interface principal de updates renderiza.
+
+    Contexto de uso:
+        Cobertura da rota GET `/dashboard/updates`.
+    """
+
+    app = _build_app_with_temp_storage(tmp_path)
+    _seed_product(app)
+    request = _build_request(app, method="GET", path="/dashboard/updates")
+
+    response = routes_dashboard.dashboard_updates(request)
+
+    assert isinstance(response, _TemplateResponse)
+    assert response.status_code == 200
+    content = response.body.decode("utf-8")
+    assert "Confianca do sync" in content
+    assert "Update all" in content
 
 
 def test_dashboard_salva_edicao_de_produto_com_novo_alias(tmp_path: Path) -> None:

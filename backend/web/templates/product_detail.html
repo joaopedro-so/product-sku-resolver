@@ -1,188 +1,161 @@
 {% extends "base.html" %}
 
-{% block title %}Detalhe do Produto{% endblock %}
-
-{% block page_intro %}
-{% if error_message %}
-<section class="page-hero">
-  <div class="page-hero__content">
-    <p class="eyebrow">Produto</p>
-    <h1 class="page-hero__title">Nao foi possivel localizar este item no dashboard.</h1>
-    <p class="page-hero__description">
-      O alias informado nao retornou um produto valido. Mantemos a mesma
-      hierarquia visual para que erros operacionais sejam percebidos com clareza.
-    </p>
-  </div>
-
-  <div class="page-hero__actions">
-    <a class="button-link button-link--secondary" href="/dashboard">Voltar ao dashboard</a>
-  </div>
-</section>
-{% else %}
-<!--
-  Estrutura da tela de detalhe:
-  O hero resume identidade e estado do item antes da area visual, seguindo a
-  ideia de "pagina de produto operacional" em vez de uma tela tecnica seca.
--->
-<section class="page-hero">
-  <div class="page-hero__content">
-    <p class="eyebrow">Detalhe do produto</p>
-    <div class="detail-identity">
-      <span class="surface-tag">{{ product.alias }}</span>
-      <span class="surface-tag">{{ product.brand }}</span>
-      {% if product.variant %}
-      <span class="surface-tag surface-tag--accent">{{ product.variant }}</span>
-      {% endif %}
-    </div>
-    <h1 class="page-hero__title">{{ product.name }}</h1>
-    <p class="page-hero__description">
-      Visualize imagem, SKU, URL atual e retorno mais recente do resolvedor em
-      um fluxo mais claro para analise e tomada de decisao.
-    </p>
-    <div class="detail-status-strip">
-      {% if last_update %}
-        {% if last_update.success %}
-        <span class="status-pill status-pill--success">Ultima atualizacao com sucesso</span>
-        {% else %}
-        <span class="status-pill status-pill--error">Ultima atualizacao exige revisao</span>
-        {% endif %}
-      {% else %}
-      <span class="surface-tag">Sem execucao recente</span>
-      {% endif %}
-      <span class="inline-note">SKU atual: {{ product.last_known_sku }}</span>
-    </div>
-  </div>
-
-  <div class="page-hero__actions">
-    <form method="post" action="/dashboard/products/{{ product.alias }}/update">
-      <button type="submit">Atualizar agora</button>
-    </form>
-    <a class="button-link button-link--secondary" href="/dashboard/products/{{ product.alias }}/edit">Editar cadastro</a>
-    <a class="button-link button-link--secondary" href="/dashboard">Voltar</a>
-  </div>
-</section>
-{% endif %}
-{% endblock %}
+{% block title %}{{ page_title }}{% endblock %}
 
 {% block content %}
 {% if error_message %}
-<p class="alert error">{{ error_message }}</p>
+<section class="page-section">
+  <article class="empty-card">
+    <h1>Produto nao encontrado</h1>
+    <p>{{ error_message }}</p>
+    <a class="button" href="/dashboard/search">Voltar para Search</a>
+  </article>
+</section>
 {% else %}
-<section class="detail-grid-panels">
-  <article class="product-image-panel">
-    {% if product_preview and product_preview.image_url %}
+<section class="page-section">
+  <div class="detail-hero">
+    <div class="detail-hero__media">
+      {% if product_preview and product_preview.image_url %}
+      <img src="{{ product_preview.image_url }}" alt="imagem do produto {{ product.name }}" />
+      {% elif visual_snapshot and visual_snapshot.image_url %}
+      <img src="{{ visual_snapshot.image_url }}" alt="imagem do produto {{ product.name }}" />
+      {% else %}
+      <div class="detail-hero__placeholder">imagem do produto indisponivel</div>
+      {% endif %}
+    </div>
+
+    <div class="detail-hero__content">
+      <div class="detail-hero__badges">
+        <span class="mini-badge">{{ product.alias }}</span>
+        <span class="status-badge status-badge--{{ activity.status_tone }}">{{ activity.status_label }}</span>
+      </div>
+      <h1 class="page-title">{{ product.name }}</h1>
+      <p class="detail-subtitle">{{ product.brand }}{% if product.variant %} • {{ product.variant }}{% endif %}</p>
+
+      <dl class="detail-meta-grid">
+        <div>
+          <dt>SKU atual</dt>
+          <dd>{{ product.last_known_sku }}</dd>
+        </div>
+        <div>
+          <dt>Ultimo status</dt>
+          <dd>{{ activity.timestamp_label }}</dd>
+        </div>
+        <div>
+          <dt>URL</dt>
+          <dd><a href="{{ product.last_known_url }}" target="_blank" rel="noreferrer">Abrir pagina</a></dd>
+        </div>
+      </dl>
+    </div>
+  </div>
+</section>
+
+<section class="page-section">
+  <article class="barcode-panel summary-box--barcode">
+    <div class="section-heading">
+      <div>
+        <p class="section-kicker">Barcode</p>
+        <h2 class="section-title">Pronto para leitura</h2>
+      </div>
+      <a class="button button--secondary button--small" href="/dashboard/products/{{ product.alias }}/barcode">Fullscreen</a>
+    </div>
+
+    {% if barcode_data_uri %}
     <img
-      class="product-image"
-      src="{{ product_preview.image_url }}"
-      alt="Imagem do produto {{ product.name }}"
+      class="barcode-panel__image"
+      src="{{ barcode_data_uri }}"
+      alt="Codigo de barras do SKU {{ product.last_known_sku }}"
     />
     {% else %}
-    <div class="product-image product-image--placeholder">
-      <span>imagem do produto indisponivel para a URL atual.</span>
-    </div>
+    <div class="barcode-panel__empty">Codigo de barras indisponivel para o SKU atual.</div>
     {% endif %}
+
+    <strong class="barcode-panel__sku">{{ product.last_known_sku }}</strong>
+
+    <div class="detail-actions">
+      <button class="button button--secondary" type="button" data-copy-text="{{ product.last_known_sku }}">Copy SKU</button>
+      <button class="button button--ghost" type="button" data-share-url="{{ request.url }}">Share</button>
+      <form method="post" action="/dashboard/products/{{ product.alias }}/update">
+        <button class="button" type="submit">Update now</button>
+      </form>
+      <form method="post" action="/dashboard/products/{{ product.alias }}/toggle-saved">
+        <input type="hidden" name="next" value="{{ request.url }}" />
+        <button class="button button--ghost" type="submit">{{ 'Remover salvo' if is_saved else 'Salvar' }}</button>
+      </form>
+    </div>
   </article>
-
-  <aside class="product-summary-panel">
-    <section class="summary-box">
-      <span class="summary-label">Alias operacional</span>
-      <div class="summary-value">{{ product.alias }}</div>
-    </section>
-
-    <section class="summary-box summary-box--highlight">
-      <h2 class="summary-title">{{ product.name }}</h2>
-      <div class="summary-subtitle">
-        {{ product.brand }}{% if product.variant %} • {{ product.variant }}{% endif %}
-      </div>
-      <div class="summary-sku-row">
-        <span class="summary-sku-label">SKU monitorado</span>
-        <strong class="summary-sku-value">{{ product.last_known_sku }}</strong>
-      </div>
-    </section>
-
-    <section class="summary-box summary-box--barcode">
-      <span class="summary-label">Codigo de barras</span>
-      {% set sku_barcode = build_code128_svg_data_uri(product.last_known_sku, module_width_px=3, bar_height_px=136) %}
-      {% if sku_barcode %}
-      <img
-        class="sku-barcode sku-barcode--detail"
-        src="{{ sku_barcode }}"
-        alt="Codigo de barras Code 128 do SKU {{ product.last_known_sku }}"
-      />
-      {% else %}
-      <div class="barcode-empty-state">Codigo de barras indisponivel para o SKU atual.</div>
-      {% endif %}
-    </section>
-
-    <section class="summary-box">
-      <span class="summary-label">Leitura rapida</span>
-      <ul class="detail-list">
-        <li>
-          <strong>Objetivo desta tela</strong>
-          Conferir sinais visuais e o resultado do resolvedor sem perder o
-          contexto do produto.
-        </li>
-        <li>
-          <strong>Uso indicado</strong>
-          Ideal para revisao manual quando a ultima tentativa falha ou precisa
-          de validacao adicional.
-        </li>
-      </ul>
-    </section>
-  </aside>
 </section>
 
-<section class="product-meta-box">
-  <div class="section-heading">
-    <div>
-      <p class="section-label">Metadados</p>
-      <h2>Contexto de pagina e referencia atual</h2>
-      <p>Informacoes auxiliares que ajudam a validar se o produto continua apontando para a pagina correta.</p>
-    </div>
+<section class="page-section">
+  <div class="detail-block-grid">
+    <article class="info-card">
+      <p class="section-kicker">Metadados</p>
+      <dl class="detail-meta-grid">
+        <div>
+          <dt>Marca</dt>
+          <dd>{{ product.brand }}</dd>
+        </div>
+        <div>
+          <dt>Variante</dt>
+          <dd>{{ product.variant or 'Sem variante informada' }}</dd>
+        </div>
+        <div>
+          <dt>Titulo da pagina</dt>
+          <dd>{{ product_preview.title if product_preview and product_preview.title else 'Nao disponivel' }}</dd>
+        </div>
+        <div>
+          <dt>Historico</dt>
+          <dd>{{ activity.status_message }}</dd>
+        </div>
+      </dl>
+      <div class="detail-inline-actions">
+        <a class="button button--secondary button--small" href="/dashboard/products/{{ product.alias }}/edit">Editar</a>
+      </div>
+    </article>
+
+    <article class="info-card">
+      <p class="section-kicker">Historico curto</p>
+      <div class="history-list">
+        {% for item in history_cards %}
+        <div class="history-item">
+          <strong>{{ item.event_type }}</strong>
+          <span>{{ item.timestamp_label }}</span>
+          <small>{{ item.old_sku or 'sem SKU' }} -> {{ item.new_sku or 'sem SKU' }}</small>
+        </div>
+        {% else %}
+        <p class="empty-inline">Sem eventos persistidos para este produto.</p>
+        {% endfor %}
+      </div>
+    </article>
   </div>
-
-  <dl class="product-meta-grid">
-    <dt>URL atual</dt>
-    <dd><a href="{{ product.last_known_url }}" target="_blank" rel="noreferrer">{{ product.last_known_url }}</a></dd>
-
-    {% if product_preview and product_preview.title %}
-    <dt>Titulo da pagina</dt>
-    <dd>{{ product_preview.title }}</dd>
-    {% endif %}
-  </dl>
 </section>
 
-{% if last_update %}
-<section class="update-box">
+{% if related_products %}
+<section class="page-section">
   <div class="section-heading">
     <div>
-      <p class="section-label">Resultado</p>
-      <h3>Ultima execucao do resolvedor</h3>
-      <p>A area abaixo mantem o diagnostico tecnico acessivel, mas em um contorno visual mais leve.</p>
+      <p class="section-kicker">Relacionados</p>
+      <h2 class="section-title">Mais itens da mesma marca</h2>
     </div>
-    {% if last_update.success %}
-    <span class="status-pill status-pill--success">Processamento concluido</span>
-    {% else %}
-    <span class="status-pill status-pill--error">Processamento com pendencia</span>
-    {% endif %}
   </div>
-
-  <p class="status {{ 'success' if last_update.success else 'error' }}">{{ last_update.message }}</p>
-
-  {% if last_update.error_code %}
-  <p><strong>Codigo:</strong> {{ last_update.error_code }}</p>
-  {% endif %}
-
-  {% if last_update.match_result %}
-  <h4>Dados de match</h4>
-  <pre>{{ last_update.match_result | tojson(indent=2) }}</pre>
-  {% endif %}
-
-  {% if last_update.page_data %}
-  <h4>Dados da pagina</h4>
-  <pre>{{ last_update.page_data | tojson(indent=2) }}</pre>
-  {% endif %}
+  <div class="related-list">
+    {% for item in related_products %}
+    <a class="related-item" href="/dashboard/products/{{ item.alias }}">
+      <strong>{{ item.name }}</strong>
+      <span>{{ item.variant or 'Sem variante' }}</span>
+      <small>{{ item.sku }}</small>
+    </a>
+    {% endfor %}
+  </div>
 </section>
 {% endif %}
+
+<div class="sticky-action-bar">
+  <a class="button button--secondary" href="/dashboard/products/{{ product.alias }}/barcode">Fullscreen barcode</a>
+  <form method="post" action="/dashboard/products/{{ product.alias }}/update">
+    <button class="button" type="submit">Update now</button>
+  </form>
+  <button class="button button--ghost" type="button" data-copy-text="{{ product.last_known_sku }}">Copy SKU</button>
+</div>
 {% endif %}
 {% endblock %}

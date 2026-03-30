@@ -1,0 +1,55 @@
+{#
+  Componente reutilizavel:
+  Este card prioriza reconhecimento rapido por imagem, nome, SKU e status,
+  sem cair em visual de vitrine promocional. O mesmo bloco atende Home,
+  Search e Saved para manter consistencia operacional.
+#}
+<article class="product-card">
+  <a class="product-card__media" href="/dashboard/products/{{ card.alias }}">
+    {% if card.image_url %}
+    <img src="{{ card.image_url }}" alt="Imagem do produto {{ card.name }}" loading="lazy" />
+    {% else %}
+    <div class="product-card__placeholder">Sem imagem</div>
+    {% endif %}
+  </a>
+
+  <div class="product-card__content">
+    <div class="product-card__topline">
+      <span class="status-badge status-badge--{{ card.activity.status_tone }}">{{ card.activity.status_label }}</span>
+      {% if card.is_saved %}
+      <span class="mini-badge">Salvo</span>
+      {% endif %}
+    </div>
+
+    <a class="product-card__title-link" href="/dashboard/products/{{ card.alias }}">
+      <h3 class="product-card__title">{{ card.name }}</h3>
+    </a>
+    <p class="product-card__subtitle">{{ card.variant_summary }}</p>
+
+    <dl class="product-card__meta">
+      <div>
+        <dt>SKU</dt>
+        <dd>{{ card.sku }}</dd>
+      </div>
+      <div>
+        <dt>Status</dt>
+        <dd>{{ card.activity.timestamp_label }}</dd>
+      </div>
+    </dl>
+
+    <p class="product-card__message">{{ card.activity.status_message }}</p>
+
+    <div class="product-card__actions">
+      <a class="button button--secondary button--small" href="/dashboard/products/{{ card.alias }}">Abrir</a>
+      <form method="post" action="/dashboard/products/{{ card.alias }}/update">
+        <button class="button button--small" type="submit">Update</button>
+      </form>
+      <form method="post" action="/dashboard/products/{{ card.alias }}/toggle-saved">
+        <input type="hidden" name="next" value="{{ request.url }}" />
+        <button class="button button--ghost button--small" type="submit">
+          {{ 'Remover' if card.is_saved else 'Salvar' }}
+        </button>
+      </form>
+    </div>
+  </div>
+</article>

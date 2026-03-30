@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+
+{% block title %}Updates{% endblock %}
+
+{% block content %}
+<section class="page-section">
+  <article class="sync-card">
+    <div>
+      <p class="section-kicker">Updates</p>
+      <h1 class="section-title">Confianca do sync</h1>
+      <p class="section-text">Ultimo ciclo: {{ summary_metrics.last_sync_label }}</p>
+    </div>
+
+    <dl class="metric-strip">
+      <div>
+        <dt>Checked</dt>
+        <dd>{{ summary_metrics.checked_items }}</dd>
+      </div>
+      <div>
+        <dt>Changed</dt>
+        <dd>{{ summary_metrics.changed_codes }}</dd>
+      </div>
+      <div>
+        <dt>Failed</dt>
+        <dd>{{ summary_metrics.failed_items }}</dd>
+      </div>
+    </dl>
+
+    <form method="post" action="/dashboard/updates/run">
+      <button class="button" type="submit">Update all</button>
+    </form>
+  </article>
+</section>
+
+<section class="page-section">
+  <div class="section-heading">
+    <div>
+      <p class="section-kicker">Mudancas</p>
+      <h2 class="section-title">Itens alterados</h2>
+    </div>
+  </div>
+
+  <div class="event-list">
+    {% for item in changed_items %}
+    <article class="event-card">
+      <div class="event-card__top">
+        <div>
+          <h3>{{ item.product_name }}</h3>
+          <p>{{ item.alias }}</p>
+        </div>
+        <span class="status-badge status-badge--warning">{{ item.timestamp_label }}</span>
+      </div>
+      <p class="event-card__codes">
+        <strong>{{ item.old_code or 'sem SKU' }}</strong>
+        <span>&rarr;</span>
+        <strong>{{ item.new_code or 'sem SKU' }}</strong>
+      </p>
+    </article>
+    {% else %}
+    <article class="empty-card">
+      <h3>Nenhuma mudanca registrada.</h3>
+      <p>Quando um codigo for alterado, ele aparece aqui.</p>
+    </article>
+    {% endfor %}
+  </div>
+</section>
+
+<section class="page-section">
+  <div class="section-heading">
+    <div>
+      <p class="section-kicker">Falhas</p>
+      <h2 class="section-title">Itens que precisam de revisao</h2>
+    </div>
+  </div>
+
+  <div class="event-list">
+    {% for item in failed_items %}
+    <article class="event-card">
+      <div class="event-card__top">
+        <div>
+          <h3>{{ item.product_name }}</h3>
+          <p>{{ item.reason }}</p>
+        </div>
+        <span class="status-badge status-badge--error">{{ item.timestamp_label }}</span>
+      </div>
+      <form method="post" action="/dashboard/products/{{ item.alias }}/update">
+        <button class="button button--secondary button--small" type="submit">Retry</button>
+      </form>
+    </article>
+    {% else %}
+    <article class="empty-card">
+      <h3>Nenhuma falha recente.</h3>
+      <p>O historico de erro aparece aqui quando um item nao pode ser validado.</p>
+    </article>
+    {% endfor %}
+  </div>
+</section>
+{% endblock %}
