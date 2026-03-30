@@ -15,10 +15,11 @@ from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from backend.models.product import ProductRecord
+from backend.services.product_draft_service import ProductDraftService
 from backend.services.product_store_service import ProductStoreService
 from backend.services.resolver import ProductResolver, ResolveResult
 from backend.utils.barcode import build_code128_svg_data_uri
-from backend.utils.fetcher import FetchResult
+from backend.utils.fetcher import FetchResult, Fetcher
 from backend.utils.parser import PageData, parse_page_data
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard-web"])
@@ -104,6 +105,134 @@ def _build_product_visual_snapshot(request: Request, product: ProductRecord) -> 
     )
 
 
+def _get_fetcher_service(request: Request) -> Optional[Fetcher]:
+    """
+    Responsabilidade:
+        Recuperar o fetcher compartilhado usado pelas rotas web.
+
+    Parametros:
+        request: Requisicao HTTP atual com acesso ao app state.
+
+    Retorno:
+        Instancia de Fetcher quando disponivel; caso contrario, None.
+
+    Contexto de uso:
+        Necessario para gerar rascunhos automaticos a partir de uma URL.
+    """
+
+    resolver_service = _get_resolver_service(request)
+    fetcher = getattr(resolver_service, "fetcher", None)
+    if fetcher is not None:
+        return fetcher
+
+    runtime_services = getattr(request.app.state, "services", None)
+    return getattr(runtime_services, "fetcher", None)
+
+
+def _build_new_product_form_context(
+    submitted_data: Optional[Dict[str, str]] = None,
+    error_message: Optional[str] = None,
+    autofill_message: Optional[str] = None,
+    autofill_error_message: Optional[str] = None,
+    autofill_preview: Optional[Dict[str, Any]] = None,
+    form_mode: str = "create",
+    form_action_url: str = "/dashboard/products",
+    submit_button_label: str = "Salvar produto",
+    cancel_url: str = "/dashboard",
+) -> Dict[str, Any]:
+    """
+    Responsabilidade:
+        Padronizar o contexto da tela de cadastro manual e automatico.
+
+    Parametros:
+        submitted_data: Valores atuais do formulario para re-renderizacao.
+        error_message: Erro de validacao ao salvar o cadastro final.
+        autofill_message: Mensagem de sucesso do preenchimento automatico.
+        autofill_error_message: Erro ocorrido ao montar o rascunho automatico.
+        autofill_preview: Dados auxiliares extraidos da pagina para exibicao.
+        form_mode: Modo visual do formulario (`create` ou `edit`).
+        form_action_url: Endpoint que recebera o submit final do formulario.
+        submit_button_label: Texto do botao principal de salvamento.
+        cancel_url: Destino do CTA secundario ao cancelar a operacao.
+
+    Retorno:
+        Dicionario compativel com o template `add_product.html`.
+
+    Contexto de uso:
+        Evita duplicacao de estrutura entre o fluxo manual e o assistido por URL.
+    """
+
+    return {
+        "error_message": error_message,
+        "submitted_data": submitted_data or {},
+        "autofill_message": autofill_message,
+        "autofill_error_message": autofill_error_message,
+        "autofill_preview": autofill_preview,
+        "form_mode": form_mode,
+        "form_action_url": form_action_url,
+        "submit_button_label": submit_button_label,
+        "cancel_url": cancel_url,
+    }
+
+
+def _build_submitted_data_from_product(product: ProductRecord) -> Dict[str, str]:
+    """
+    Responsabilidade:
+        Converter ProductRecord em payload pronto para preencher formulario.
+
+    Parametros:
+        product: Produto persistido que sera exibido para edicao.
+
+    Retorno:
+        Dicionario com os campos esperados pelo template de formulario.
+
+    Contexto de uso:
+        Reaproveitado pelo fluxo de edicao para evitar mapear campos manualmente.
+    """
+
+    return {
+        "alias": product.alias,
+        "brand": product.brand,
+        "name": product.name,
+        "variant": product.variant,
+        "last_known_url": product.last_known_url,
+        "last_known_sku": product.last_known_sku,
+    }
+
+
+def _validate_alias_availability(
+    product_store: ProductStoreService,
+    desired_alias: str,
+    current_alias: Optional[str] = None,
+) -> Optional[str]:
+    """
+    Responsabilidade:
+        Validar se o alias desejado esta livre para criacao ou edicao.
+
+    Parametros:
+        product_store: Storage usado para consultar aliases existentes.
+        desired_alias: Alias informado pelo operador no formulario.
+        current_alias: Alias atual do produto em edicao, quando houver.
+
+    Retorno:
+        Mensagem de erro quando houver colisao; caso contrario, None.
+
+    Contexto de uso:
+        Evita sobrescrita silenciosa de outro produto ao salvar o formulario.
+    """
+
+    normalized_desired_alias = desired_alias.strip()
+    existing_product = product_store.get_by_alias(normalized_desired_alias)
+    if existing_product is None:
+        return None
+
+    normalized_current_alias = str(current_alias or "").strip()
+    if normalized_current_alias and existing_product.alias == normalized_current_alias:
+        return None
+
+    return f"Ja existe um produto cadastrado com o alias '{normalized_desired_alias}'."
+
+
 def _build_update_snapshot(resolve_result: ResolveResult) -> Dict[str, Any]:
     """
     Responsabilidade:
@@ -178,7 +307,123 @@ def dashboard_new_product_form(request: Request) -> Any:
     return templates.TemplateResponse(
         request=request,
         name="add_product.html",
-        context={"error_message": None, "submitted_data": {}},
+        context=_build_new_product_form_context(),
+    )
+
+
+@router.post("/products/auto-fill")
+async def dashboard_autofill_product_form(request: Request) -> Any:
+    """
+    Responsabilidade:
+        Preencher automaticamente o formulario de produto a partir de uma URL.
+
+    Parametros:
+        request: Requisicao HTTP com a URL enviada pelo usuario.
+
+    Retorno:
+        TemplateResponse com o formulario preenchido ou erro explicavel.
+
+    Contexto de uso:
+        Reduz digitacao manual no cadastro sem salvar o produto imediatamente.
+    """
+
+    form_data = await request.form()
+    last_known_url = str(form_data.get("last_known_url", "")).strip()
+    fetcher = _get_fetcher_service(request)
+
+    if fetcher is None:
+        return templates.TemplateResponse(
+            request=request,
+            name="add_product.html",
+            context=_build_new_product_form_context(
+                submitted_data={"last_known_url": last_known_url},
+                autofill_error_message="Nao foi possivel inicializar o servico de leitura da URL.",
+            ),
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+    product_store = _get_store_service(request)
+    draft_service = ProductDraftService(fetcher=fetcher, product_store=product_store)
+    draft_result = draft_service.build_from_url(last_known_url)
+
+    if not draft_result.success or draft_result.draft is None:
+        return templates.TemplateResponse(
+            request=request,
+            name="add_product.html",
+            context=_build_new_product_form_context(
+                submitted_data={"last_known_url": last_known_url},
+                autofill_error_message=draft_result.message,
+                autofill_preview=asdict(draft_result.page_data) if draft_result.page_data else None,
+            ),
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
+
+    return templates.TemplateResponse(
+        request=request,
+        name="add_product.html",
+        context=_build_new_product_form_context(
+            submitted_data={
+                "alias": draft_result.draft.alias,
+                "brand": draft_result.draft.brand,
+                "name": draft_result.draft.name,
+                "variant": draft_result.draft.variant,
+                "last_known_url": draft_result.draft.last_known_url,
+                "last_known_sku": draft_result.draft.last_known_sku,
+            },
+            autofill_message=draft_result.message,
+            autofill_preview={
+                "title": draft_result.draft.source_title,
+                "image_url": draft_result.draft.image_url,
+                "sku": draft_result.draft.last_known_sku,
+                "url": draft_result.draft.last_known_url,
+            },
+        ),
+    )
+
+
+@router.get("/products/{alias}/edit")
+def dashboard_edit_product_form(request: Request, alias: str) -> Any:
+    """
+    Responsabilidade:
+        Exibir formulario de edicao para um produto ja cadastrado.
+
+    Parametros:
+        request: Requisicao HTTP usada na renderizacao do template.
+        alias: Alias atual do produto que sera editado.
+
+    Retorno:
+        TemplateResponse com dados preenchidos ou erro 404 renderizado.
+
+    Contexto de uso:
+        Fluxo manual de manutencao quando o operador precisa corrigir cadastro.
+    """
+
+    product_store = _get_store_service(request)
+    product = product_store.get_by_alias(alias)
+
+    if product is None:
+        return templates.TemplateResponse(
+            request=request,
+            name="product_detail.html",
+            context={
+                "product": None,
+                "alias": alias,
+                "last_update": None,
+                "error_message": "Produto nao encontrado para edicao.",
+            },
+            status_code=status.HTTP_404_NOT_FOUND,
+        )
+
+    return templates.TemplateResponse(
+        request=request,
+        name="add_product.html",
+        context=_build_new_product_form_context(
+            submitted_data=_build_submitted_data_from_product(product),
+            form_mode="edit",
+            form_action_url=f"/dashboard/products/{alias}/edit",
+            submit_button_label="Salvar alteracoes",
+            cancel_url=f"/dashboard/products/{alias}",
+        ),
     )
 
 
@@ -260,6 +505,26 @@ async def dashboard_create_product(request: Request) -> Any:
     name = str(form_data.get("name", "")).strip()
     variant = str(form_data.get("variant", "")).strip()
     last_known_url = str(form_data.get("last_known_url", "")).strip()
+    last_known_sku = str(form_data.get("last_known_sku", "")).strip() or "unknown"
+    alias_conflict_message = _validate_alias_availability(product_store, alias)
+
+    if alias_conflict_message:
+        return templates.TemplateResponse(
+            request=request,
+            name="add_product.html",
+            context=_build_new_product_form_context(
+                submitted_data={
+                    "alias": alias,
+                    "brand": brand,
+                    "name": name,
+                    "variant": variant,
+                    "last_known_url": last_known_url,
+                    "last_known_sku": last_known_sku,
+                },
+                error_message=alias_conflict_message,
+            ),
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
 
     try:
         # Decisão técnica:
@@ -272,28 +537,129 @@ async def dashboard_create_product(request: Request) -> Any:
                 "name": name,
                 "variant": variant,
                 "last_known_url": last_known_url,
-                "last_known_sku": "unknown",
+                "last_known_sku": last_known_sku,
             }
         )
     except ValueError as error:
         return templates.TemplateResponse(
             request=request,
             name="add_product.html",
-            context={
-                "error_message": f"Dados inválidos para cadastro: {error}",
-                "submitted_data": {
+            context=_build_new_product_form_context(
+                submitted_data={
                     "alias": alias,
                     "brand": brand,
                     "name": name,
                     "variant": variant,
                     "last_known_url": last_known_url,
+                    "last_known_sku": last_known_sku,
                 },
-            },
+                error_message=f"Dados invalidos para cadastro: {error}",
+            ),
             status_code=status.HTTP_400_BAD_REQUEST,
         )
 
     product_store.upsert_product(new_product)
     return RedirectResponse(url="/dashboard", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.post("/products/{alias}/edit")
+async def dashboard_edit_product(request: Request, alias: str) -> Any:
+    """
+    Responsabilidade:
+        Validar e persistir alteracoes manuais de um produto existente.
+
+    Parametros:
+        request: Requisicao HTTP atual com o formulario de edicao.
+        alias: Alias atual do produto antes da alteracao.
+
+    Retorno:
+        Redirecionamento para detalhe em sucesso, ou formulario com erro.
+
+    Contexto de uso:
+        Permite corrigir identidade, alias, URL e SKU inicial no dashboard.
+    """
+
+    product_store = _get_store_service(request)
+    existing_product = product_store.get_by_alias(alias)
+
+    if existing_product is None:
+        return templates.TemplateResponse(
+            request=request,
+            name="product_detail.html",
+            context={
+                "product": None,
+                "alias": alias,
+                "last_update": None,
+                "error_message": "Produto nao encontrado para edicao.",
+            },
+            status_code=status.HTTP_404_NOT_FOUND,
+        )
+
+    form_data = await request.form()
+    updated_alias = str(form_data.get("alias", "")).strip()
+    brand = str(form_data.get("brand", "")).strip()
+    name = str(form_data.get("name", "")).strip()
+    variant = str(form_data.get("variant", "")).strip()
+    last_known_url = str(form_data.get("last_known_url", "")).strip()
+    last_known_sku = str(form_data.get("last_known_sku", "")).strip() or "unknown"
+    submitted_data = {
+        "alias": updated_alias,
+        "brand": brand,
+        "name": name,
+        "variant": variant,
+        "last_known_url": last_known_url,
+        "last_known_sku": last_known_sku,
+    }
+
+    alias_conflict_message = _validate_alias_availability(
+        product_store=product_store,
+        desired_alias=updated_alias,
+        current_alias=alias,
+    )
+    if alias_conflict_message:
+        return templates.TemplateResponse(
+            request=request,
+            name="add_product.html",
+            context=_build_new_product_form_context(
+                submitted_data=submitted_data,
+                error_message=alias_conflict_message,
+                form_mode="edit",
+                form_action_url=f"/dashboard/products/{alias}/edit",
+                submit_button_label="Salvar alteracoes",
+                cancel_url=f"/dashboard/products/{alias}",
+            ),
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
+
+    try:
+        updated_product = ProductRecord.from_dict(submitted_data)
+    except ValueError as error:
+        return templates.TemplateResponse(
+            request=request,
+            name="add_product.html",
+            context=_build_new_product_form_context(
+                submitted_data=submitted_data,
+                error_message=f"Dados invalidos para edicao: {error}",
+                form_mode="edit",
+                form_action_url=f"/dashboard/products/{alias}/edit",
+                submit_button_label="Salvar alteracoes",
+                cancel_url=f"/dashboard/products/{alias}",
+            ),
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
+
+    product_store.replace_product(current_alias=alias, updated_product=updated_product)
+
+    if alias != updated_alias and alias in last_update_by_alias:
+        # Decisao tecnica:
+        # Quando o alias muda, migramos o ultimo status em memoria para manter
+        # coerencia visual na tela de detalhe sem depender de persistencia extra.
+        last_update_by_alias[updated_alias] = last_update_by_alias.pop(alias)
+
+    return RedirectResponse(
+        url=f"/dashboard/products/{updated_product.alias}",
+        status_code=status.HTTP_303_SEE_OTHER,
+    )
 
 
 @router.post("/products/{alias}/update")

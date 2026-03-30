@@ -78,3 +78,47 @@ def test_update_product_sku_and_url(tmp_path: Path) -> None:
     assert updated_product.variant == "Variante"
     assert updated_product.last_known_sku == "999"
     assert updated_product.last_known_url == "https://nova"
+
+
+def test_replace_product_permite_trocar_alias_sem_duplicar_registro(tmp_path: Path) -> None:
+    """
+    Responsabilidade:
+        Validar substituicao completa do produto quando o alias muda na edicao.
+
+    Parametros:
+        tmp_path: Diretorio temporario fornecido pelo pytest.
+
+    Retorno:
+        Nenhum.
+
+    Contexto de uso:
+        Garante que o fluxo de edicao web nao deixa o alias antigo persistido.
+    """
+
+    store = ProductStoreService(tmp_path / "products.json")
+    original_product = ProductRecord(
+        alias="produto_antigo",
+        brand="Marca",
+        name="Produto",
+        variant="100ml",
+        last_known_url="https://antiga",
+        last_known_sku="001",
+    )
+    store.upsert_product(original_product)
+
+    updated_product = ProductRecord(
+        alias="produto_novo",
+        brand="Marca atualizada",
+        name="Produto atualizado",
+        variant="150ml",
+        last_known_url="https://nova",
+        last_known_sku="002",
+    )
+
+    store.replace_product("produto_antigo", updated_product)
+
+    assert store.get_by_alias("produto_antigo") is None
+    found_product = store.get_by_alias("produto_novo")
+    assert found_product is not None
+    assert found_product.brand == "Marca atualizada"
+    assert len(store.list_products()) == 1

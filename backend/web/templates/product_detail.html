@@ -2,97 +2,187 @@
 
 {% block title %}Detalhe do Produto{% endblock %}
 
-{% block content %}
-<section>
-  <h2>Detalhe do produto</h2>
+{% block page_intro %}
+{% if error_message %}
+<section class="page-hero">
+  <div class="page-hero__content">
+    <p class="eyebrow">Produto</p>
+    <h1 class="page-hero__title">Nao foi possivel localizar este item no dashboard.</h1>
+    <p class="page-hero__description">
+      O alias informado nao retornou um produto valido. Mantemos a mesma
+      hierarquia visual para que erros operacionais sejam percebidos com clareza.
+    </p>
+  </div>
 
-  {% if error_message %}
-  <p class="alert error">{{ error_message }}</p>
-  {% else %}
-  <section class="product-visual-layout">
-    <article class="product-image-panel">
-      {% if product_preview and product_preview.image_url %}
-      <img
-        class="product-image"
-        src="{{ product_preview.image_url }}"
-        alt="Imagem do produto {{ product.name }}"
-      />
-      {% else %}
-      <div class="product-image product-image--placeholder">
-        <span>imagem do produto</span>
-      </div>
+  <div class="page-hero__actions">
+    <a class="button-link button-link--secondary" href="/dashboard">Voltar ao dashboard</a>
+  </div>
+</section>
+{% else %}
+<!--
+  Estrutura da tela de detalhe:
+  O hero resume identidade e estado do item antes da area visual, seguindo a
+  ideia de "pagina de produto operacional" em vez de uma tela tecnica seca.
+-->
+<section class="page-hero">
+  <div class="page-hero__content">
+    <p class="eyebrow">Detalhe do produto</p>
+    <div class="detail-identity">
+      <span class="surface-tag">{{ product.alias }}</span>
+      <span class="surface-tag">{{ product.brand }}</span>
+      {% if product.variant %}
+      <span class="surface-tag surface-tag--accent">{{ product.variant }}</span>
       {% endif %}
-    </article>
-
-    <aside class="product-summary-panel">
-      <section class="summary-box summary-box--alias">
-        <div class="summary-label">alias</div>
-        <div class="summary-value">{{ product.alias }}</div>
-      </section>
-
-      <section class="summary-box summary-box--identity">
-        <div class="summary-title">{{ product.name }}</div>
-        <div class="summary-subtitle">{{ product.brand }}{% if product.variant %} • {{ product.variant }}{% endif %}</div>
-        <div class="summary-sku-row">
-          <span class="summary-sku-label">sku</span>
-          <strong class="summary-sku-value">{{ product.last_known_sku }}</strong>
-        </div>
-      </section>
-
-      <section class="summary-box summary-box--barcode">
-        {% set sku_barcode = build_code128_svg_data_uri(product.last_known_sku, module_width_px=3, bar_height_px=136) %}
-        {% if sku_barcode %}
-        <img
-          class="sku-barcode sku-barcode--detail"
-          src="{{ sku_barcode }}"
-          alt="Código de barras Code 128 do SKU {{ product.last_known_sku }}"
-        />
+    </div>
+    <h1 class="page-hero__title">{{ product.name }}</h1>
+    <p class="page-hero__description">
+      Visualize imagem, SKU, URL atual e retorno mais recente do resolvedor em
+      um fluxo mais claro para analise e tomada de decisao.
+    </p>
+    <div class="detail-status-strip">
+      {% if last_update %}
+        {% if last_update.success %}
+        <span class="status-pill status-pill--success">Ultima atualizacao com sucesso</span>
         {% else %}
-        <div class="barcode-empty-state">código de barras indisponível</div>
+        <span class="status-pill status-pill--error">Ultima atualizacao exige revisao</span>
         {% endif %}
-      </section>
-    </aside>
-  </section>
-
-  <section class="product-meta-box">
-    <dl class="product-meta-grid">
-      <dt>URL atual</dt>
-      <dd><a href="{{ product.last_known_url }}" target="_blank" rel="noreferrer">{{ product.last_known_url }}</a></dd>
-
-      {% if product_preview and product_preview.title %}
-      <dt>Título da página</dt>
-      <dd>{{ product_preview.title }}</dd>
+      {% else %}
+      <span class="surface-tag">Sem execucao recente</span>
       {% endif %}
-    </dl>
-  </section>
+      <span class="inline-note">SKU atual: {{ product.last_known_sku }}</span>
+    </div>
+  </div>
 
-  <div class="action-row">
+  <div class="page-hero__actions">
     <form method="post" action="/dashboard/products/{{ product.alias }}/update">
       <button type="submit">Atualizar agora</button>
     </form>
-    <a class="button-link" href="/dashboard">Voltar</a>
+    <a class="button-link button-link--secondary" href="/dashboard/products/{{ product.alias }}/edit">Editar cadastro</a>
+    <a class="button-link button-link--secondary" href="/dashboard">Voltar</a>
+  </div>
+</section>
+{% endif %}
+{% endblock %}
+
+{% block content %}
+{% if error_message %}
+<p class="alert error">{{ error_message }}</p>
+{% else %}
+<section class="detail-grid-panels">
+  <article class="product-image-panel">
+    {% if product_preview and product_preview.image_url %}
+    <img
+      class="product-image"
+      src="{{ product_preview.image_url }}"
+      alt="Imagem do produto {{ product.name }}"
+    />
+    {% else %}
+    <div class="product-image product-image--placeholder">
+      <span>imagem do produto indisponivel para a URL atual.</span>
+    </div>
+    {% endif %}
+  </article>
+
+  <aside class="product-summary-panel">
+    <section class="summary-box">
+      <span class="summary-label">Alias operacional</span>
+      <div class="summary-value">{{ product.alias }}</div>
+    </section>
+
+    <section class="summary-box summary-box--highlight">
+      <h2 class="summary-title">{{ product.name }}</h2>
+      <div class="summary-subtitle">
+        {{ product.brand }}{% if product.variant %} • {{ product.variant }}{% endif %}
+      </div>
+      <div class="summary-sku-row">
+        <span class="summary-sku-label">SKU monitorado</span>
+        <strong class="summary-sku-value">{{ product.last_known_sku }}</strong>
+      </div>
+    </section>
+
+    <section class="summary-box summary-box--barcode">
+      <span class="summary-label">Codigo de barras</span>
+      {% set sku_barcode = build_code128_svg_data_uri(product.last_known_sku, module_width_px=3, bar_height_px=136) %}
+      {% if sku_barcode %}
+      <img
+        class="sku-barcode sku-barcode--detail"
+        src="{{ sku_barcode }}"
+        alt="Codigo de barras Code 128 do SKU {{ product.last_known_sku }}"
+      />
+      {% else %}
+      <div class="barcode-empty-state">Codigo de barras indisponivel para o SKU atual.</div>
+      {% endif %}
+    </section>
+
+    <section class="summary-box">
+      <span class="summary-label">Leitura rapida</span>
+      <ul class="detail-list">
+        <li>
+          <strong>Objetivo desta tela</strong>
+          Conferir sinais visuais e o resultado do resolvedor sem perder o
+          contexto do produto.
+        </li>
+        <li>
+          <strong>Uso indicado</strong>
+          Ideal para revisao manual quando a ultima tentativa falha ou precisa
+          de validacao adicional.
+        </li>
+      </ul>
+    </section>
+  </aside>
+</section>
+
+<section class="product-meta-box">
+  <div class="section-heading">
+    <div>
+      <p class="section-label">Metadados</p>
+      <h2>Contexto de pagina e referencia atual</h2>
+      <p>Informacoes auxiliares que ajudam a validar se o produto continua apontando para a pagina correta.</p>
+    </div>
   </div>
 
-  {% if last_update %}
-  <section class="update-box">
-    <h3>Resultado mais recente</h3>
-    <p class="status {{ 'success' if last_update.success else 'error' }}">{{ last_update.message }}</p>
-    {% if last_update.error_code %}
-    <p><strong>Código:</strong> {{ last_update.error_code }}</p>
-    {% endif %}
+  <dl class="product-meta-grid">
+    <dt>URL atual</dt>
+    <dd><a href="{{ product.last_known_url }}" target="_blank" rel="noreferrer">{{ product.last_known_url }}</a></dd>
 
-    {% if last_update.match_result %}
-    <h4>Dados de match</h4>
-    <pre>{{ last_update.match_result | tojson(indent=2) }}</pre>
+    {% if product_preview and product_preview.title %}
+    <dt>Titulo da pagina</dt>
+    <dd>{{ product_preview.title }}</dd>
     {% endif %}
+  </dl>
+</section>
 
-    {% if last_update.page_data %}
-    <h4>Dados da página</h4>
-    <pre>{{ last_update.page_data | tojson(indent=2) }}</pre>
+{% if last_update %}
+<section class="update-box">
+  <div class="section-heading">
+    <div>
+      <p class="section-label">Resultado</p>
+      <h3>Ultima execucao do resolvedor</h3>
+      <p>A area abaixo mantem o diagnostico tecnico acessivel, mas em um contorno visual mais leve.</p>
+    </div>
+    {% if last_update.success %}
+    <span class="status-pill status-pill--success">Processamento concluido</span>
+    {% else %}
+    <span class="status-pill status-pill--error">Processamento com pendencia</span>
     {% endif %}
-  </section>
+  </div>
+
+  <p class="status {{ 'success' if last_update.success else 'error' }}">{{ last_update.message }}</p>
+
+  {% if last_update.error_code %}
+  <p><strong>Codigo:</strong> {{ last_update.error_code }}</p>
   {% endif %}
 
+  {% if last_update.match_result %}
+  <h4>Dados de match</h4>
+  <pre>{{ last_update.match_result | tojson(indent=2) }}</pre>
+  {% endif %}
+
+  {% if last_update.page_data %}
+  <h4>Dados da pagina</h4>
+  <pre>{{ last_update.page_data | tojson(indent=2) }}</pre>
   {% endif %}
 </section>
+{% endif %}
+{% endif %}
 {% endblock %}

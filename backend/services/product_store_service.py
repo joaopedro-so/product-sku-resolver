@@ -209,6 +209,44 @@ class ProductStoreService:
         self._write_all(updated_products)
         return product_to_save
 
+    def replace_product(self, current_alias: str, updated_product: ProductRecord) -> ProductRecord:
+        """
+        Responsabilidade:
+            Substituir um produto existente permitindo alteracao de alias.
+
+        Parametros:
+            current_alias: Alias atual do registro que deve ser substituido.
+            updated_product: Novo estado completo do produto apos edicao.
+
+        Retorno:
+            ProductRecord persistido com os dados atualizados.
+
+        Contexto de uso:
+            Utilizado pela tela de edicao quando o operador altera identidade
+            estavel ou decide renomear o alias do produto.
+        """
+
+        normalized_current_alias = current_alias.strip()
+        if not normalized_current_alias:
+            raise KeyError("Alias atual nao pode ser vazio para substituir produto")
+
+        products = self._read_all()
+        updated_products: List[ProductRecord] = []
+        has_replaced_existing = False
+
+        for current_product in products:
+            if current_product.alias == normalized_current_alias:
+                updated_products.append(updated_product)
+                has_replaced_existing = True
+            else:
+                updated_products.append(current_product)
+
+        if not has_replaced_existing:
+            raise KeyError(f"Produto com alias '{normalized_current_alias}' nao encontrado")
+
+        self._write_all(updated_products)
+        return updated_product
+
     def update_product_sku_and_url(
         self,
         product_alias: str,

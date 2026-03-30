@@ -1,45 +1,254 @@
 {% extends "base.html" %}
 
-{% block title %}Adicionar Produto{% endblock %}
+{% set is_edit_mode = form_mode == 'edit' %}
+
+{% block title %}{{ 'Editar Produto' if is_edit_mode else 'Adicionar Produto' }}{% endblock %}
+
+{% block page_intro %}
+<section class="page-hero">
+  <div class="page-hero__content">
+    <p class="eyebrow">{{ 'Edicao manual' if is_edit_mode else 'Cadastro assistido' }}</p>
+    <h1 class="page-hero__title">
+      {{ 'Atualize os dados do produto com seguranca antes de salvar as alteracoes.' if is_edit_mode else 'Adicione um novo produto por link e revise os campos antes de salvar.' }}
+    </h1>
+    <p class="page-hero__description">
+      {{ 'Use este formulario para corrigir identidade, alias, URL ou SKU inicial sem perder a organizacao do catalogo.' if is_edit_mode else 'Agora o formulario aceita um link como ponto de partida, monta sugestoes de alias, marca, nome, variante e SKU inicial, e deixa a revisao final com voce para manter o cadastro confiavel.' }}
+    </p>
+  </div>
+
+  <div class="page-hero__actions">
+    <a class="button-link button-link--secondary" href="{{ cancel_url | default('/dashboard') }}">
+      {{ 'Voltar ao produto' if is_edit_mode else 'Voltar ao dashboard' }}
+    </a>
+  </div>
+</section>
+{% endblock %}
 
 {% block content %}
-<section>
-  <h2>Cadastrar novo produto</h2>
+{% if error_message %}
+<p class="alert error">{{ error_message }}</p>
+{% endif %}
 
-  {% if error_message %}
-  <p class="alert error">{{ error_message }}</p>
-  {% endif %}
+{% if autofill_error_message %}
+<p class="alert error">{{ autofill_error_message }}</p>
+{% endif %}
 
-  <form class="form-grid" method="post" action="/dashboard/products">
-    <label>
-      Alias
-      <input type="text" name="alias" required value="{{ submitted_data.get('alias', '') }}" />
-    </label>
+{% if autofill_message %}
+<p class="alert success">{{ autofill_message }}</p>
+{% endif %}
 
-    <label>
-      Marca
-      <input type="text" name="brand" required value="{{ submitted_data.get('brand', '') }}" />
-    </label>
+{% if not is_edit_mode %}
+<section class="content-card">
+  <div class="section-heading">
+    <div>
+      <p class="section-label">Auto preenchimento</p>
+      <h2>Gerar cadastro a partir do link</h2>
+      <p>
+        O sistema consulta a pagina informada, extrai sinais disponiveis e monta
+        um rascunho para acelerar o cadastro.
+      </p>
+    </div>
+  </div>
 
-    <label>
-      Nome
-      <input type="text" name="name" required value="{{ submitted_data.get('name', '') }}" />
-    </label>
-
-    <label>
-      Variante
-      <input type="text" name="variant" required value="{{ submitted_data.get('variant', '') }}" />
-    </label>
-
-    <label class="full-width">
-      Last known URL
-      <input type="url" name="last_known_url" required value="{{ submitted_data.get('last_known_url', '') }}" />
-    </label>
-
-    <div class="action-row">
-      <button type="submit">Salvar produto</button>
-      <a class="button-link" href="/dashboard">Cancelar</a>
+  <!--
+    Fluxo assistido:
+    Mantemos uma acao separada para auto-preenchimento antes do salvamento final
+    porque a pagina pode ter metadados incompletos. Assim o usuario revisa o
+    rascunho e evita persistir um cadastro ruim sem perceber.
+  -->
+  <form class="inline-form" method="post" action="/dashboard/products/auto-fill">
+    <div class="inline-form__row">
+      <div class="form-field">
+        <label for="autofill-last-known-url">Link do produto</label>
+        <span class="field-hint">Cole a URL e deixe o sistema sugerir os campos do cadastro.</span>
+        <input
+          id="autofill-last-known-url"
+          type="url"
+          name="last_known_url"
+          required
+          placeholder="https://www.exemplo.com/produto"
+          value="{{ submitted_data.get('last_known_url', '') }}"
+        />
+      </div>
+      <div class="inline-form__actions">
+        <button type="submit">Preencher automaticamente</button>
+      </div>
     </div>
   </form>
+
+  {% if autofill_preview %}
+  <section class="autofill-preview-card">
+    <div class="autofill-preview-card__media">
+      {% if autofill_preview.get('image_url') %}
+      <img
+        class="autofill-preview-card__image"
+        src="{{ autofill_preview.get('image_url') }}"
+        alt="Preview visual do produto sugerido"
+      />
+      {% else %}
+      <div class="autofill-preview-card__image autofill-preview-card__image--empty">
+        Sem imagem disponivel
+      </div>
+      {% endif %}
+    </div>
+
+    <div class="autofill-preview-card__content">
+      <p class="section-label">Leitura da pagina</p>
+      <h3>{{ autofill_preview.get('title') or submitted_data.get('name') or 'Produto identificado' }}</h3>
+      <p>
+        URL final observada: {{ autofill_preview.get('url') or submitted_data.get('last_known_url') }}
+      </p>
+      <div class="status-cluster">
+        <span class="surface-tag">SKU {{ autofill_preview.get('sku') or submitted_data.get('last_known_sku', 'unknown') }}</span>
+        {% if submitted_data.get('brand') %}
+        <span class="surface-tag">{{ submitted_data.get('brand') }}</span>
+        {% endif %}
+        {% if submitted_data.get('variant') %}
+        <span class="surface-tag surface-tag--accent">{{ submitted_data.get('variant') }}</span>
+        {% endif %}
+      </div>
+    </div>
+  </section>
+  {% endif %}
+</section>
+{% endif %}
+
+<section class="form-layout">
+  <!--
+    Estrutura do cadastro:
+    O formulario fica na area principal e as orientacoes operacionais vao para
+    uma lateral fixa em desktop, ajudando quem estiver aprendendo o fluxo.
+  -->
+  <form class="form-grid" method="post" action="{{ form_action_url | default('/dashboard/products') }}">
+    <div class="form-grid__header">
+      <p class="section-label">Formulario</p>
+      <h2>{{ 'Editar produto' if is_edit_mode else 'Cadastrar novo produto' }}</h2>
+      <p>
+        {{ 'Revise os dados atuais e aplique as correções necessarias antes de salvar.' if is_edit_mode else 'Revise os campos sugeridos ou preencha manualmente a identidade estavel do item antes de confirmar o cadastro.' }}
+      </p>
+    </div>
+
+    <div class="form-grid__fields">
+      <div class="form-field">
+        <label for="alias">Alias</label>
+        <span class="field-hint">Identificador interno unico para localizar o produto no dashboard.</span>
+        <input
+          id="alias"
+          type="text"
+          name="alias"
+          required
+          placeholder="ex.: one_million_200ml"
+          value="{{ submitted_data.get('alias', '') }}"
+        />
+      </div>
+
+      <div class="form-field">
+        <label for="brand">Marca</label>
+        <span class="field-hint">Usada pelo resolvedor como parte da validacao de identidade.</span>
+        <input
+          id="brand"
+          type="text"
+          name="brand"
+          required
+          placeholder="ex.: Paco Rabanne"
+          value="{{ submitted_data.get('brand', '') }}"
+        />
+      </div>
+
+      <div class="form-field">
+        <label for="name">Nome</label>
+        <span class="field-hint">Nome base do produto conforme a referencia do catalogo.</span>
+        <input
+          id="name"
+          type="text"
+          name="name"
+          required
+          placeholder="ex.: One Million"
+          value="{{ submitted_data.get('name', '') }}"
+        />
+      </div>
+
+      <div class="form-field">
+        <label for="variant">Variante</label>
+        <span class="field-hint">Volume, tamanho ou outra diferenciacao. Pode ficar em branco se a pagina nao trouxer esse dado.</span>
+        <input
+          id="variant"
+          type="text"
+          name="variant"
+          placeholder="ex.: 200ml"
+          value="{{ submitted_data.get('variant', '') }}"
+        />
+      </div>
+
+      <div class="form-field">
+        <label for="last_known_sku">SKU inicial</label>
+        <span class="field-hint">Opcional. Quando vier do auto-preenchimento, entra como referencia inicial.</span>
+        <input
+          id="last_known_sku"
+          type="text"
+          name="last_known_sku"
+          placeholder="ex.: 546594103"
+          value="{{ submitted_data.get('last_known_sku', '') }}"
+        />
+      </div>
+
+      <div class="form-field full-width">
+        <label for="last_known_url">URL atual conhecida</label>
+        <span class="field-hint">Pagina mais recente usada como ponto de partida para a resolucao do SKU.</span>
+        <input
+          id="last_known_url"
+          type="url"
+          name="last_known_url"
+          required
+          placeholder="https://www.exemplo.com/produto"
+          value="{{ submitted_data.get('last_known_url', '') }}"
+        />
+      </div>
+    </div>
+
+    <div class="action-row">
+      <button type="submit">{{ submit_button_label | default('Salvar produto') }}</button>
+      <a class="button-link button-link--secondary" href="{{ cancel_url | default('/dashboard') }}">Cancelar</a>
+    </div>
+  </form>
+
+  <aside class="help-card">
+    <p class="help-card__tagline">Boas praticas</p>
+    <h3>Cadastro com melhor chance de resolucao</h3>
+    <p>
+      {{ 'Uma boa edicao evita regressao de matching e mantem o historico operacional coerente.' if is_edit_mode else 'Manter a entrada bem descrita reduz ambiguidade na busca, no parsing e na validacao de identidade do produto. O preenchimento automatico acelera o fluxo, mas a revisao final continua sendo a etapa mais segura.' }}
+    </p>
+
+    <ul class="helper-list">
+      <li>
+        <strong>Alias consistente</strong>
+        Prefira um padrao previsivel para facilitar consultas e historico de operacao.
+      </li>
+      {% if not is_edit_mode %}
+      <li>
+        <strong>Revise o rascunho</strong>
+        Titulo de pagina e metadados podem vir com ruido comercial; ajuste o nome quando necessario.
+      </li>
+      {% endif %}
+      <li>
+        <strong>Marca e nome fieis</strong>
+        Quanto mais proximos da pagina real, melhor a confianca do match.
+      </li>
+      <li>
+        <strong>Variante explicita</strong>
+        Volume e tamanho ajudam a evitar colisao entre produtos muito parecidos.
+      </li>
+      {% if is_edit_mode %}
+      <li>
+        <strong>Alias sem colisao</strong>
+        Ao renomear o alias, confirme que ele nao pertence a outro produto do catalogo.
+      </li>
+      {% endif %}
+    </ul>
+
+    <div class="help-card__actions">
+      <a class="button-link button-link--ghost" href="/dashboard">Ver produtos existentes</a>
+    </div>
+  </aside>
 </section>
 {% endblock %}

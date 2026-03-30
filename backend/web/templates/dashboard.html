@@ -2,72 +2,179 @@
 
 {% block title %}Dashboard de Produtos{% endblock %}
 
-{% block content %}
-<section class="actions">
-  <h2>Produtos monitorados</h2>
-  <div class="action-row">
+{% set metrics = namespace(processed=0, success=0, error=0) %}
+{% for product in products %}
+  {% set status = last_update_by_alias.get(product.alias) %}
+  {% if status %}
+    {% set metrics.processed = metrics.processed + 1 %}
+    {% if status.success %}
+      {% set metrics.success = metrics.success + 1 %}
+    {% else %}
+      {% set metrics.error = metrics.error + 1 %}
+    {% endif %}
+  {% endif %}
+{% endfor %}
+
+{% block page_intro %}
+<!--
+  Estrutura da tela:
+  O topo resume o contexto operacional e traz os CTAs logo no primeiro bloco,
+  seguindo uma hierarquia mais parecida com produto de varejo do que com painel
+  tecnico denso.
+-->
+<section class="page-hero">
+  <div class="page-hero__content">
+    <p class="eyebrow">Painel principal</p>
+    <h1 class="page-hero__title">Monitore produtos com uma interface mais limpa, comercial e facil de operar.</h1>
+    <p class="page-hero__description">
+      O dashboard organiza cadastro, atualizacao e leitura de status em blocos
+      claros para reduzir atrito na rotina de acompanhamento de SKU.
+    </p>
+    <p class="hero-note">
+      Inspirado na disciplina visual do varejo brasileiro: base neutra,
+      tipografia forte, espacamento generoso e vermelho reservado para acoes.
+    </p>
+  </div>
+
+  <div class="page-hero__actions">
     <form method="post" action="/dashboard/update-all">
-      <button type="submit">Atualizar todos</button>
+      <button type="submit">Atualizar todos os produtos</button>
     </form>
-    <a class="button-link" href="/dashboard/products/new">Adicionar produto</a>
+    <a class="button-link button-link--secondary" href="/dashboard/products/new">Cadastrar novo produto</a>
   </div>
 </section>
 
-<section class="table-wrapper">
-  <table>
-    <thead>
-      <tr>
-        <th>Alias</th>
-        <th>Marca</th>
-        <th>Nome</th>
-        <th>Variante</th>
-        <th>SKU</th>
-        <th>URL</th>
-        <th>Ações</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for product in products %}
-      <tr>
-        <td>{{ product.alias }}</td>
-        <td>{{ product.brand }}</td>
-        <td>{{ product.name }}</td>
-        <td>{{ product.variant }}</td>
-        <td>
-          <div class="sku-block">
-            <strong class="sku-value">{{ product.last_known_sku }}</strong>
-            {% set sku_barcode = build_code128_svg_data_uri(product.last_known_sku, module_width_px=2, bar_height_px=88) %}
-            {% if sku_barcode %}
-            <img
-              class="sku-barcode sku-barcode--table"
-              src="{{ sku_barcode }}"
-              alt="Código de barras Code 128 do SKU {{ product.last_known_sku }}"
-            />
-            {% endif %}
-          </div>
-        </td>
-        <td><a href="{{ product.last_known_url }}" target="_blank" rel="noreferrer">abrir</a></td>
-        <td>
-          <div class="action-row compact">
-            <form method="post" action="/dashboard/products/{{ product.alias }}/update">
-              <button type="submit">Atualizar</button>
-            </form>
-            <a class="button-link" href="/dashboard/products/{{ product.alias }}">Detalhe</a>
-          </div>
-          {% set status = last_update_by_alias.get(product.alias) %}
-          {% if status %}
-          <small class="status {{ 'success' if status.success else 'error' }}">
-            {{ status.message }}
-          </small>
-          {% endif %}
-        </td>
-      </tr>
-      {% else %}
-      <tr>
-        <td colspan="7">Nenhum produto cadastrado.</td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
+<section class="metric-grid" aria-label="Resumo rapido do catalogo">
+  <article class="metric-card">
+    <div class="metric-card__label">Produtos monitorados</div>
+    <div class="metric-card__value">{{ products | length }}</div>
+    <p class="metric-card__description">Base ativa para acompanhamento manual e resolucao de SKU.</p>
+  </article>
+
+  <article class="metric-card">
+    <div class="metric-card__label">Atualizacoes recentes</div>
+    <div class="metric-card__value">{{ metrics.processed }}</div>
+    <p class="metric-card__description">Produtos com retorno armazenado na sessao operacional atual.</p>
+  </article>
+
+  <article class="metric-card">
+    <div class="metric-card__label">Sucessos</div>
+    <div class="metric-card__value">{{ metrics.success }}</div>
+    <p class="metric-card__description">Resolucões concluídas com SKU validado no fluxo mais recente.</p>
+  </article>
+
+  <article class="metric-card">
+    <div class="metric-card__label">Falhas</div>
+    <div class="metric-card__value">{{ metrics.error }}</div>
+    <p class="metric-card__description">Casos que exigem inspeção visual ou nova rodada de atualização.</p>
+  </article>
 </section>
+{% endblock %}
+
+{% block content %}
+{% if products %}
+<section class="content-card">
+  <div class="section-heading">
+    <div>
+      <p class="section-label">Catalogo</p>
+      <h2>Lista de produtos monitorados</h2>
+      <p>Visual mais respirado para leitura rapida de SKU, URL e status sem parecer uma tabela pesada.</p>
+    </div>
+    <div class="status-cluster">
+      <span class="surface-tag">Base neutra</span>
+      <span class="surface-tag surface-tag--accent">Acoes em destaque</span>
+    </div>
+  </div>
+
+  <!--
+    Componente reutilizavel:
+    A tabela mantem a densidade informacional necessaria, mas com colunas mais
+    legiveis, hover sutil e acoes agrupadas para parecer um painel de operacao
+    real e nao apenas uma listagem tecnica.
+  -->
+  <div class="table-wrapper">
+    <table>
+      <thead>
+        <tr>
+          <th>Produto</th>
+          <th>Alias</th>
+          <th>SKU atual</th>
+          <th>URL</th>
+          <th>Status</th>
+          <th>Acoes</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for product in products %}
+        {% set status = last_update_by_alias.get(product.alias) %}
+        <tr>
+          <td class="table-product">
+            <span class="table-product__title">{{ product.name }}</span>
+            <span class="table-product__subtitle">
+              {{ product.brand }}{% if product.variant %} • {{ product.variant }}{% endif %}
+            </span>
+          </td>
+          <td>
+            <span class="surface-tag">{{ product.alias }}</span>
+          </td>
+          <td>
+            <div class="sku-block">
+              <strong class="sku-value">{{ product.last_known_sku }}</strong>
+              {% set sku_barcode = build_code128_svg_data_uri(product.last_known_sku, module_width_px=2, bar_height_px=88) %}
+              {% if sku_barcode %}
+              <img
+                class="sku-barcode sku-barcode--table"
+                src="{{ sku_barcode }}"
+                alt="Codigo de barras Code 128 do SKU {{ product.last_known_sku }}"
+              />
+              {% endif %}
+            </div>
+          </td>
+          <td>
+            <a class="table-link" href="{{ product.last_known_url }}" target="_blank" rel="noreferrer">
+              <span>Abrir pagina</span>
+              <span class="table-link__hint">{{ product.last_known_url }}</span>
+            </a>
+          </td>
+          <td>
+            {% if status %}
+              {% if status.success %}
+              <span class="status-pill status-pill--success">Atualizacao ok</span>
+              {% else %}
+              <span class="status-pill status-pill--error">Revisar fluxo</span>
+              {% endif %}
+              <div class="status {{ 'success' if status.success else 'error' }}">{{ status.message }}</div>
+            {% else %}
+              <span class="surface-tag">Sem execucao recente</span>
+            {% endif %}
+          </td>
+          <td>
+            <div class="action-row compact">
+              <form method="post" action="/dashboard/products/{{ product.alias }}/update">
+                <button class="button--small" type="submit">Atualizar</button>
+              </form>
+              <a class="button-link button-link--secondary button-link--small" href="/dashboard/products/{{ product.alias }}">Detalhes</a>
+              <a class="button-link button-link--ghost button-link--small" href="/dashboard/products/{{ product.alias }}/edit">Editar</a>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% else %}
+<section class="empty-state-card">
+  <p class="section-label">Catalogo</p>
+  <h2>Nenhum produto cadastrado ainda.</h2>
+  <p>
+    Comece adicionando um item para montar sua base de monitoramento. A interface
+    foi organizada para crescer de forma modular, com espaco para leitura e
+    operacao continua.
+  </p>
+  <div class="button-cluster">
+    <a class="button-link" href="/dashboard/products/new">Adicionar primeiro produto</a>
+  </div>
+</section>
+{% endif %}
 {% endblock %}

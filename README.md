@@ -207,6 +207,55 @@ http://127.0.0.1:8000/dashboard
 
 ---
 
+Deploy na Railway
+
+Arquitetura de deploy recomendada:
+
+- subir a aplicaÃ§Ã£o web como serviÃ§o Python com `uvicorn api.main:app`
+- anexar volume persistente para manter `products.json` e `history.json`
+- expor o domÃ­nio gerado pela Railway para acesso via navegador mobile
+
+Arquivos de apoio no repositÃ³rio:
+
+- `railway.json` define o comando de start do serviÃ§o
+- `requirements.txt` inclui `python-multipart`, necessÃ¡rio para formulÃ¡rios HTML do dashboard
+
+Passos no painel da Railway:
+
+1. Criar um novo projeto e conectar este repositÃ³rio.
+2. Criar um serviÃ§o a partir do repo.
+3. Adicionar um volume ao serviÃ§o com mount path `/app/data`.
+4. Configurar as variÃ¡veis:
+
+```text
+PRODUCT_STORAGE_FILE=/app/data/products.json
+PRODUCT_HISTORY_FILE=/app/data/history.json
+```
+
+5. Fazer o deploy.
+6. Abrir o domÃ­nio do serviÃ§o e acessar `/dashboard`.
+
+Healthcheck sugerido:
+
+```text
+/health
+```
+
+URL final esperada:
+
+```text
+https://<seu-servico>.up.railway.app/dashboard
+```
+
+ObservaÃ§Ã£es importantes:
+
+- sem volume persistente, os arquivos JSON podem ser perdidos em novo deploy ou restart
+- para uso no celular, prefira sempre o domÃ­nio HTTPS da Railway
+- se quiser usar domÃ­nio prÃ³prio, basta apontÃ¡-lo para o serviÃ§o depois que a primeira publicaÃ§Ã£o estiver funcionando
+
+
+---
+
 Testes
 
 Rodar testes:
