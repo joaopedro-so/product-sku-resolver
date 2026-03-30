@@ -247,6 +247,43 @@ class ProductStoreService:
         self._write_all(updated_products)
         return updated_product
 
+    def delete_product(self, product_alias: str) -> ProductRecord:
+        """
+        Responsabilidade:
+            Remover um produto existente do armazenamento pelo alias informado.
+
+        Parametros:
+            product_alias: Alias canônico do produto que deve ser excluído.
+
+        Retorno:
+            ProductRecord removido, para que a camada chamadora possa limpar
+            estados auxiliares relacionados ao item.
+
+        Contexto de uso:
+            Utilizado pelo dashboard quando o operador decide retirar um item do
+            catálogo operacional sem afetar os demais registros persistidos.
+        """
+
+        normalized_alias = product_alias.strip()
+        if not normalized_alias:
+            raise KeyError("Alias nao pode ser vazio para exclusao de produto")
+
+        products = self._read_all()
+        remaining_products: List[ProductRecord] = []
+        removed_product: Optional[ProductRecord] = None
+
+        for current_product in products:
+            if current_product.alias == normalized_alias:
+                removed_product = current_product
+                continue
+            remaining_products.append(current_product)
+
+        if removed_product is None:
+            raise KeyError(f"Produto com alias '{normalized_alias}' nao encontrado")
+
+        self._write_all(remaining_products)
+        return removed_product
+
     def update_product_sku_and_url(
         self,
         product_alias: str,

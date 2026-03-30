@@ -196,3 +196,36 @@ def test_upsert_persiste_localizacao_manual_de_prateleira(tmp_path: Path) -> Non
     assert found_product is not None
     assert found_product.shelf_number == 4
     assert found_product.display_order == 2
+
+
+def test_delete_product_remove_registro_existente(tmp_path: Path) -> None:
+    """
+    Responsabilidade:
+        Validar a exclusao definitiva de um produto persistido no storage.
+
+    Parametros:
+        tmp_path: Diretorio temporario fornecido pelo pytest.
+
+    Retorno:
+        Nenhum; valida remocao do alias e reducao da lista persistida.
+
+    Contexto de uso:
+        Protege a acao administrativa de exclusao usada pelo dashboard.
+    """
+
+    store = ProductStoreService(tmp_path / "products.json")
+    product = ProductRecord(
+        alias="produto_excluir",
+        brand="Marca",
+        name="Produto",
+        variant="100ml",
+        last_known_url="https://exemplo.com/produto",
+        last_known_sku="321",
+    )
+    store.upsert_product(product)
+
+    removed_product = store.delete_product("produto_excluir")
+
+    assert removed_product.alias == "produto_excluir"
+    assert store.get_by_alias("produto_excluir") is None
+    assert store.list_products() == []

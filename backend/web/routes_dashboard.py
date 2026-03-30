@@ -2067,6 +2067,49 @@ async def dashboard_edit_product(request: Request, alias: str) -> Any:
     )
 
 
+@router.post("/products/{alias}/delete")
+def dashboard_delete_product(request: Request, alias: str) -> Any:
+    """
+    Responsabilidade:
+        Excluir um produto do catalogo e limpar estados auxiliares relacionados.
+
+    Parametros:
+        request: Requisicao HTTP atual.
+        alias: Alias do produto que deve ser removido pelo operador.
+
+    Retorno:
+        RedirectResponse para a tela inicial em caso de sucesso ou
+        TemplateResponse 404 quando o produto nao existir.
+
+    Contexto de uso:
+        Acao administrativa do dashboard para manutencao do catalogo fisico
+        sem precisar editar manualmente o arquivo de armazenamento.
+    """
+
+    store_service = _get_store_service(request)
+    existing_product = store_service.get_by_alias(alias)
+    if existing_product is None:
+        return templates.TemplateResponse(
+            request,
+            "product_detail.html",
+            _with_app_shell(
+                request=request,
+                active_tab="search",
+                context={
+                    "request": request,
+                    "page_title": "Produto nao encontrado",
+                    "error_message": "O produto informado nao foi encontrado no catalogo.",
+                },
+            ),
+            status_code=404,
+        )
+
+    removed_product = store_service.delete_product(alias)
+    _get_saved_service(request).unsave_alias(removed_product.alias)
+    last_update_by_alias.pop(removed_product.alias, None)
+    return RedirectResponse(url="/dashboard", status_code=status.HTTP_303_SEE_OTHER)
+
+
 @router.post("/products/{alias}/update")
 def dashboard_update_product(request: Request, alias: str) -> RedirectResponse:
     """

@@ -582,6 +582,35 @@ def test_dashboard_salva_produto_em_saved(tmp_path: Path) -> None:
     assert app.state.saved_product_service.is_saved("produto_teste") is True
 
 
+def test_dashboard_exclui_produto_e_limpa_salvo(tmp_path: Path) -> None:
+    """
+    Responsabilidade:
+        Garantir que a exclusao remova o produto do catalogo e da lista de salvos.
+
+    Parametros:
+        tmp_path: Diretorio temporario para isolamento da base.
+
+    Retorno:
+        Nenhum; valida redirect, remocao do storage e limpeza de atalhos.
+
+    Contexto de uso:
+        Cobre a nova acao administrativa de exclusao na interface web.
+    """
+
+    app = _build_app_with_temp_storage(tmp_path)
+    _seed_product(app)
+    app.state.saved_product_service.save_alias("produto_teste")
+    request = _build_request(app, method="POST", path="/dashboard/products/produto_teste/delete")
+
+    response = routes_dashboard.dashboard_delete_product(request, alias="produto_teste")
+
+    assert isinstance(response, RedirectResponse)
+    assert response.status_code == 303
+    assert response.headers["location"] == "/dashboard"
+    assert app.state.product_store_service.get_by_alias("produto_teste") is None
+    assert app.state.saved_product_service.is_saved("produto_teste") is False
+
+
 def test_dashboard_updates_renderiza_resumo_operacional(tmp_path: Path) -> None:
     """
     Responsabilidade:

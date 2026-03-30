@@ -278,6 +278,11 @@ form {
   border-color: transparent;
 }
 
+.button--danger {
+  background: var(--color-error);
+  color: #ffffff;
+}
+
 .button--small {
   min-height: 2.08rem;
   padding: 0.45rem 0.72rem;
@@ -788,6 +793,11 @@ form {
 .alert-box--success {
   background: var(--color-success-soft);
   color: var(--color-success);
+}
+
+.info-card--danger {
+  border-color: rgba(159, 38, 48, 0.18);
+  background: linear-gradient(180deg, #fff9fa 0%, #ffffff 100%);
 }
 
 .autofill-card {

@@ -129,4 +129,17 @@
     </div>
   </form>
 </section>
+
+{% if is_edit_mode %}
+<section class="page-section">
+  <article class="info-card info-card--danger">
+    <p class="section-kicker">Zona de risco</p>
+    <h2 class="section-title">Excluir produto</h2>
+    <p class="section-text">Use esta ação apenas quando o item realmente não fizer mais parte do catálogo operacional.</p>
+    <form method="post" action="/dashboard/products/{{ submitted_data.get('alias', '') }}/delete" onsubmit="return confirm('Deseja excluir este produto do catálogo?');">
+      <button class="button button--danger" type="submit">Excluir produto</button>
+    </form>
+  </article>
+</section>
+{% endif %}
 {% endblock %}
