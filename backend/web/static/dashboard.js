@@ -20,7 +20,7 @@ document.addEventListener("click", async (event) => {
         copyTrigger.textContent = copyTrigger.dataset.originalLabel || copyTrigger.textContent;
       }, 1200);
     } catch (error) {
-      window.alert(`Nao foi possivel copiar o SKU: ${error}`);
+      window.alert(`Não foi possível copiar o SKU: ${error}`);
     }
     return;
   }
@@ -37,9 +37,9 @@ document.addEventListener("click", async (event) => {
       }
 
       await navigator.clipboard.writeText(shareUrl);
-      window.alert("Link copiado para a area de transferencia.");
+      window.alert("Link copiado para a área de transferência.");
     } catch (error) {
-      window.alert(`Nao foi possivel compartilhar: ${error}`);
+      window.alert(`Não foi possível compartilhar: ${error}`);
     }
   }
 });

@@ -6,9 +6,9 @@
 {% if error_message %}
 <section class="page-section">
   <article class="empty-card">
-    <h1>Produto nao encontrado</h1>
+    <h1>Produto não encontrado</h1>
     <p>{{ error_message }}</p>
-    <a class="button" href="/dashboard/search">Voltar para Search</a>
+    <a class="button" href="/dashboard/search">Voltar para Buscar</a>
   </article>
 </section>
 {% else %}
@@ -16,80 +16,70 @@
   <div class="detail-hero">
     <div class="detail-hero__media">
       {% if product_preview and product_preview.image_url %}
-      <img src="{{ product_preview.image_url }}" alt="imagem do produto {{ product.name }}" />
+      <img src="{{ product_preview.image_url }}" alt="Imagem do produto {{ product.name }}" />
       {% elif visual_snapshot and visual_snapshot.image_url %}
-      <img src="{{ visual_snapshot.image_url }}" alt="imagem do produto {{ product.name }}" />
+      <img src="{{ visual_snapshot.image_url }}" alt="Imagem do produto {{ product.name }}" />
       {% else %}
-      <div class="detail-hero__placeholder">imagem do produto indisponivel</div>
+      <div class="detail-hero__placeholder">Imagem do produto indisponível</div>
       {% endif %}
     </div>
 
     <div class="detail-hero__content">
       <div class="detail-hero__badges">
-        <span class="mini-badge">{{ product.alias }}</span>
         <span class="status-badge status-badge--{{ activity.status_tone }}">{{ activity.status_label }}</span>
       </div>
+
       <h1 class="page-title">{{ product.name }}</h1>
       <p class="detail-subtitle">{{ product.brand }}{% if product.variant %} • {{ product.variant }}{% endif %}</p>
 
-      <dl class="detail-meta-grid">
+      <div class="detail-summary">
         <div>
-          <dt>SKU atual</dt>
-          <dd>{{ product.last_known_sku }}</dd>
+          <span class="detail-summary__label">SKU atual</span>
+          <strong class="detail-summary__sku" title="{{ product.last_known_sku }}">{{ product.last_known_sku }}</strong>
         </div>
         <div>
-          <dt>Ultimo status</dt>
-          <dd>{{ activity.timestamp_label }}</dd>
+          <span class="detail-summary__label">Última sincronização</span>
+          <strong class="detail-summary__value">{{ activity.timestamp_label }}</strong>
         </div>
-        <div>
-          <dt>URL</dt>
-          <dd><a href="{{ product.last_known_url }}" target="_blank" rel="noreferrer">Abrir pagina</a></dd>
+      </div>
+
+      <article class="barcode-panel barcode-panel--inline">
+        <div class="section-heading section-heading--tight">
+          <div>
+            <p class="section-kicker">Código de barras</p>
+            <h2 class="section-title">Pronto para leitura</h2>
+          </div>
+          <a class="button button--secondary button--small" href="/dashboard/products/{{ product.alias }}/barcode">Código em tela cheia</a>
         </div>
-      </dl>
+
+        {% if barcode_data_uri %}
+        <img
+          class="barcode-panel__image"
+          src="{{ barcode_data_uri }}"
+          alt="Código de barras do SKU {{ product.last_known_sku }}"
+        />
+        {% else %}
+        <div class="barcode-panel__empty">Código de barras indisponível para o SKU atual.</div>
+        {% endif %}
+
+        <strong class="barcode-panel__sku" title="{{ product.last_known_sku }}">{{ product.last_known_sku }}</strong>
+      </article>
+
+      <div class="detail-actions">
+        <a class="button button--secondary" href="/dashboard/products/{{ product.alias }}/barcode">Código em tela cheia</a>
+        <form method="post" action="/dashboard/products/{{ product.alias }}/update">
+          <button class="button" type="submit">Atualizar agora</button>
+        </form>
+        <button class="button button--ghost" type="button" data-copy-text="{{ product.last_known_sku }}">Copiar SKU</button>
+      </div>
     </div>
   </div>
 </section>
 
 <section class="page-section">
-  <article class="barcode-panel summary-box--barcode">
-    <div class="section-heading">
-      <div>
-        <p class="section-kicker">Barcode</p>
-        <h2 class="section-title">Pronto para leitura</h2>
-      </div>
-      <a class="button button--secondary button--small" href="/dashboard/products/{{ product.alias }}/barcode">Fullscreen</a>
-    </div>
-
-    {% if barcode_data_uri %}
-    <img
-      class="barcode-panel__image"
-      src="{{ barcode_data_uri }}"
-      alt="Codigo de barras do SKU {{ product.last_known_sku }}"
-    />
-    {% else %}
-    <div class="barcode-panel__empty">Codigo de barras indisponivel para o SKU atual.</div>
-    {% endif %}
-
-    <strong class="barcode-panel__sku">{{ product.last_known_sku }}</strong>
-
-    <div class="detail-actions">
-      <button class="button button--secondary" type="button" data-copy-text="{{ product.last_known_sku }}">Copy SKU</button>
-      <button class="button button--ghost" type="button" data-share-url="{{ request.url }}">Share</button>
-      <form method="post" action="/dashboard/products/{{ product.alias }}/update">
-        <button class="button" type="submit">Update now</button>
-      </form>
-      <form method="post" action="/dashboard/products/{{ product.alias }}/toggle-saved">
-        <input type="hidden" name="next" value="{{ request.url }}" />
-        <button class="button button--ghost" type="submit">{{ 'Remover salvo' if is_saved else 'Salvar' }}</button>
-      </form>
-    </div>
-  </article>
-</section>
-
-<section class="page-section">
   <div class="detail-block-grid">
     <article class="info-card">
-      <p class="section-kicker">Metadados</p>
+      <p class="section-kicker">Informações</p>
       <dl class="detail-meta-grid">
         <div>
           <dt>Marca</dt>
@@ -100,27 +90,31 @@
           <dd>{{ product.variant or 'Sem variante informada' }}</dd>
         </div>
         <div>
-          <dt>Titulo da pagina</dt>
-          <dd>{{ product_preview.title if product_preview and product_preview.title else 'Nao disponivel' }}</dd>
+          <dt>Página atual</dt>
+          <dd><a href="{{ product.last_known_url }}" target="_blank" rel="noreferrer">Abrir produto</a></dd>
         </div>
         <div>
-          <dt>Historico</dt>
-          <dd>{{ activity.status_message }}</dd>
+          <dt>Título da página</dt>
+          <dd>{{ product_preview.title if product_preview and product_preview.title else 'Não disponível' }}</dd>
         </div>
       </dl>
       <div class="detail-inline-actions">
         <a class="button button--secondary button--small" href="/dashboard/products/{{ product.alias }}/edit">Editar</a>
+        <form method="post" action="/dashboard/products/{{ product.alias }}/toggle-saved">
+          <input type="hidden" name="next" value="{{ request.url }}" />
+          <button class="button button--ghost button--small" type="submit">{{ 'Remover dos salvos' if is_saved else 'Salvar' }}</button>
+        </form>
       </div>
     </article>
 
     <article class="info-card">
-      <p class="section-kicker">Historico curto</p>
+      <p class="section-kicker">Histórico curto</p>
       <div class="history-list">
         {% for item in history_cards %}
         <div class="history-item">
-          <strong>{{ item.event_type }}</strong>
-          <span>{{ item.timestamp_label }}</span>
-          <small>{{ item.old_sku or 'sem SKU' }} -> {{ item.new_sku or 'sem SKU' }}</small>
+          <strong>{{ item.timestamp_label }}</strong>
+          <span>{{ item.event_type }}</span>
+          <small>{{ item.old_sku or 'sem SKU' }} → {{ item.new_sku or 'sem SKU' }}</small>
         </div>
         {% else %}
         <p class="empty-inline">Sem eventos persistidos para este produto.</p>
@@ -151,11 +145,11 @@
 {% endif %}
 
 <div class="sticky-action-bar">
-  <a class="button button--secondary" href="/dashboard/products/{{ product.alias }}/barcode">Fullscreen barcode</a>
+  <a class="button button--secondary" href="/dashboard/products/{{ product.alias }}/barcode">Código em tela cheia</a>
   <form method="post" action="/dashboard/products/{{ product.alias }}/update">
-    <button class="button" type="submit">Update now</button>
+    <button class="button" type="submit">Atualizar agora</button>
   </form>
-  <button class="button button--ghost" type="button" data-copy-text="{{ product.last_known_sku }}">Copy SKU</button>
+  <button class="button button--ghost" type="button" data-copy-text="{{ product.last_known_sku }}">Copiar SKU</button>
 </div>
 {% endif %}
 {% endblock %}

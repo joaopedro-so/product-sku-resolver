@@ -87,9 +87,10 @@ def test_product_draft_service_monta_rascunho_com_alias_limpo(tmp_path: Path) ->
             """
             <html>
               <head>
-                <title>Paco Rabanne One Million 200ml - Renner</title>
+                <title>Aproveite: Paco Rabanne One Million com desconto especial - Renner</title>
                 <meta property="product:brand" content="Paco Rabanne" />
-                <meta property="og:title" content="Paco Rabanne One Million 200ml - Renner" />
+                <meta property="og:title" content="Aproveite: Paco Rabanne One Million com desconto especial - Renner" />
+                <meta name="description" content="Paco Rabanne One Million 200ml perfume masculino eau de toilette" />
                 <meta property="og:image" content="/images/one-million.png" />
               </head>
               <body>
@@ -112,6 +113,49 @@ def test_product_draft_service_monta_rascunho_com_alias_limpo(tmp_path: Path) ->
     assert result.draft.variant == "200ml"
     assert result.draft.last_known_sku == "546594103"
     assert result.draft.alias == "paco_rabanne_one_million_200ml"
+
+
+def test_product_draft_service_prioriza_descricao_em_vez_de_titulo_de_marketing(tmp_path: Path) -> None:
+    """
+    Responsabilidade:
+        Garantir que o nome do rascunho prioriza descricao de produto real.
+
+    Parametros:
+        tmp_path: Diretorio temporario para o storage usado no teste.
+
+    Retorno:
+        Nenhum; valida apenas a heuristica do campo `name`.
+
+    Contexto de uso:
+        Protege o auto-preenchimento contra titulos promocionais de vitrine.
+    """
+
+    storage_service = ProductStoreService(tmp_path / "products.json")
+    draft_service = ProductDraftService(
+        fetcher=FakeFetcher(
+            """
+            <html>
+              <head>
+                <title>Compre online agora com desconto - Renner</title>
+                <meta property="product:brand" content="Carolina Herrera" />
+                <meta property="og:title" content="Oferta imperdivel Carolina Herrera Good Girl - Renner" />
+                <meta name="description" content="Carolina Herrera Good Girl 80ml perfume feminino eau de parfum" />
+              </head>
+              <body>
+                SKU: 123456
+              </body>
+            </html>
+            """
+        ),
+        product_store=storage_service,
+    )
+
+    result = draft_service.build_from_url("https://example.com/produto")
+
+    assert result.success is True
+    assert result.draft is not None
+    assert result.draft.name == "Good Girl"
+    assert result.draft.variant == "80ml"
 
 
 def test_product_draft_service_incrementa_alias_quando_ja_existe(tmp_path: Path) -> None:

@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Search{% endblock %}
+{% block title %}Buscar{% endblock %}
 
 {% block content %}
 <section class="page-section">
@@ -10,7 +10,7 @@
         type="search"
         name="q"
         value="{{ filters.q }}"
-        placeholder="Search by product name, SKU, or code"
+        placeholder="Buscar por nome do produto, SKU ou código"
         aria-label="Buscar produto"
       />
       <div class="search-entry-form__actions">
@@ -20,7 +20,7 @@
     </form>
 
     <details class="filter-sheet" {% if filters.brand or filters.sync_status or filters.updated_scope or filters.saved_only or filters.image_only or filters.sort != 'recent' %}open{% endif %}>
-      <summary>Filtros e ordenacao</summary>
+      <summary>Filtros e ordenação</summary>
       <form class="filter-form" method="get" action="/dashboard/search">
         <input type="hidden" name="q" value="{{ filters.q }}" />
 
@@ -45,11 +45,11 @@
         </label>
 
         <label class="form-field">
-          <span>Atualizacao</span>
+          <span>Atualização</span>
           <select name="updated_scope">
-            <option value="">Qualquer periodo</option>
+            <option value="">Qualquer período</option>
             <option value="today" {% if filters.updated_scope == 'today' %}selected{% endif %}>Hoje</option>
-            <option value="recent" {% if filters.updated_scope == 'recent' %}selected{% endif %}>Com historico</option>
+            <option value="recent" {% if filters.updated_scope == 'recent' %}selected{% endif %}>Com histórico</option>
           </select>
         </label>
 
@@ -89,7 +89,7 @@
     <a class="button button--secondary button--small" href="/dashboard/products/new">Novo produto</a>
   </div>
 
-  <div class="product-list">
+  <div class="product-list product-list--compact">
     {% for card in products %}
       {% include "partials/product_card.html" %}
     {% else %}

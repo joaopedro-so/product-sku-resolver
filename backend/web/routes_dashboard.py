@@ -320,7 +320,7 @@ def _format_timestamp_label(raw_timestamp: Optional[str]) -> str:
 
     parsed_timestamp = _parse_iso_timestamp(raw_timestamp)
     if parsed_timestamp is None:
-        return "Sem sync recente"
+        return "Sem sincronização recente"
 
     localized_timestamp = parsed_timestamp.astimezone()
     now = datetime.now(localized_timestamp.tzinfo)
@@ -331,6 +331,48 @@ def _format_timestamp_label(raw_timestamp: Optional[str]) -> str:
         return f"Ontem {localized_timestamp:%H:%M}"
 
     return localized_timestamp.strftime("%d/%m %H:%M")
+
+
+def _humanize_alias(product_alias: str) -> str:
+    """
+    Responsabilidade:
+        Converter alias tecnico em texto mais amigavel para fallback visual.
+
+    Parametros:
+        product_alias: Alias interno persistido no storage.
+
+    Retorno:
+        Texto simples com separacao humana entre palavras.
+
+    Contexto de uso:
+        Evita expor slugs crus quando algum contexto visual nao tem nome melhor.
+    """
+
+    normalized_alias = str(product_alias).strip().replace("_", " ").replace("-", " ")
+    return " ".join(part.capitalize() for part in normalized_alias.split())
+
+
+def _humanize_event_type(event_type: str) -> str:
+    """
+    Responsabilidade:
+        Traduzir tipos tecnicos de evento para rotulos compreensiveis na UI.
+
+    Parametros:
+        event_type: Tipo persistido no historico de SKU.
+
+    Retorno:
+        Texto curto e humano para exibicao em telas operacionais.
+
+    Contexto de uso:
+        Remove jargao tecnico de secoes visuais como historico curto.
+    """
+
+    mapping = {
+        "sku_changed": "SKU alterado",
+        "url_changed": "URL alterada",
+        "error": "Falha",
+    }
+    return mapping.get(str(event_type).strip(), _humanize_alias(event_type))
 
 
 def _is_today(raw_timestamp: Optional[str]) -> bool:
@@ -642,7 +684,7 @@ def _build_product_activity(
                 "status_key": "manual_ok",
                 "status_tone": "success",
                 "status_label": "Atualizado agora",
-                "status_message": manual_snapshot.get("message") or "Atualizacao manual concluida.",
+                "status_message": manual_snapshot.get("message") or "Atualização manual concluída.",
                 "timestamp": recorded_at,
                 "timestamp_label": _format_timestamp_label(recorded_at),
                 "is_today": _is_today(recorded_at),
@@ -652,7 +694,7 @@ def _build_product_activity(
             "status_key": "manual_error",
             "status_tone": "error",
             "status_label": "Falha na tentativa",
-            "status_message": manual_snapshot.get("message") or "A atualizacao manual falhou.",
+            "status_message": manual_snapshot.get("message") or "A atualização manual falhou.",
             "timestamp": recorded_at,
             "timestamp_label": _format_timestamp_label(recorded_at),
             "is_today": _is_today(recorded_at),
@@ -662,8 +704,8 @@ def _build_product_activity(
         return {
             "status_key": "idle",
             "status_tone": "neutral",
-            "status_label": "Sem sync recente",
-            "status_message": "Ainda nao ha historico recente para este produto.",
+            "status_label": "Sem sincronização",
+            "status_message": "Ainda não há histórico recente para este produto.",
             "timestamp": None,
             "timestamp_label": "Sem sync recente",
             "is_today": False,
@@ -673,8 +715,8 @@ def _build_product_activity(
         return {
             "status_key": "failed",
             "status_tone": "error",
-            "status_label": "Sync com falha",
-            "status_message": "A ultima verificacao terminou com erro e pede revisao.",
+            "status_label": "Falha na sincronização",
+            "status_message": "A última verificação terminou com erro e pede revisão.",
             "timestamp": latest_event.timestamp,
             "timestamp_label": _format_timestamp_label(latest_event.timestamp),
             "is_today": _is_today(latest_event.timestamp),
@@ -689,7 +731,7 @@ def _build_product_activity(
         return {
             "status_key": "changed",
             "status_tone": "warning",
-            "status_label": "Codigo atualizado",
+            "status_label": "Código atualizado",
             "status_message": change_description,
             "timestamp": latest_event.timestamp,
             "timestamp_label": _format_timestamp_label(latest_event.timestamp),
@@ -700,7 +742,7 @@ def _build_product_activity(
         "status_key": "synced",
         "status_tone": "success",
         "status_label": "Sincronizado",
-        "status_message": "O ultimo ciclo passou sem mudancas relevantes.",
+        "status_message": "O último ciclo passou sem mudanças relevantes.",
         "timestamp": latest_event.timestamp,
         "timestamp_label": _format_timestamp_label(latest_event.timestamp),
         "is_today": _is_today(latest_event.timestamp),
@@ -943,7 +985,7 @@ def _build_home_context(request: Request) -> Dict[str, Any]:
         active_tab="home",
         context={
             "request": request,
-            "page_title": "Home",
+            "page_title": "Início",
             "products_count": len(products),
             "quick_actions": quick_actions,
             "brand_chips": _build_brand_chips(products),
@@ -1011,7 +1053,7 @@ def _build_search_context(request: Request) -> Dict[str, Any]:
         active_tab="search",
         context={
             "request": request,
-            "page_title": "Search",
+            "page_title": "Buscar",
             "products": sorted_cards,
             "filters": active_filters,
             "brand_chips": _build_brand_chips(products),
@@ -1019,9 +1061,9 @@ def _build_search_context(request: Request) -> Dict[str, Any]:
             "available_statuses": [
                 {"value": "manual_ok", "label": "Atualizado agora"},
                 {"value": "manual_error", "label": "Falha manual"},
-                {"value": "changed", "label": "Codigo atualizado"},
-                {"value": "failed", "label": "Sync com falha"},
-                {"value": "idle", "label": "Sem sync recente"},
+                {"value": "changed", "label": "Código atualizado"},
+                {"value": "failed", "label": "Falha na sincronização"},
+                {"value": "idle", "label": "Sem sincronização"},
             ],
         },
     )
@@ -1066,7 +1108,7 @@ def _build_saved_context(request: Request) -> Dict[str, Any]:
         active_tab="saved",
         context={
             "request": request,
-            "page_title": "Saved",
+            "page_title": "Salvos",
             "products": _sort_product_cards(cards, "recent"),
         },
     )
@@ -1104,7 +1146,7 @@ def _build_updates_context(request: Request) -> Dict[str, Any]:
             changed_items.append(
                 {
                     "alias": event.alias,
-                    "product_name": related_product.name if related_product else event.alias,
+                    "product_name": related_product.name if related_product else _humanize_alias(event.alias),
                     "old_code": event.old_sku,
                     "new_code": event.new_sku,
                     "timestamp": event.timestamp,
@@ -1122,8 +1164,8 @@ def _build_updates_context(request: Request) -> Dict[str, Any]:
         failed_items.append(
             {
                 "alias": alias,
-                "product_name": related_product.name if related_product else alias,
-                "reason": "Nao foi possivel validar um codigo atualizado para este produto.",
+                "product_name": related_product.name if related_product else _humanize_alias(alias),
+                "reason": "Não foi possível validar um código atualizado para este produto.",
                 "timestamp": event.timestamp,
                 "timestamp_label": _format_timestamp_label(event.timestamp),
             }
@@ -1141,7 +1183,7 @@ def _build_updates_context(request: Request) -> Dict[str, Any]:
         active_tab="updates",
         context={
             "request": request,
-            "page_title": "Updates",
+            "page_title": "Atualizações",
             "summary_metrics": summary_metrics,
             "changed_items": changed_items[:30],
             "failed_items": failed_items[:20],
@@ -1240,7 +1282,7 @@ def _build_product_detail_context(request: Request, alias: str) -> Dict[str, Any
 
     history_cards = [
         {
-            "event_type": event.event_type,
+            "event_type": _humanize_event_type(event.event_type),
             "old_sku": event.old_sku,
             "new_sku": event.new_sku,
             "timestamp": event.timestamp,

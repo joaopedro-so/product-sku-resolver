@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>{% block title %}{{ page_title or 'Product SKU Resolver' }}{% endblock %}</title>
+    <title>{% block title %}{{ page_title or 'SKU Resolver' }}{% endblock %}</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link rel="stylesheet" href="/dashboard/static/styles.css" />
@@ -17,10 +17,10 @@
             <span class="brand__mark">SR</span>
             <span>
               <strong class="brand__title">SKU Resolver</strong>
-              <span class="brand__subtitle">Catalogo operacional</span>
+              <span class="brand__subtitle">Catálogo operacional</span>
             </span>
           </a>
-          <a class="button button--secondary button--small" href="/dashboard/products/new">Novo</a>
+          <a class="button button--ghost button--small" href="/dashboard/products/new">Novo</a>
         </div>
       </header>
       {% endif %}
@@ -30,18 +30,18 @@
       </main>
 
       {% if not hide_app_chrome %}
-      <nav class="bottom-nav" aria-label="Navegacao principal">
+      <nav class="bottom-nav" aria-label="Navegação principal">
         <a class="bottom-nav__item {% if active_tab == 'home' %}bottom-nav__item--active{% endif %}" href="/dashboard">
-          <span>Home</span>
+          <span>Início</span>
         </a>
         <a class="bottom-nav__item {% if active_tab == 'search' %}bottom-nav__item--active{% endif %}" href="/dashboard/search">
-          <span>Search</span>
+          <span>Buscar</span>
         </a>
         <a class="bottom-nav__item {% if active_tab == 'updates' %}bottom-nav__item--active{% endif %}" href="/dashboard/updates">
-          <span>Updates</span>
+          <span>Atualizações</span>
         </a>
         <a class="bottom-nav__item {% if active_tab == 'saved' %}bottom-nav__item--active{% endif %}" href="/dashboard/saved">
-          <span>Saved</span>
+          <span>Salvos</span>
           {% if saved_count %}
           <small>{{ saved_count }}</small>
           {% endif %}

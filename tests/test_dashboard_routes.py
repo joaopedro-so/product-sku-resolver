@@ -267,8 +267,8 @@ def test_dashboard_home_carrega_lista_de_produtos(tmp_path: Path) -> None:
     assert response.status_code == 200
     content = response.body.decode("utf-8")
     assert "produto_teste" in content
-    assert "Search by product name, SKU, or code" in content
-    assert "Sync status" in content
+    assert "Buscar por nome do produto, SKU ou código" in content
+    assert "Resumo do último ciclo" in content
 
 
 def test_dashboard_search_renderiza_lista_operacional(tmp_path: Path) -> None:
@@ -326,9 +326,9 @@ def test_dashboard_detalhe_abre_produto_existente(tmp_path: Path) -> None:
     content = response.body.decode("utf-8")
     assert "Produto X" in content
     assert "sku-inicial" in content
-    assert "imagem do produto" in content
-    assert "Barcode" in content
-    assert "Fullscreen barcode" in content
+    assert "Imagem do produto" in content
+    assert "Código de barras" in content
+    assert "Código em tela cheia" in content
 
 
 def test_dashboard_barcode_fullscreen_exibe_modo_operacional(tmp_path: Path) -> None:
@@ -355,9 +355,9 @@ def test_dashboard_barcode_fullscreen_exibe_modo_operacional(tmp_path: Path) -> 
     assert isinstance(response, _TemplateResponse)
     assert response.status_code == 200
     content = response.body.decode("utf-8")
-    assert "Close" in content
+    assert "Fechar" in content
     assert "sku-inicial" in content
-    assert "Update" in content
+    assert "Atualizar" in content
 
 
 def test_dashboard_cria_produto_via_formulario(tmp_path: Path) -> None:
@@ -517,8 +517,8 @@ def test_dashboard_updates_renderiza_resumo_operacional(tmp_path: Path) -> None:
     assert isinstance(response, _TemplateResponse)
     assert response.status_code == 200
     content = response.body.decode("utf-8")
-    assert "Confianca do sync" in content
-    assert "Update all" in content
+    assert "Resumo da sincronização" in content
+    assert "Atualizar todos" in content
 
 
 def test_dashboard_salva_edicao_de_produto_com_novo_alias(tmp_path: Path) -> None:

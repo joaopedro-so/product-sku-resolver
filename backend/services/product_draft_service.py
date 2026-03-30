@@ -253,11 +253,13 @@ class ProductDraftService:
             Ajuda a aproximar o cadastro automatico do formato esperado pelo resolver.
         """
 
-        raw_candidate = str(page_data.name or page_data.title or "").strip()
+        raw_candidate = self._select_name_candidate(page_data)
         if not raw_candidate:
             return ""
 
-        title_without_store_suffix = self._strip_store_suffix(raw_candidate)
+        candidate_without_marketing = self._strip_marketing_fragments(raw_candidate)
+        candidate_without_descriptors = self._strip_descriptor_suffixes(candidate_without_marketing)
+        title_without_store_suffix = self._strip_store_suffix(candidate_without_descriptors)
         without_brand = self._remove_case_insensitive_fragment(title_without_store_suffix, brand)
         without_variant = self._remove_case_insensitive_fragment(without_brand, variant)
         cleaned_name = re.sub(r"\s+", " ", without_variant).strip(" -|,:;")
@@ -270,6 +272,32 @@ class ProductDraftService:
 
         fallback_name = re.sub(r"\s+", " ", title_without_store_suffix).strip(" -|,:;")
         return fallback_name
+
+    def _select_name_candidate(self, page_data: PageData) -> str:
+        """
+        Responsabilidade:
+            Escolher a melhor fonte textual para o nome do produto no cadastro.
+
+        Parametros:
+            page_data: Dados extraidos da pagina remota.
+
+        Retorno:
+            Texto candidato mais descritivo disponivel, ou string vazia.
+
+        Contexto de uso:
+            Prioriza descricao de produto quando ela parece mais informativa do
+            que um titulo de marketing de vitrine.
+        """
+
+        descriptive_candidate = str(page_data.description or "").strip()
+        if descriptive_candidate and self._looks_like_product_description(descriptive_candidate):
+            return descriptive_candidate
+
+        fallback_candidate = str(page_data.name or page_data.title or "").strip()
+        if fallback_candidate:
+            return fallback_candidate
+
+        return descriptive_candidate
 
     def _strip_store_suffix(self, raw_title: str) -> str:
         """
@@ -303,6 +331,111 @@ class ProductDraftService:
                 return parts[0]
 
         return sanitized_title
+
+    def _strip_marketing_fragments(self, raw_text: str) -> str:
+        """
+        Responsabilidade:
+            Remover chamadas promocionais comuns antes de montar o nome final.
+
+        Parametros:
+            raw_text: Texto candidato a nome vindo da pagina.
+
+        Retorno:
+            Texto mais proximo da descricao do produto, sem slogans comuns.
+
+        Contexto de uso:
+            Evita que campanhas comerciais e verbos promocionais virem nome de
+            cadastro durante o auto-preenchimento.
+        """
+
+        sanitized_text = str(raw_text).strip()
+        if not sanitized_text:
+            return ""
+
+        promotional_patterns = [
+            r"\bcompre\s+online\b.*",
+            r"\baproveite\b.*",
+            r"\bconfira\b.*",
+            r"\bsite\s+oficial\b.*",
+            r"\bfrete\s+gratis\b.*",
+            r"\bdesconto\b.*",
+            r"\boferta\b.*",
+        ]
+
+        cleaned_text = sanitized_text
+        for promotional_pattern in promotional_patterns:
+            cleaned_text = re.sub(promotional_pattern, " ", cleaned_text, flags=re.IGNORECASE)
+
+        return re.sub(r"\s+", " ", cleaned_text).strip(" -|,:;")
+
+    def _looks_like_product_description(self, raw_text: str) -> bool:
+        """
+        Responsabilidade:
+            Decidir se uma descricao parece conter nome real do produto.
+
+        Parametros:
+            raw_text: Texto candidato vindo de metadescricao ou campo similar.
+
+        Retorno:
+            True quando o texto parece descritivo e util para cadastro.
+
+        Contexto de uso:
+            Filtra descricoes vazias ou totalmente promocionais antes de usalas
+            como fonte primaria do campo `name`.
+        """
+
+        normalized_text = normalize_text(raw_text)
+        if not normalized_text:
+            return False
+
+        marketing_keywords = (
+            "compre online",
+            "site oficial",
+            "desconto",
+            "oferta",
+            "aproveite",
+            "frete gratis",
+        )
+        marketing_hits = sum(1 for keyword in marketing_keywords if keyword in normalized_text)
+
+        # Decisao tecnica:
+        # Exigimos pelo menos duas palavras uteis e rejeitamos textos em que o
+        # sinal promocional domina o conteudo, mantendo heuristica simples.
+        useful_tokens = [token for token in normalized_text.split(" ") if token]
+        return len(useful_tokens) >= 2 and marketing_hits < 2
+
+    def _strip_descriptor_suffixes(self, raw_text: str) -> str:
+        """
+        Responsabilidade:
+            Remover descritores genericos que nao pertencem ao nome do produto.
+
+        Parametros:
+            raw_text: Texto candidato ja sem os principais slogans comerciais.
+
+        Retorno:
+            Texto mais proximo do nome/descricao util do item.
+
+        Contexto de uso:
+            Evita que categoria, publico e concentracao virem parte do campo
+            `name` quando o dado veio de metadescricao do e-commerce.
+        """
+
+        sanitized_text = str(raw_text).strip()
+        if not sanitized_text:
+            return ""
+
+        descriptor_patterns = [
+            r"\bperfume\s+(masculino|feminino|unissex)\b.*",
+            r"\beau\s+de\s+(toilette|parfum|cologne)\b.*",
+            r"\bdeo\s+colonia\b.*",
+            r"\bcolonia\b.*",
+        ]
+
+        cleaned_text = sanitized_text
+        for descriptor_pattern in descriptor_patterns:
+            cleaned_text = re.sub(descriptor_pattern, " ", cleaned_text, flags=re.IGNORECASE)
+
+        return re.sub(r"\s+", " ", cleaned_text).strip(" -|,:;")
 
     def _remove_case_insensitive_fragment(self, raw_text: str, fragment: str) -> str:
         """

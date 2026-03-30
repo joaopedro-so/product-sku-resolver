@@ -1,17 +1,17 @@
 {% extends "base.html" %}
 
-{% block title %}Home{% endblock %}
+{% block title %}Início{% endblock %}
 
 {% block content %}
 <section class="page-section">
   <div class="search-entry-card">
-    <p class="section-kicker">Busca rapida</p>
-    <h1 class="page-title">Encontre um produto pelo nome, SKU ou codigo.</h1>
+    <p class="section-kicker">Busca rápida</p>
+    <h1 class="page-title">Encontre um produto pelo nome ou SKU.</h1>
     <form class="search-entry-form" method="get" action="/dashboard/search">
       <input
         type="search"
         name="q"
-        placeholder="Search by product name, SKU, or code"
+        placeholder="Buscar por nome do produto, SKU ou código"
         aria-label="Buscar produto"
       />
       <button class="button" type="submit">Buscar</button>
@@ -31,11 +31,33 @@
 </section>
 
 <section class="page-section">
+  <div class="section-heading">
+    <div>
+      <p class="section-kicker">Recentes</p>
+      <h2 class="section-title">Produtos com acesso rápido</h2>
+    </div>
+    <a class="text-link" href="/dashboard/search?updated_scope=recent">Abrir lista</a>
+  </div>
+
+  <div class="product-list product-list--compact">
+    {% for card in recent_products %}
+      {% include "partials/product_card.html" %}
+    {% else %}
+    <article class="empty-card">
+      <h3>Nenhum produto cadastrado.</h3>
+      <p>Crie o primeiro item para montar seu catálogo operacional.</p>
+      <a class="button" href="/dashboard/products/new">Cadastrar produto</a>
+    </article>
+    {% endfor %}
+  </div>
+</section>
+
+<section class="page-section">
   <article class="sync-card">
     <div>
-      <p class="section-kicker">Sync status</p>
-      <h2 class="section-title">Visibilidade do ultimo ciclo</h2>
-      <p class="section-text">Ultima rodada: {{ sync_summary.last_sync_label }}</p>
+      <p class="section-kicker">Sincronização</p>
+      <h2 class="section-title">Resumo do último ciclo</h2>
+      <p class="section-text">Última rodada: {{ sync_summary.last_sync_label }}</p>
     </div>
 
     <dl class="metric-strip">
@@ -44,7 +66,7 @@
         <dd>{{ sync_summary.processed_count }}</dd>
       </div>
       <div>
-        <dt>Mudancas</dt>
+        <dt>Alterados</dt>
         <dd>{{ sync_summary.changed_count }}</dd>
       </div>
       <div>
@@ -54,47 +76,8 @@
     </dl>
 
     <form method="post" action="/dashboard/updates/run">
-      <button class="button" type="submit">Update now</button>
+      <button class="button" type="submit">Atualizar agora</button>
     </form>
   </article>
-</section>
-
-<section class="page-section">
-  <div class="section-heading">
-    <div>
-      <p class="section-kicker">Marcas</p>
-      <h2 class="section-title">Atalhos por grupo visual</h2>
-    </div>
-    <a class="text-link" href="/dashboard/search">Ver tudo</a>
-  </div>
-  <div class="chip-grid">
-    {% for chip in brand_chips %}
-    <a class="filter-chip" href="{{ chip.href }}">{{ chip.label }} <small>{{ chip.count }}</small></a>
-    {% else %}
-    <span class="empty-inline">Nenhuma marca cadastrada ainda.</span>
-    {% endfor %}
-  </div>
-</section>
-
-<section class="page-section">
-  <div class="section-heading">
-    <div>
-      <p class="section-kicker">Recentes</p>
-      <h2 class="section-title">Produtos com acesso rapido</h2>
-    </div>
-    <a class="text-link" href="/dashboard/search?updated_scope=recent">Abrir lista</a>
-  </div>
-
-  <div class="product-list">
-    {% for card in recent_products %}
-      {% include "partials/product_card.html" %}
-    {% else %}
-    <article class="empty-card">
-      <h3>Nenhum produto cadastrado.</h3>
-      <p>Crie o primeiro item para montar seu catalogo operacional.</p>
-      <a class="button" href="/dashboard/products/new">Cadastrar produto</a>
-    </article>
-    {% endfor %}
-  </div>
 </section>
 {% endblock %}

@@ -48,6 +48,7 @@ class PageData:
     variant: Optional[str]
     sku: Optional[str]
     image_url: Optional[str] = None
+    description: Optional[str] = None
 
 
 def _normalize_spaces(text: str) -> str:
@@ -387,6 +388,30 @@ def extract_product_image_url(page_url: str, html_content: str) -> Optional[str]
     return _normalize_asset_url(page_url=page_url, raw_asset_url=candidate_image_url)
 
 
+def extract_product_description(html_content: str) -> Optional[str]:
+    """
+    Responsabilidade:
+        Extrair uma descricao curta da pagina a partir de metadados comuns.
+
+    Parametros:
+        html_content: HTML bruto completo da pagina.
+
+    Retorno:
+        Texto de descricao normalizado ou None quando ausente.
+
+    Contexto de uso:
+        Ajuda o auto-preenchimento a preferir nomes mais descritivos e menos
+        promocionais do que titulos de vitrine.
+    """
+
+    return (
+        _extract_meta_content(html_content, "product:description")
+        or _extract_meta_content(html_content, "description")
+        or _extract_meta_content(html_content, "og:description")
+        or _extract_meta_content(html_content, "twitter:description")
+    )
+
+
 def _extract_variant_from_text(text: str) -> Optional[str]:
     """
     Responsabilidade:
@@ -451,9 +476,11 @@ def parse_page_data(
         or extracted_title
     )
 
+    extracted_description = extract_product_description(html_content)
     extracted_variant = (
         _extract_meta_content(html_content, "product:variant")
         or _extract_variant_from_text(extracted_name or "")
+        or _extract_variant_from_text(extracted_description or "")
         or _extract_variant_from_text(extracted_title or "")
     )
 
@@ -472,6 +499,7 @@ def parse_page_data(
         title=extracted_title,
         brand=extracted_brand,
         name=extracted_name,
+        description=extracted_description,
         variant=extracted_variant,
         sku=extracted_sku,
         image_url=extracted_image_url,

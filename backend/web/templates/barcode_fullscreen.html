@@ -1,12 +1,12 @@
 {% extends "base.html" %}
 
-{% block title %}Barcode{% endblock %}
+{% block title %}Código de barras{% endblock %}
 
 {% block content %}
 {% if error_message %}
 <section class="fullscreen-barcode">
   <article class="empty-card">
-    <h1>Produto nao encontrado</h1>
+    <h1>Produto não encontrado</h1>
     <p>{{ error_message }}</p>
     <a class="button" href="/dashboard/search">Voltar</a>
   </article>
@@ -14,7 +14,7 @@
 {% else %}
 <section class="fullscreen-barcode">
   <div class="fullscreen-barcode__header">
-    <a class="button button--secondary button--small" href="/dashboard/products/{{ product.alias }}">Close</a>
+    <a class="button button--secondary button--small" href="/dashboard/products/{{ product.alias }}">Fechar</a>
     <div>
       <h1>{{ product.name }}</h1>
       <p>{{ product.brand }}{% if product.variant %} • {{ product.variant }}{% endif %}</p>
@@ -26,19 +26,18 @@
     <img
       class="fullscreen-barcode__image"
       src="{{ build_code128_svg_data_uri(product.last_known_sku, module_width_px=4, bar_height_px=220) }}"
-      alt="Codigo de barras grande do SKU {{ product.last_known_sku }}"
+      alt="Código de barras grande do SKU {{ product.last_known_sku }}"
     />
     {% else %}
-    <div class="barcode-panel__empty">Codigo de barras indisponivel.</div>
+    <div class="barcode-panel__empty">Código de barras indisponível.</div>
     {% endif %}
-    <strong class="fullscreen-barcode__sku">{{ product.last_known_sku }}</strong>
+    <strong class="fullscreen-barcode__sku" title="{{ product.last_known_sku }}">{{ product.last_known_sku }}</strong>
   </div>
 
   <div class="fullscreen-barcode__actions">
-    <button class="button button--secondary" type="button" data-copy-text="{{ product.last_known_sku }}">Copy SKU</button>
-    <button class="button button--ghost" type="button" data-share-url="{{ request.url }}">Share</button>
+    <button class="button button--secondary" type="button" data-copy-text="{{ product.last_known_sku }}">Copiar SKU</button>
     <form method="post" action="/dashboard/products/{{ product.alias }}/update">
-      <button class="button" type="submit">Update</button>
+      <button class="button" type="submit">Atualizar</button>
     </form>
   </div>
 </section>
