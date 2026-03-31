@@ -207,3 +207,49 @@ def test_product_draft_service_incrementa_alias_quando_ja_existe(tmp_path: Path)
     assert result.success is True
     assert result.draft is not None
     assert result.draft.alias == "paco_rabanne_one_million_200ml_2"
+
+
+def test_product_draft_service_reduz_nome_de_marketing_e_alias_gigante(tmp_path: Path) -> None:
+    """
+    Responsabilidade:
+        Garantir que o auto-preenchimento enxugue textos promocionais longos.
+
+    Parametros:
+        tmp_path: Diretorio temporario do storage de produtos.
+
+    Retorno:
+        Nenhum; valida nome operacional e alias em tamanho razoavel.
+
+    Contexto de uso:
+        Protege o fluxo de cadastro por URL contra paginas com SEO exagerado,
+        evitando nomes de marketing e aliases grandes demais para manutencao.
+    """
+
+    storage_service = ProductStoreService(tmp_path / "products.json")
+    draft_service = ProductDraftService(
+        fetcher=FakeFetcher(
+            """
+            <html>
+              <head>
+                <title>Oferta exclusiva: Jean Paul Gaultier Le Beau Le Parfum com desconto especial e frete gratis - Renner</title>
+                <meta property="product:brand" content="Jean Paul Gaultier" />
+                <meta property="og:title" content="Compre online Jean Paul Gaultier Le Beau Le Parfum 125ml importado original masculino - Renner" />
+                <meta name="description" content="Jean Paul Gaultier Le Beau Le Parfum 125ml perfume masculino eau de parfum importado original" />
+              </head>
+              <body>
+                SKU: 998877
+              </body>
+            </html>
+            """
+        ),
+        product_store=storage_service,
+    )
+
+    result = draft_service.build_from_url("https://example.com/produto")
+
+    assert result.success is True
+    assert result.draft is not None
+    assert result.draft.name == "Le Beau Le Parfum"
+    assert result.draft.variant == "125ml"
+    assert result.draft.alias == "jean_paul_le_beau_le_parfum_125ml"
+    assert len(result.draft.alias) <= 48

@@ -253,25 +253,157 @@ class ProductDraftService:
             Ajuda a aproximar o cadastro automatico do formato esperado pelo resolver.
         """
 
-        raw_candidate = self._select_name_candidate(page_data)
-        if not raw_candidate:
-            return ""
+        best_candidate_name = ""
+        best_candidate_score = -999
+        best_candidate_token_count = 999
 
-        candidate_without_marketing = self._strip_marketing_fragments(raw_candidate)
+        for candidate_source, raw_candidate in self._list_name_candidates(page_data):
+            cleaned_candidate_name = self._clean_name_candidate(
+                raw_candidate=raw_candidate,
+                brand=brand,
+                variant=variant,
+            )
+            if not cleaned_candidate_name:
+                continue
+
+            candidate_score = self._score_name_candidate(
+                candidate_source=candidate_source,
+                raw_candidate=raw_candidate,
+                cleaned_candidate_name=cleaned_candidate_name,
+                brand=brand,
+                variant=variant,
+            )
+            candidate_token_count = len(normalize_text(cleaned_candidate_name).split())
+
+            # Decisao tecnica:
+            # Em caso de empate, preferimos a versao mais curta porque ela tende
+            # a representar melhor o nome operacional do produto do que frases
+            # longas de vitrine ou SEO.
+            if candidate_score > best_candidate_score or (
+                candidate_score == best_candidate_score and candidate_token_count < best_candidate_token_count
+            ):
+                best_candidate_name = cleaned_candidate_name
+                best_candidate_score = candidate_score
+                best_candidate_token_count = candidate_token_count
+
+        return best_candidate_name
+
+    def _list_name_candidates(self, page_data: PageData) -> list[tuple[str, str]]:
+        """
+        Responsabilidade:
+            Reunir candidatos textuais para o nome em ordem de confianca.
+
+        Parametros:
+            page_data: Dados extraidos da pagina remota.
+
+        Retorno:
+            Lista de pares com a origem do texto e o conteudo correspondente.
+
+        Contexto de uso:
+            Permite avaliar descricao, nome e titulo sem acoplar a decisao a um
+            unico campo, o que reduz erros em paginas com SEO muito agressivo.
+        """
+
+        candidates: list[tuple[str, str]] = []
+        for candidate_source, raw_candidate in (
+            ("description", str(page_data.description or "").strip()),
+            ("name", str(page_data.name or "").strip()),
+            ("title", str(page_data.title or "").strip()),
+        ):
+            if raw_candidate:
+                candidates.append((candidate_source, raw_candidate))
+
+        return candidates
+
+    def _clean_name_candidate(self, raw_candidate: str, brand: str, variant: str) -> str:
+        """
+        Responsabilidade:
+            Limpar um candidato textual ate ele se aproximar do nome real.
+
+        Parametros:
+            raw_candidate: Texto bruto vindo de descricao, nome ou titulo.
+            brand: Marca inferida usada para remover repeticao desnecessaria.
+            variant: Variante inferida removida do nome base quando aparecer.
+
+        Retorno:
+            Nome limpo e adequado para cadastro, ou string vazia.
+
+        Contexto de uso:
+            Centraliza a higienizacao do nome para que todas as fontes textuais
+            passem pela mesma regra antes de competir entre si.
+        """
+
+        candidate_without_store_suffix = self._strip_store_suffix(raw_candidate)
+        candidate_without_marketing = self._strip_marketing_fragments(candidate_without_store_suffix)
         candidate_without_descriptors = self._strip_descriptor_suffixes(candidate_without_marketing)
-        title_without_store_suffix = self._strip_store_suffix(candidate_without_descriptors)
-        without_brand = self._remove_case_insensitive_fragment(title_without_store_suffix, brand)
+        without_brand = self._remove_case_insensitive_fragment(candidate_without_descriptors, brand)
         without_variant = self._remove_case_insensitive_fragment(without_brand, variant)
-        cleaned_name = re.sub(r"\s+", " ", without_variant).strip(" -|,:;")
+        without_fillers = self._strip_edge_fillers(without_variant)
+        cleaned_name = re.sub(r"\s+", " ", without_fillers).strip(" -|,:;")
 
         # Decisao tecnica:
-        # Se a limpeza ficar agressiva demais e esvaziar o nome, voltamos para
-        # a versao anterior sem remocao de marca/variante para nao perder sinal.
+        # Quando a limpeza fica agressiva demais, caimos para a versao sem
+        # remocao de marca/variante para preservar algum sinal util.
         if cleaned_name:
             return cleaned_name
 
-        fallback_name = re.sub(r"\s+", " ", title_without_store_suffix).strip(" -|,:;")
+        fallback_name = re.sub(r"\s+", " ", candidate_without_descriptors).strip(" -|,:;")
         return fallback_name
+
+    def _score_name_candidate(
+        self,
+        candidate_source: str,
+        raw_candidate: str,
+        cleaned_candidate_name: str,
+        brand: str,
+        variant: str,
+    ) -> int:
+        """
+        Responsabilidade:
+            Atribuir prioridade ao melhor nome operacional entre varios textos.
+
+        Parametros:
+            candidate_source: Origem do texto avaliado, como description ou title.
+            raw_candidate: Texto bruto original antes da limpeza.
+            cleaned_candidate_name: Nome final obtido apos higienizacao.
+            brand: Marca inferida usada para avaliar consistencia do sinal.
+            variant: Variante inferida usada para reforcar relevancia textual.
+
+        Retorno:
+            Pontuacao inteira; quanto maior, melhor o candidato.
+
+        Contexto de uso:
+            Mantem a escolha do nome explicavel e simples, sem depender de
+            heuristicas opacas ou pesos excessivamente sofisticados.
+        """
+
+        source_weights = {"description": 6, "name": 5, "title": 4}
+        normalized_raw_candidate = normalize_text(raw_candidate)
+        normalized_cleaned_candidate = normalize_text(cleaned_candidate_name)
+        normalized_brand = normalize_text(brand)
+        normalized_variant = normalize_variant(variant)
+        cleaned_token_count = len(normalized_cleaned_candidate.split())
+
+        score = source_weights.get(candidate_source, 0)
+        if self._looks_like_product_description(raw_candidate):
+            score += 2
+        if self._looks_like_marketing_heavy_text(raw_candidate):
+            score -= 5
+        if normalized_brand and normalized_brand in normalized_raw_candidate:
+            score += 1
+        if normalized_variant and normalized_variant in normalize_variant(raw_candidate):
+            score += 1
+
+        if cleaned_token_count == 0:
+            return -999
+        if cleaned_token_count <= 5:
+            score += 2
+        elif cleaned_token_count <= 7:
+            score += 1
+        else:
+            score -= cleaned_token_count - 7
+
+        return score
 
     def _select_name_candidate(self, page_data: PageData) -> str:
         """
@@ -368,6 +500,41 @@ class ProductDraftService:
 
         return re.sub(r"\s+", " ", cleaned_text).strip(" -|,:;")
 
+    def _looks_like_marketing_heavy_text(self, raw_text: str) -> bool:
+        """
+        Responsabilidade:
+            Detectar quando um texto parece dominado por discurso comercial.
+
+        Parametros:
+            raw_text: Texto candidato vindo de titulo, nome ou descricao.
+
+        Retorno:
+            True quando o texto parece mais promocional do que descritivo.
+
+        Contexto de uso:
+            Ajuda a rebaixar fontes de SEO agressivo sem descartar totalmente o
+            sinal, preservando um fallback quando a pagina for muito pobre.
+        """
+
+        normalized_text = normalize_text(raw_text)
+        if not normalized_text:
+            return False
+
+        marketing_keywords = (
+            "compre online",
+            "desconto",
+            "oferta",
+            "aproveite",
+            "imperdivel",
+            "promocao",
+            "frete gratis",
+            "site oficial",
+            "lancamento",
+            "exclusivo",
+        )
+        marketing_hits = sum(1 for keyword in marketing_keywords if keyword in normalized_text)
+        return marketing_hits >= 2
+
     def _looks_like_product_description(self, raw_text: str) -> bool:
         """
         Responsabilidade:
@@ -429,11 +596,48 @@ class ProductDraftService:
             r"\beau\s+de\s+(toilette|parfum|cologne)\b.*",
             r"\bdeo\s+colonia\b.*",
             r"\bcolonia\b.*",
+            r"\bfragrancia\b.*",
         ]
 
         cleaned_text = sanitized_text
         for descriptor_pattern in descriptor_patterns:
             cleaned_text = re.sub(descriptor_pattern, " ", cleaned_text, flags=re.IGNORECASE)
+
+        return re.sub(r"\s+", " ", cleaned_text).strip(" -|,:;")
+
+    def _strip_edge_fillers(self, raw_text: str) -> str:
+        """
+        Responsabilidade:
+            Remover palavras genericas das pontas sem mutilar o nome central.
+
+        Parametros:
+            raw_text: Texto ja limpo das principais campanhas e descritores.
+
+        Retorno:
+            Texto final sem conectores e termos operacionais irrelevantes nas bordas.
+
+        Contexto de uso:
+            Evita nomes como "Perfume Importado One Million Feminino" quando o
+            miolo util seria apenas "One Million".
+        """
+
+        sanitized_text = str(raw_text).strip()
+        if not sanitized_text:
+            return ""
+
+        leading_patterns = [
+            r"^(perfume|perfumes|fragrancia|fragrancias|importado|importada|original)\b[\s:-]*",
+        ]
+        trailing_patterns = [
+            r"[\s,-]+\b(masculino|feminino|unissex)\b$",
+            r"[\s,-]+\b(de|do|da|para)\b$",
+        ]
+
+        cleaned_text = sanitized_text
+        for leading_pattern in leading_patterns:
+            cleaned_text = re.sub(leading_pattern, "", cleaned_text, flags=re.IGNORECASE)
+        for trailing_pattern in trailing_patterns:
+            cleaned_text = re.sub(trailing_pattern, "", cleaned_text, flags=re.IGNORECASE)
 
         return re.sub(r"\s+", " ", cleaned_text).strip(" -|,:;")
 
@@ -478,12 +682,10 @@ class ProductDraftService:
             Garante que o usuario receba uma sugestao pronta para persistencia.
         """
 
-        alias_tokens = []
-        for raw_part in (brand, name, variant):
-            normalized_part = normalize_variant(raw_part) if raw_part == variant else normalize_text(raw_part)
-            if not normalized_part:
-                continue
-            alias_tokens.extend(part for part in normalized_part.split(" ") if part)
+        brand_tokens = self._build_alias_tokens(brand, max_tokens=2, use_variant_normalizer=False)
+        name_tokens = self._build_alias_tokens(name, max_tokens=4, use_variant_normalizer=False)
+        variant_tokens = self._build_alias_tokens(variant, max_tokens=1, use_variant_normalizer=True)
+        alias_tokens = self._clamp_alias_tokens(brand_tokens, name_tokens, variant_tokens)
 
         if not alias_tokens:
             return ""
@@ -500,3 +702,67 @@ class ProductDraftService:
             suffix_index += 1
 
         return unique_alias
+
+    def _build_alias_tokens(self, raw_part: str, max_tokens: int, use_variant_normalizer: bool) -> list[str]:
+        """
+        Responsabilidade:
+            Converter cada parte do alias em poucos tokens legiveis e estaveis.
+
+        Parametros:
+            raw_part: Texto original da marca, nome ou variante.
+            max_tokens: Limite de tokens aproveitados dessa parte.
+            use_variant_normalizer: Define se a parte deve usar a normalizacao de variante.
+
+        Retorno:
+            Lista de tokens enxutos prontos para compor o alias final.
+
+        Contexto de uso:
+            Reduz aliases gigantescos gerados por textos longos sem perder a
+            identificacao principal do produto no cadastro.
+        """
+
+        normalized_part = normalize_variant(raw_part) if use_variant_normalizer else normalize_text(raw_part)
+        if not normalized_part:
+            return []
+
+        tokens = [part for part in normalized_part.split(" ") if part]
+        return tokens[:max_tokens]
+
+    def _clamp_alias_tokens(
+        self,
+        brand_tokens: list[str],
+        name_tokens: list[str],
+        variant_tokens: list[str],
+    ) -> list[str]:
+        """
+        Responsabilidade:
+            Limitar o tamanho do alias sem perder as partes mais importantes.
+
+        Parametros:
+            brand_tokens: Tokens normalizados da marca.
+            name_tokens: Tokens normalizados do nome principal.
+            variant_tokens: Tokens normalizados da variante.
+
+        Retorno:
+            Lista final de tokens pronta para ser unida em snake_case.
+
+        Contexto de uso:
+            Mantem aliases curtos o bastante para manutencao manual, mas ainda
+            reconheciveis para o time que opera o catalogo.
+        """
+
+        alias_tokens = [*brand_tokens, *name_tokens, *variant_tokens]
+        while alias_tokens and len("_".join(alias_tokens)) > 48:
+            if len(name_tokens) > 2:
+                name_tokens.pop()
+            elif len(brand_tokens) > 1:
+                brand_tokens.pop()
+            elif len(name_tokens) > 1:
+                name_tokens.pop()
+            else:
+                alias_tokens = alias_tokens[:-1]
+                continue
+
+            alias_tokens = [*brand_tokens, *name_tokens, *variant_tokens]
+
+        return alias_tokens
