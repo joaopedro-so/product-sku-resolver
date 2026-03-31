@@ -21,6 +21,7 @@ from fastapi.templating import Jinja2Templates
 
 from backend.models.product import ProductRecord
 from backend.models.sku_event import SkuEvent
+from backend.services.matcher import normalize_text
 from backend.services.product_draft_service import ProductDraftService
 from backend.services.product_group_service import GroupedParentProduct, ProductGroupService
 from backend.services.product_preview_service import ProductPreview, ProductPreviewService
@@ -1156,6 +1157,60 @@ def _build_group_search_text(grouped_product: GroupedParentProduct) -> str:
     return " ".join(part for part in searchable_parts if part).lower()
 
 
+def _build_shelf_brand_filters(
+    shelf_number: int,
+    grouped_products: List[GroupedParentProduct],
+    query_text: str,
+    selected_brand: str,
+) -> List[Dict[str, str]]:
+    """
+    Responsabilidade:
+        Montar os filtros de marca disponiveis para uma prateleira fisica.
+
+    Parametros:
+        shelf_number: Numero da prateleira atualmente aberta.
+        grouped_products: Produtos pai ja agrupados dentro da prateleira.
+        query_text: Texto atual de busca para preservacao na URL.
+        selected_brand: Marca atualmente selecionada no filtro.
+
+    Retorno:
+        Lista de chips com label, href e estado de selecao.
+
+    Contexto de uso:
+        Separa a referencia fisica da prateleira da filtragem por marca, para
+        deixar claro que varias marcas podem coexistir no mesmo expositor.
+    """
+
+    normalized_selected_brand = str(selected_brand).strip()
+    available_brands = sorted(
+        {grouped_product.brand for grouped_product in grouped_products if grouped_product.brand},
+        key=normalize_text,
+    )
+
+    filter_chips = [
+        {
+            "label": "Todas",
+            "href": f"/dashboard/prateleiras/{shelf_number}?{urlencode({'q': query_text})}" if query_text else f"/dashboard/prateleiras/{shelf_number}",
+            "is_selected": not normalized_selected_brand,
+        }
+    ]
+
+    for brand in available_brands:
+        query_params = {"brand": brand}
+        if query_text:
+            query_params["q"] = query_text
+
+        filter_chips.append(
+            {
+                "label": brand,
+                "href": f"/dashboard/prateleiras/{shelf_number}?{urlencode(query_params)}",
+                "is_selected": brand == normalized_selected_brand,
+            }
+        )
+
+    return filter_chips
+
+
 def _build_shelf_card_visual_metadata(shelf_number: int, shelf_title: str) -> Dict[str, str]:
     """
     Responsabilidade:
@@ -1323,10 +1378,20 @@ def _build_shelf_detail_context(request: Request, shelf_number: int) -> Dict[str
     grouped_products = _get_product_group_service(request).group_products(shelf_products)
     latest_events = _build_latest_event_map(_get_history_store(request).list_events())
     preview_map = _build_preview_map(request, shelf_products, fetch_limit=max(12, len(shelf_products)))
-    query_text = request.query_params.get("q", "").strip().lower()
+    raw_query_text = request.query_params.get("q", "").strip()
+    query_text = raw_query_text.lower()
+    selected_brand = request.query_params.get("brand", "").strip()
+    brand_filters = _build_shelf_brand_filters(
+        shelf_number=shelf_number,
+        grouped_products=grouped_products,
+        query_text=raw_query_text,
+        selected_brand=selected_brand,
+    )
 
     shelf_product_cards = []
     for grouped_product in grouped_products:
+        if selected_brand and grouped_product.brand != selected_brand:
+            continue
         if query_text and query_text not in _build_group_search_text(grouped_product):
             continue
 
@@ -1381,10 +1446,13 @@ def _build_shelf_detail_context(request: Request, shelf_number: int) -> Dict[str
         active_tab="home",
         context={
             "request": request,
-            "page_title": shelf_definition.shelf_title,
+            "page_title": f"Prateleira {shelf_definition.shelf_number:02d}",
             "shelf": shelf_definition,
+            "reference_label": shelf_definition.shelf_title,
             "products": shelf_product_cards,
-            "query_text": request.query_params.get("q", ""),
+            "query_text": raw_query_text,
+            "brand_filters": brand_filters,
+            "selected_brand": selected_brand,
         },
     )
 

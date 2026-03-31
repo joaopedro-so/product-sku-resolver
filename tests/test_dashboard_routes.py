@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import asyncio
 from pathlib import Path
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlsplit
 
 from fastapi import FastAPI
 from starlette.requests import Request
@@ -199,13 +199,17 @@ def _build_request(app: FastAPI, method: str, path: str, body: bytes = b"", cont
     if content_type:
         headers.append((b"content-type", content_type.encode("utf-8")))
 
+    parsed_path = urlsplit(path)
+    normalized_path = parsed_path.path or path
+    query_string = parsed_path.query.encode("utf-8")
+
     scope = {
         "type": "http",
         "http_version": "1.1",
         "method": method,
-        "path": path,
+        "path": normalized_path,
         "raw_path": path.encode("utf-8"),
-        "query_string": b"",
+        "query_string": query_string,
         "headers": headers,
         "client": ("testclient", 50000),
         "server": ("testserver", 80),
@@ -414,6 +418,64 @@ def test_dashboard_detalhe_agrupa_variantes_sem_trocar_de_produto(tmp_path: Path
     assert "sku-50" in content
     assert "/dashboard/products/good_girl_30ml/barcode" in content
     assert "/dashboard/products/good_girl_50ml/barcode" in content
+
+
+def test_dashboard_prateleira_exibe_filtros_dinamicos_de_marca_e_combina_com_busca(tmp_path: Path) -> None:
+    """
+    Responsabilidade:
+        Garantir que a prateleira trate a marca como filtro e nao como exclusividade.
+
+    Parametros:
+        tmp_path: Diretorio temporario para isolamento do storage.
+
+    Retorno:
+        Nenhum; valida chips de marca e combinacao com busca textual.
+
+    Contexto de uso:
+        Protege a leitura correta da prateleira como localizacao fisica, onde
+        podem coexistir itens de marcas diferentes no mesmo expositor.
+    """
+
+    app = _build_app_with_temp_storage(tmp_path)
+    app.state.product_store_service.upsert_product(
+        ProductRecord(
+            alias="good_girl_50ml",
+            brand="Carolina Herrera",
+            name="Good Girl",
+            variant="50ml",
+            last_known_url="https://example.com/good-girl?sku=50",
+            last_known_sku="sku-50",
+            shelf_number=5,
+        )
+    )
+    app.state.product_store_service.upsert_product(
+        ProductRecord(
+            alias="idole_50ml",
+            brand="Lancôme",
+            name="Idôle",
+            variant="50ml",
+            last_known_url="https://example.com/idole?sku=50",
+            last_known_sku="sku-idole",
+            shelf_number=5,
+        )
+    )
+    request = _build_request(
+        app,
+        method="GET",
+        path=f"/dashboard/prateleiras/5?{urlencode({'brand': 'Lancôme', 'q': 'Idôle'})}",
+    )
+
+    response = routes_dashboard.dashboard_shelf_detail(request, shelf_number=5)
+
+    assert isinstance(response, _TemplateResponse)
+    assert response.status_code == 200
+    content = response.body.decode("utf-8")
+    assert "Referência:" in content
+    assert "Todas" in content
+    assert "Carolina Herrera" in content
+    assert "Lancôme" in content
+    assert "sku-idole" in content
+    assert "sku-50" not in content
 
 
 def test_dashboard_respeita_prateleira_manual_no_cadastro(tmp_path: Path) -> None:

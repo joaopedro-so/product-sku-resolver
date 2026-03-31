@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}{{ shelf.shelf_title if shelf else 'Prateleira' }}{% endblock %}
+{% block title %}{{ page_title if shelf else 'Prateleira' }}{% endblock %}
 
 {% block content %}
 {% if error_message %}
@@ -14,9 +14,10 @@
 {% else %}
 <section class="page-section">
   <div class="search-entry-card">
-    <p class="section-kicker">Prateleira {{ "%02d"|format(shelf.shelf_number) }}</p>
-    <h1 class="page-title">{{ shelf.shelf_title }}</h1>
-    <form class="search-entry-form" method="get" action="/dashboard/prateleiras/{{ shelf.shelf_number }}">
+    <p class="section-kicker">Localização física</p>
+    <h1 class="page-title">Prateleira {{ "%02d"|format(shelf.shelf_number) }}</h1>
+    <p class="section-text">Referência: {{ reference_label }}</p>
+    <form class="search-entry-form search-entry-form--compact" method="get" action="/dashboard/prateleiras/{{ shelf.shelf_number }}">
       <input
         type="search"
         name="q"
@@ -24,8 +25,18 @@
         placeholder="Buscar dentro da prateleira"
         aria-label="Buscar dentro da prateleira"
       />
-      <button class="button" type="submit">Filtrar</button>
+      {% if selected_brand %}
+      <input type="hidden" name="brand" value="{{ selected_brand }}" />
+      {% endif %}
     </form>
+
+    <div class="filter-chip-row" role="list" aria-label="Filtrar por marca nesta prateleira">
+      {% for filter_chip in brand_filters %}
+      <a class="filter-chip {% if filter_chip.is_selected %}filter-chip--active{% endif %}" href="{{ filter_chip.href }}">
+        {{ filter_chip.label }}
+      </a>
+      {% endfor %}
+    </div>
   </div>
 </section>
 
@@ -76,7 +87,7 @@
     {% else %}
     <article class="empty-card">
       <h3>Nenhum produto encontrado nesta prateleira.</h3>
-      <p>Ajuste o filtro ou volte para a lista principal de prateleiras.</p>
+      <p>Ajuste a busca ou o filtro de marca para encontrar outro item.</p>
     </article>
     {% endfor %}
   </div>

@@ -220,6 +220,10 @@ form {
   margin-top: 0.7rem;
 }
 
+.search-entry-form--compact {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .search-entry-form input,
 .form-field input,
 .form-field select {
@@ -489,6 +493,40 @@ form {
 }
 
 .variant-chip--active {
+  border-color: rgba(215, 43, 52, 0.2);
+  background: var(--color-accent-soft);
+  color: var(--color-accent-strong);
+}
+
+.filter-chip-row {
+  display: flex;
+  gap: 0.45rem;
+  overflow-x: auto;
+  margin-top: 0.7rem;
+  padding-bottom: 0.1rem;
+  scrollbar-width: thin;
+}
+
+.filter-chip-row::-webkit-scrollbar {
+  height: 0.35rem;
+}
+
+.filter-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 2rem;
+  padding: 0.42rem 0.78rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-pill);
+  background: #ffffff;
+  color: var(--color-text-soft);
+  white-space: nowrap;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.filter-chip--active {
   border-color: rgba(215, 43, 52, 0.2);
   background: var(--color-accent-soft);
   color: var(--color-accent-strong);
