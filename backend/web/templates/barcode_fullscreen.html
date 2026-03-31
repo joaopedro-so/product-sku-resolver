@@ -32,17 +32,17 @@
     {% if barcode_data_uri %}
     <img
       class="fullscreen-barcode__image"
-      src="{{ build_code128_svg_data_uri(product.last_known_sku, module_width_px=4, bar_height_px=220) }}"
-      alt="Código de barras grande do SKU {{ product.last_known_sku }}"
+      src="{{ build_code128_svg_data_uri(product.variant_code, module_width_px=4, bar_height_px=220) }}"
+      alt="Código de barras grande do código {{ product.variant_code }}"
     />
     {% else %}
     <div class="barcode-panel__empty">Código de barras indisponível.</div>
     {% endif %}
-    <strong class="fullscreen-barcode__sku" title="{{ product.last_known_sku }}">{{ product.last_known_sku }}</strong>
+    <strong class="fullscreen-barcode__sku" title="{{ product.variant_code }}">{{ product.variant_code }}</strong>
   </div>
 
   <div class="fullscreen-barcode__actions">
-    <button class="button button--secondary" type="button" data-copy-text="{{ product.last_known_sku }}">Copiar SKU</button>
+    <button class="button button--secondary" type="button" data-copy-text="{{ product.variant_code }}">Copiar código</button>
     <form method="post" action="/dashboard/products/{{ product.alias }}/update">
       <button class="button" type="submit">Atualizar</button>
     </form>

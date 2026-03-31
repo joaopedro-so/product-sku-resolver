@@ -192,22 +192,23 @@ class ProductStoreService:
             Operação central para cadastro via API e atualizações de resolver.
         """
 
+        normalized_product = self._ensure_page_family_sku(product_to_save)
         products = self._read_all()
         updated_products: List[ProductRecord] = []
         has_replaced_existing = False
 
         for current_product in products:
-            if current_product.alias == product_to_save.alias:
-                updated_products.append(product_to_save)
+            if current_product.alias == normalized_product.alias:
+                updated_products.append(normalized_product)
                 has_replaced_existing = True
             else:
                 updated_products.append(current_product)
 
         if not has_replaced_existing:
-            updated_products.append(product_to_save)
+            updated_products.append(normalized_product)
 
         self._write_all(updated_products)
-        return product_to_save
+        return normalized_product
 
     def replace_product(self, current_alias: str, updated_product: ProductRecord) -> ProductRecord:
         """
@@ -230,13 +231,14 @@ class ProductStoreService:
         if not normalized_current_alias:
             raise KeyError("Alias atual nao pode ser vazio para substituir produto")
 
+        normalized_updated_product = self._ensure_page_family_sku(updated_product)
         products = self._read_all()
         updated_products: List[ProductRecord] = []
         has_replaced_existing = False
 
         for current_product in products:
             if current_product.alias == normalized_current_alias:
-                updated_products.append(updated_product)
+                updated_products.append(normalized_updated_product)
                 has_replaced_existing = True
             else:
                 updated_products.append(current_product)
@@ -245,7 +247,38 @@ class ProductStoreService:
             raise KeyError(f"Produto com alias '{normalized_current_alias}' nao encontrado")
 
         self._write_all(updated_products)
-        return updated_product
+        return normalized_updated_product
+
+    def _ensure_page_family_sku(self, product: ProductRecord) -> ProductRecord:
+        """
+        Responsabilidade:
+            Garantir que o produto carregue o identificador estável da página.
+
+        Parametros:
+            product: Produto que será persistido no storage.
+
+        Retorno:
+            ProductRecord com `page_family_sku` preenchido quando possível.
+
+        Contexto de uso:
+            Centraliza a regra de retrocompatibilidade para que cadastro, edição
+            e update automático compartilhem a mesma derivação do SKU estável.
+        """
+
+        if product.page_family_sku:
+            return product
+
+        return ProductRecord(
+            alias=product.alias,
+            brand=product.brand,
+            name=product.name,
+            variant=product.variant,
+            last_known_url=product.last_known_url,
+            last_known_sku=product.last_known_sku,
+            page_family_sku=ProductRecord.from_dict(product.to_dict()).page_family_sku,
+            shelf_number=product.shelf_number,
+            display_order=product.display_order,
+        )
 
     def delete_product(self, product_alias: str) -> ProductRecord:
         """
@@ -318,6 +351,7 @@ class ProductStoreService:
             variant=existing_product.variant,
             last_known_url=new_url.strip(),
             last_known_sku=new_sku.strip(),
+            page_family_sku=existing_product.page_family_sku,
             shelf_number=existing_product.shelf_number,
             display_order=existing_product.display_order,
         )

@@ -1,8 +1,8 @@
 /*
   Decisao tecnica:
   Este arquivo adiciona apenas interacoes operacionais leves. A ideia e manter
-  o dashboard funcional mesmo sem JavaScript, usando o script para copiar SKU,
-  compartilhar links e alternar variantes sem navegar entre produtos.
+  o dashboard funcional mesmo sem JavaScript, usando o script para copiar
+  codigo da variante, compartilhar links e alternar variantes sem navegar.
 */
 
 function applyVariantSelection(variantRoot, variantOption) {
@@ -19,7 +19,8 @@ function applyVariantSelection(variantRoot, variantOption) {
 
     Contexto de uso:
       Reaproveitado em cards de prateleira e na tela de detalhe para trocar
-      SKU, barcode, links operacionais e imagem sem abrir outro produto.
+      codigo da variante, barcode, links operacionais e imagem sem abrir
+      outro produto.
   */
 
   if (!variantRoot || !variantOption) {
@@ -32,7 +33,7 @@ function applyVariantSelection(variantRoot, variantOption) {
 
   const selectedAlias = variantOption.dataset.variantAlias || "";
   const selectedLabel = variantOption.dataset.variantLabel || "";
-  const selectedSku = variantOption.dataset.variantSku || "";
+  const selectedVariantCode = variantOption.dataset.variantCode || "";
   const selectedDetailHref = variantOption.dataset.variantDetailHref || "";
   const selectedBarcodeHref = variantOption.dataset.variantBarcodeHref || "";
   const selectedUpdateHref = variantOption.dataset.variantUpdateHref || "";
@@ -46,9 +47,9 @@ function applyVariantSelection(variantRoot, variantOption) {
   const selectedTimestamp = variantOption.dataset.variantTimestampValue || "";
   const selectedBarcodeDataUri = variantOption.dataset.variantBarcodeDataUri || "";
 
-  variantRoot.querySelectorAll("[data-variant-sku-label]").forEach((element) => {
-    element.textContent = selectedSku;
-    element.setAttribute("title", selectedSku);
+  variantRoot.querySelectorAll("[data-variant-code-label]").forEach((element) => {
+    element.textContent = selectedVariantCode;
+    element.setAttribute("title", selectedVariantCode);
   });
 
   variantRoot.querySelectorAll("[data-variant-detail-link]").forEach((element) => {
@@ -116,7 +117,7 @@ function applyVariantSelection(variantRoot, variantOption) {
   });
 
   variantRoot.querySelectorAll("[data-variant-copy-trigger]").forEach((element) => {
-    element.setAttribute("data-copy-text", selectedSku);
+    element.setAttribute("data-copy-text", selectedVariantCode);
   });
 
   const variantImage = variantRoot.querySelector("[data-variant-image]");
@@ -127,7 +128,7 @@ function applyVariantSelection(variantRoot, variantOption) {
   const variantBarcodeImage = variantRoot.querySelector("[data-variant-barcode-image]");
   if (variantBarcodeImage && selectedBarcodeDataUri) {
     variantBarcodeImage.setAttribute("src", selectedBarcodeDataUri);
-    variantBarcodeImage.setAttribute("alt", `Código de barras do SKU ${selectedSku}`);
+    variantBarcodeImage.setAttribute("alt", `Código de barras do código ${selectedVariantCode}`);
   }
 
   const storageKey = variantRoot.dataset.variantStorageKey || "";
@@ -192,7 +193,7 @@ document.addEventListener("click", async (event) => {
         copyTrigger.textContent = copyTrigger.dataset.originalLabel || copyTrigger.textContent;
       }, 1200);
     } catch (error) {
-      window.alert(`Não foi possível copiar o SKU: ${error}`);
+      window.alert(`Não foi possível copiar o código: ${error}`);
     }
     return;
   }

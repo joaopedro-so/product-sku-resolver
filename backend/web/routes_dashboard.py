@@ -1103,7 +1103,7 @@ def _build_group_variant_payload(
     barcode_data_uri = None
     if include_barcode_data_uri:
         barcode_data_uri = build_code128_svg_data_uri(
-            variant_product.last_known_sku,
+            variant_product.variant_code,
             module_width_px=barcode_module_width_px,
             bar_height_px=barcode_height_px,
         )
@@ -1111,7 +1111,8 @@ def _build_group_variant_payload(
     return {
         "alias": variant_product.alias,
         "label": variant_label,
-        "sku": variant_product.last_known_sku,
+        "variant_code": variant_product.variant_code,
+        "parent_page_sku": grouped_product.parent_page_sku,
         "image_url": preview.image_url if preview else None,
         "detail_href": f"/dashboard/products/{variant_product.alias}",
         "barcode_href": f"/dashboard/products/{variant_product.alias}/barcode",
@@ -1148,7 +1149,7 @@ def _build_group_search_text(grouped_product: GroupedParentProduct) -> str:
         searchable_parts.extend(
             [
                 variant.label,
-                variant.product.last_known_sku,
+                variant.product.variant_code,
                 variant.product.alias,
                 variant.product.name,
             ]
@@ -1426,7 +1427,8 @@ def _build_shelf_detail_context(request: Request, shelf_number: int) -> Dict[str
                 "group_id": grouped_product.group_id,
                 "name": _build_short_product_name(grouped_product.parent_name, grouped_product.brand),
                 "brand": grouped_product.brand,
-                "sku": selected_variant.product.last_known_sku,
+                "variant_code": selected_variant.product.variant_code,
+                "parent_page_sku": grouped_product.parent_page_sku,
                 "image_url": selected_preview.image_url if selected_preview else None,
                 "barcode_href": f"/dashboard/products/{selected_variant.alias}/barcode",
                 "detail_href": f"/dashboard/products/{selected_variant.alias}",
@@ -1902,7 +1904,7 @@ def _build_product_detail_context(request: Request, alias: str) -> Dict[str, Any
             "activity": activity,
             "shelf_placement": shelf_placement,
             "barcode_data_uri": build_code128_svg_data_uri(
-                selected_variant.product.last_known_sku,
+                selected_variant.product.variant_code,
                 module_width_px=3,
                 bar_height_px=124,
             ),

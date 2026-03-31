@@ -51,7 +51,7 @@
             data-variant-option
             data-variant-alias="{{ variant.alias }}"
             data-variant-label="{{ variant.label }}"
-            data-variant-sku="{{ variant.sku }}"
+            data-variant-code="{{ variant.variant_code }}"
             data-variant-detail-href="{{ variant.detail_href }}"
             data-variant-barcode-href="{{ variant.barcode_href }}"
             data-variant-update-href="{{ variant.update_href }}"
@@ -73,8 +73,8 @@
 
       <div class="detail-summary">
         <div>
-          <span class="detail-summary__label">SKU atual</span>
-          <strong class="detail-summary__sku" title="{{ product.last_known_sku }}" data-variant-sku-label>{{ product.last_known_sku }}</strong>
+          <span class="detail-summary__label">Código da variante</span>
+          <strong class="detail-summary__sku" title="{{ product.variant_code }}" data-variant-code-label>{{ product.variant_code }}</strong>
         </div>
         <div>
           <span class="detail-summary__label">Última sincronização</span>
@@ -95,14 +95,14 @@
         <img
           class="barcode-panel__image"
           src="{{ barcode_data_uri }}"
-          alt="Código de barras do SKU {{ product.last_known_sku }}"
+          alt="Código de barras do código {{ product.variant_code }}"
           data-variant-barcode-image
         />
         {% else %}
         <div class="barcode-panel__empty">Código de barras indisponível para o SKU atual.</div>
         {% endif %}
 
-        <strong class="barcode-panel__sku" title="{{ product.last_known_sku }}" data-variant-sku-label>{{ product.last_known_sku }}</strong>
+        <strong class="barcode-panel__sku" title="{{ product.variant_code }}" data-variant-code-label>{{ product.variant_code }}</strong>
       </article>
 
       <div class="detail-actions">
@@ -110,7 +110,7 @@
         <form method="post" action="/dashboard/products/{{ product.alias }}/update" data-variant-update-form>
           <button class="button" type="submit">Atualizar agora</button>
         </form>
-        <button class="button button--ghost" type="button" data-copy-text="{{ product.last_known_sku }}" data-variant-copy-trigger>Copiar SKU</button>
+        <button class="button button--ghost" type="button" data-copy-text="{{ product.variant_code }}" data-variant-copy-trigger>Copiar código</button>
       </div>
     </div>
   </div>
@@ -128,6 +128,10 @@
         <div>
           <dt>Variante</dt>
           <dd data-variant-label-only>{{ selected_variant.label if selected_variant else product.variant or 'Sem variante informada' }}</dd>
+        </div>
+        <div>
+          <dt>SKU da página</dt>
+          <dd>{{ parent_product.parent_page_sku or 'Não disponível' }}</dd>
         </div>
         <div>
           <dt>Localização</dt>
@@ -203,7 +207,7 @@
   <form method="post" action="{{ selected_variant.update_href }}" data-variant-update-form>
     <button class="button" type="submit">Atualizar agora</button>
   </form>
-  <button class="button button--ghost" type="button" data-copy-text="{{ selected_variant.sku }}" data-variant-copy-trigger>Copiar SKU</button>
+  <button class="button button--ghost" type="button" data-copy-text="{{ selected_variant.variant_code }}" data-variant-copy-trigger>Copiar código</button>
   {% endif %}
 </div>
 </div>

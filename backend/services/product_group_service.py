@@ -55,6 +55,7 @@ class GroupedParentProduct:
         canonical_key: Chave interna usada para agrupamento deterministico.
         parent_name: Nome base do perfume sem separar por volume.
         brand: Marca principal usada na exibicao.
+        parent_page_sku: Identificador estavel da pagina do produto pai.
         variants: Lista ordenada de variantes pertencentes ao mesmo perfume.
 
     Retorno:
@@ -69,6 +70,7 @@ class GroupedParentProduct:
     canonical_key: str
     parent_name: str
     brand: str
+    parent_page_sku: str
     variants: List[ProductVariantGroupItem]
 
 
@@ -105,7 +107,7 @@ class ProductGroupService:
         """
 
         grouped_items_map: Dict[str, List[ProductVariantGroupItem]] = {}
-        group_identity_map: Dict[str, tuple[str, str]] = {}
+        group_identity_map: Dict[str, tuple[str, str, str]] = {}
 
         for product in products:
             canonical_key = self._build_group_key(product)
@@ -115,12 +117,13 @@ class ProductGroupService:
                 (
                     self._derive_parent_name(product),
                     self._resolve_display_brand(product),
+                    product.page_family_sku,
                 ),
             )
 
         grouped_products: List[GroupedParentProduct] = []
         for canonical_key, variants in grouped_items_map.items():
-            parent_name, brand = group_identity_map[canonical_key]
+            parent_name, brand, parent_page_sku = group_identity_map[canonical_key]
             ordered_variants = sorted(
                 variants,
                 key=lambda variant_item: (
@@ -135,6 +138,7 @@ class ProductGroupService:
                     canonical_key=canonical_key,
                     parent_name=parent_name,
                     brand=brand,
+                    parent_page_sku=parent_page_sku,
                     variants=ordered_variants,
                 )
             )
@@ -247,6 +251,9 @@ class ProductGroupService:
             Prioriza a URL canonica sem SKU porque, no varejo atual, ela costuma
             representar o produto pai, enquanto a query muda por variante.
         """
+
+        if product.page_family_sku:
+            return f"page-sku::{product.page_family_sku}"
 
         canonical_url_key = self._build_canonical_url_key(product.last_known_url)
         normalized_parent_name = normalize_text(self._derive_parent_name(product))

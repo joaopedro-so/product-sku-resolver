@@ -80,6 +80,38 @@ def test_update_product_sku_and_url(tmp_path: Path) -> None:
     assert updated_product.last_known_url == "https://nova"
 
 
+def test_upsert_deriva_page_family_sku_a_partir_da_url(tmp_path: Path) -> None:
+    """
+    Responsabilidade:
+        Garantir que o storage preencha automaticamente o SKU estável da página.
+
+    Parametros:
+        tmp_path: Diretório temporário fornecido pelo pytest.
+
+    Retorno:
+        Nenhum; valida derivação do identificador pai a partir da URL.
+
+    Contexto de uso:
+        Protege a separação entre o identificador estável da página do produto
+        e o código operacional da variante usado no barcode.
+    """
+
+    store = ProductStoreService(tmp_path / "products.json")
+    product = ProductRecord(
+        alias="example",
+        brand="Marca",
+        name="Produto",
+        variant="100ml",
+        last_known_url="https://www.lojasrenner.com.br/p/produto/-/A-532004871-br.lr?sku=532004934",
+        last_known_sku="532004934",
+    )
+
+    persisted_product = store.upsert_product(product)
+
+    assert persisted_product.page_family_sku == "532004871"
+    assert persisted_product.variant_code == "532004934"
+
+
 def test_update_product_sku_and_url_preserva_prateleira_manual(tmp_path: Path) -> None:
     """
     Responsabilidade:

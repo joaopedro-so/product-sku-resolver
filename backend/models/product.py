@@ -7,6 +7,7 @@ camadas de serviço, mantendo validações simples e explícitas.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import Any, Dict
 
@@ -23,7 +24,8 @@ class ProductRecord:
         name: Nome estável do produto usado em validações de correspondência.
         variant: Variante estável (ex.: volume, cor, tamanho).
         last_known_url: URL mais recente considerada válida para o produto.
-        last_known_sku: SKU mais recente aceito após validação de identidade.
+        last_known_sku: Código operacional mais recente da variante selecionada.
+        page_family_sku: Identificador estável da página/produto pai.
 
     Retorno:
         Instância tipada de ProductRecord para uso interno no backend.
@@ -39,6 +41,7 @@ class ProductRecord:
     variant: str
     last_known_url: str
     last_known_sku: str
+    page_family_sku: str = ""
     shelf_number: int | None = None
     display_order: int | None = None
 
@@ -75,6 +78,8 @@ class ProductRecord:
                 f"Registro de produto inválido: campos ausentes: {missing_description}"
             )
 
+        normalized_url = str(source["last_known_url"]).strip()
+
         # Decisão técnica:
         # Forçamos string para reduzir inconsistência de tipos vindos de JSON
         # ou payloads externos, simplificando as camadas seguintes.
@@ -83,8 +88,12 @@ class ProductRecord:
             brand=str(source["brand"]).strip(),
             name=str(source["name"]).strip(),
             variant=str(source["variant"]).strip(),
-            last_known_url=str(source["last_known_url"]).strip(),
+            last_known_url=normalized_url,
             last_known_sku=str(source["last_known_sku"]).strip(),
+            page_family_sku=_resolve_page_family_sku(
+                raw_page_family_sku=source.get("page_family_sku"),
+                last_known_url=normalized_url,
+            ),
             shelf_number=_optional_to_int(source.get("shelf_number")),
             display_order=_optional_to_int(source.get("display_order")),
         )
@@ -112,6 +121,7 @@ class ProductRecord:
             "variant": self.variant,
             "last_known_url": self.last_known_url,
             "last_known_sku": self.last_known_sku,
+            "page_family_sku": self.page_family_sku,
         }
         if self.shelf_number is not None:
             payload["shelf_number"] = self.shelf_number
@@ -119,21 +129,40 @@ class ProductRecord:
             payload["display_order"] = self.display_order
         return payload
 
+    @property
+    def variant_code(self) -> str:
+        """
+        Responsabilidade:
+            Expor o código operacional da variante com nome semântico claro.
+
+        Parâmetros:
+            Nenhum.
+
+        Retorno:
+            Código atualmente usado para operação, barcode e conferência.
+
+        Contexto de uso:
+            Ajuda a separar mentalmente o código da variante do identificador
+            estável da página, sem quebrar compatibilidade com o storage atual.
+        """
+
+        return self.last_known_sku
+
 
 def _optional_to_int(raw_value: Any) -> int | None:
     """
     Responsabilidade:
         Normalizar um valor opcional para inteiro de forma resiliente.
 
-    ParÃ¢metros:
-        raw_value: Valor bruto vindo de JSON ou formulÃ¡rio.
+    Parâmetros:
+        raw_value: Valor bruto vindo de JSON ou formulário.
 
     Retorno:
-        Inteiro quando houver conteÃºdo vÃ¡lido; caso contrÃ¡rio, None.
+        Inteiro quando houver conteúdo válido; caso contrário, None.
 
     Contexto de uso:
-        MantÃ©m compatibilidade com produtos antigos que ainda nÃ£o tinham
-        localizaÃ§Ã£o de prateleira persistida.
+        Mantém compatibilidade com produtos antigos que ainda não tinham
+        localização de prateleira persistida.
     """
 
     if raw_value in (None, ""):
@@ -143,3 +172,32 @@ def _optional_to_int(raw_value: Any) -> int | None:
         return int(raw_value)
     except (TypeError, ValueError):
         return None
+
+
+def _resolve_page_family_sku(raw_page_family_sku: Any, last_known_url: str) -> str:
+    """
+    Responsabilidade:
+        Resolver o identificador estável da página a partir do dado persistido
+        ou da URL conhecida quando o campo ainda não existir no JSON.
+
+    Parâmetros:
+        raw_page_family_sku: Valor bruto opcional vindo do storage.
+        last_known_url: URL usada como fallback para derivar o SKU da página.
+
+    Retorno:
+        Identificador estável do produto pai, ou string vazia.
+
+    Contexto de uso:
+        Mantém retrocompatibilidade com registros antigos enquanto introduz a
+        separação entre SKU da página e código operacional da variante.
+    """
+
+    normalized_page_family_sku = str(raw_page_family_sku or "").strip()
+    if normalized_page_family_sku:
+        return normalized_page_family_sku
+
+    url_match = re.search(r"/A-(\d+)-", str(last_known_url), flags=re.IGNORECASE)
+    if url_match:
+        return url_match.group(1).strip()
+
+    return ""

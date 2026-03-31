@@ -64,7 +64,7 @@
             data-variant-option
             data-variant-alias="{{ variant.alias }}"
             data-variant-label="{{ variant.label }}"
-            data-variant-sku="{{ variant.sku }}"
+            data-variant-code="{{ variant.variant_code }}"
             data-variant-detail-href="{{ variant.detail_href }}"
             data-variant-barcode-href="{{ variant.barcode_href }}"
             data-variant-image-url="{{ variant.image_url or '' }}"
@@ -75,7 +75,7 @@
           {% endfor %}
         </div>
 
-        <p class="shelf-product-card__sku" title="{{ card.sku }}">SKU <span data-variant-sku-label>{{ card.sku }}</span></p>
+        <p class="shelf-product-card__sku" title="{{ card.variant_code }}">Código <span data-variant-code-label>{{ card.variant_code }}</span></p>
         <p class="shelf-product-card__status" data-variant-status-label>{{ card.status_label }}</p>
 
         <div class="shelf-product-card__actions">
