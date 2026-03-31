@@ -1,7 +1,7 @@
 {
   "name": "Perfumaria Prestígio 394",
-  "short_name": "Prestígio 394",
-  "description": "Sistema operacional de vitrine para conferência de perfumes, variantes e códigos.",
+  "short_name": "P394",
+  "description": "Sistema de conferência premium para perfumes, variantes e códigos.",
   "start_url": "/dashboard",
   "display": "standalone",
   "background_color": "#111111",

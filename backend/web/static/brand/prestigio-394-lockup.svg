@@ -1,18 +1,7 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 180" role="img" aria-labelledby="title desc">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 560 96" role="img" aria-labelledby="title desc">
   <title id="title">Perfumaria Prestígio 394</title>
-  <desc id="desc">Wordmark principal com símbolo e nome completo do sistema.</desc>
-  <rect width="720" height="180" rx="32" fill="none"/>
-  <g transform="translate(10 18)">
-    <rect x="0" y="0" width="142" height="142" rx="34" fill="#111111"/>
-    <rect x="14" y="14" width="114" height="114" rx="26" fill="#F7F3EF"/>
-    <rect x="26" y="26" width="90" height="10" rx="5" fill="#B89A6A"/>
-    <path d="M44 54h31c16 0 27 9 27 24 0 16-11 25-28 25H61v24H44V54Zm17 14v22h11c8 0 13-4 13-11 0-7-5-11-13-11H61Z" fill="#111111"/>
-    <text x="71" y="126" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="30" font-weight="800" letter-spacing="6" fill="#D72638">394</text>
-  </g>
-  <g transform="translate(176 44)" fill="#111111">
-    <text x="0" y="28" font-family="Georgia, 'Times New Roman', serif" font-size="34" font-weight="700" letter-spacing="3">PERFUMARIA</text>
-    <text x="0" y="78" font-family="Georgia, 'Times New Roman', serif" font-size="58" font-weight="700" letter-spacing="1">Prestígio 394</text>
-    <text x="0" y="118" font-family="Segoe UI, Arial, sans-serif" font-size="18" font-weight="700" letter-spacing="5" fill="#8E8A86">DISPLAY OPERATING SYSTEM</text>
-    <rect x="0" y="134" width="260" height="4" rx="2" fill="#D72638"/>
-  </g>
+  <desc id="desc">Wordmark horizontal minimalista da Perfumaria Prestígio 394.</desc>
+  <rect width="560" height="96" fill="none" />
+  <text x="0" y="40" font-family="'Segoe UI', Arial, sans-serif" font-size="17" font-weight="700" letter-spacing="5" fill="#BFB8B0">PERFUMARIA</text>
+  <text x="0" y="78" font-family="'Segoe UI', Arial, sans-serif" font-size="38" font-weight="800" letter-spacing="0.5" fill="#FCFBF9">Prestígio 394</text>
 </svg>
