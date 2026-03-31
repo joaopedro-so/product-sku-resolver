@@ -41,9 +41,9 @@ function applyVariantSelection(variantRoot, variantOption) {
   const selectedSaveHref = variantOption.dataset.variantSaveHref || "";
   const selectedProductUrl = variantOption.dataset.variantProductUrl || "";
   const selectedImageUrl = variantOption.dataset.variantImageUrl || "";
-  const selectedStatusLabel = variantOption.dataset.variantStatusLabel || "";
-  const selectedStatusTone = variantOption.dataset.variantStatusTone || "";
-  const selectedTimestamp = variantOption.dataset.variantTimestamp || "";
+  const selectedStatusLabel = variantOption.dataset.variantStatusValue || "";
+  const selectedStatusTone = variantOption.dataset.variantStatusToneValue || "";
+  const selectedTimestamp = variantOption.dataset.variantTimestampValue || "";
   const selectedBarcodeDataUri = variantOption.dataset.variantBarcodeDataUri || "";
 
   variantRoot.querySelectorAll("[data-variant-sku-label]").forEach((element) => {
