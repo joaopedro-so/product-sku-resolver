@@ -1,26 +1,31 @@
 {#
   Componente reutilizável:
-  Este card foi reduzido para a leitura operacional essencial. Ele prioriza
-  imagem, nome, SKU em uma linha e status curto, com apenas duas ações.
+  Este card assume a nova linguagem de nicho premium, com mídia em moldura,
+  plaqueta técnica para o código e ações integradas ao layout operacional.
 #}
 <article class="product-card">
   <a class="product-card__media" href="/dashboard/products/{{ card.alias }}">
-    {% if card.image_url %}
-    <img src="{{ card.image_url }}" alt="Imagem do produto {{ card.name }}" loading="lazy" />
-    {% else %}
-    <div class="product-card__placeholder">Sem imagem</div>
-    {% endif %}
+    <span class="product-card__media-frame">
+      {% if card.image_url %}
+      <img src="{{ card.image_url }}" alt="Imagem do produto {{ card.name }}" loading="lazy" />
+      {% else %}
+      <div class="product-card__placeholder">Sem imagem</div>
+      {% endif %}
+    </span>
   </a>
 
   <div class="product-card__content">
+    <p class="product-card__eyebrow">{{ card.brand }}</p>
     <a class="product-card__title-link" href="/dashboard/products/{{ card.alias }}">
       <h3 class="product-card__title">{{ card.name }}</h3>
     </a>
     <p class="product-card__subtitle">{{ card.variant_summary }}</p>
-    <p class="product-card__sku" title="{{ card.sku }}">SKU {{ card.sku }}</p>
-    <p class="product-card__status">
-      {{ card.activity.status_label }}{% if card.activity.status_key != 'idle' and card.activity.timestamp_label %} • {{ card.activity.timestamp_label }}{% endif %}
-    </p>
+    <div class="product-card__technical-line">
+      <p class="product-card__sku" title="{{ card.sku }}">Código {{ card.sku }}</p>
+      <p class="product-card__status">
+        {{ card.activity.status_label }}{% if card.activity.status_key != 'idle' and card.activity.timestamp_label %} • {{ card.activity.timestamp_label }}{% endif %}
+      </p>
+    </div>
 
     <div class="product-card__actions">
       <a class="button button--secondary button--small" href="/dashboard/products/{{ card.alias }}">Abrir</a>

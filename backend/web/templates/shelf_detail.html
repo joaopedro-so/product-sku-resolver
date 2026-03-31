@@ -13,8 +13,11 @@
 </section>
 {% else %}
 <section class="page-section">
-  <div class="search-entry-card">
-    <p class="section-kicker">Localização física</p>
+  <div class="search-entry-card search-entry-card--location">
+    <div class="search-entry-card__topline">
+      <p class="section-kicker">Localização física</p>
+      <span class="hero-pill">Módulo em operação</span>
+    </div>
     <h1 class="page-title">Prateleira {{ "%02d"|format(shelf.shelf_number) }}</h1>
     <p class="section-text">Referência: {{ reference_label }}</p>
     <form class="search-entry-form search-entry-form--compact" method="get" action="/dashboard/prateleiras/{{ shelf.shelf_number }}">
@@ -45,16 +48,18 @@
     {% for card in products %}
     <article class="shelf-product-card" data-variant-switcher data-variant-storage-key="shelf-{{ card.group_id }}">
       <a class="shelf-product-card__media" href="{{ card.detail_href }}" data-variant-image-link>
-        {% if card.image_url %}
-        <img src="{{ card.image_url }}" alt="Imagem do produto {{ card.name }}" loading="lazy" data-variant-image />
-        {% else %}
-        <div class="product-card__placeholder">Sem imagem</div>
-        {% endif %}
+        <span class="shelf-product-card__media-frame">
+          {% if card.image_url %}
+          <img src="{{ card.image_url }}" alt="Imagem do produto {{ card.name }}" loading="lazy" data-variant-image />
+          {% else %}
+          <div class="product-card__placeholder">Sem imagem</div>
+          {% endif %}
+        </span>
       </a>
 
       <div class="shelf-product-card__content">
+        <p class="shelf-product-card__brand">{{ card.brand }}</p>
         <a class="shelf-product-card__title" href="{{ card.detail_href }}" data-variant-detail-link>{{ card.name }}</a>
-        <p class="shelf-product-card__meta">{{ card.brand }}</p>
 
         <div class="variant-chip-list" role="list" aria-label="Variantes disponíveis de {{ card.name }}">
           {% for variant in card.variants %}
@@ -75,8 +80,10 @@
           {% endfor %}
         </div>
 
-        <p class="shelf-product-card__sku" title="{{ card.variant_code }}">Código <span data-variant-code-label>{{ card.variant_code }}</span></p>
-        <p class="shelf-product-card__status" data-variant-status-label>{{ card.status_label }}</p>
+        <div class="shelf-product-card__technical-line">
+          <p class="shelf-product-card__sku" title="{{ card.variant_code }}">SKU <span data-variant-code-label>{{ card.variant_code }}</span></p>
+          <p class="shelf-product-card__status" data-variant-status-label>{{ card.status_label }}</p>
+        </div>
 
         <div class="shelf-product-card__actions">
           <a class="button button--secondary button--small" href="{{ card.barcode_href }}" data-variant-barcode-link>Código</a>

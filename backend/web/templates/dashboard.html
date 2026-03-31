@@ -4,15 +4,34 @@
 
 {% block content %}
 <section class="page-section">
-  <div class="search-entry-card">
-    <p class="section-kicker">Perfumaria Prestígio</p>
-    <h1 class="page-title">Perfumaria Prestígio</h1>
-    <p class="section-text">Localização rápida para conferência</p>
+  <div class="search-entry-card search-entry-card--hero">
+    <div class="search-entry-card__topline">
+      <p class="section-kicker">Perfumaria Prestígio 394</p>
+      <span class="hero-pill">Vitrine operacional</span>
+    </div>
+    <div class="hero-heading-block">
+      <h1 class="page-title">Perfumaria Prestígio</h1>
+      <p class="section-text">Sistema de localização rápida para conferência, código e leitura em vitrine premium.</p>
+    </div>
     {% if import_feedback %}
     <div class="alert-box alert-box--{{ import_feedback.type }}">
       <p>{{ import_feedback.message }}</p>
     </div>
     {% endif %}
+    <div class="hero-stat-row">
+      <div class="hero-stat">
+        <strong>09</strong>
+        <span>módulos físicos</span>
+      </div>
+      <div class="hero-stat">
+        <strong>{{ shelves|length }}</strong>
+        <span>placas de marca</span>
+      </div>
+      <div class="hero-stat">
+        <strong>394</strong>
+        <span>loja referência</span>
+      </div>
+    </div>
     <form class="search-entry-form" method="get" action="/dashboard/search">
       <input
         type="search"
@@ -20,7 +39,7 @@
         placeholder="Buscar produto, marca ou SKU"
         aria-label="Buscar produto, marca ou SKU"
       />
-      <button class="button" type="submit">Buscar</button>
+      <button class="button" type="submit">Buscar catálogo</button>
     </form>
     <form class="inline-admin-form" method="post" action="{{ prestige_shelf_import_action_url }}">
       <button class="button button--ghost button--small" type="submit">Importar prateleira 03</button>
@@ -29,6 +48,12 @@
 </section>
 
 <section class="page-section">
+  <div class="section-heading">
+    <div>
+      <p class="section-kicker">Prateleiras</p>
+      <h2 class="section-title">Placas de vitrine</h2>
+    </div>
+  </div>
   <div class="shelf-list">
     {% for shelf in shelves %}
     <article
@@ -52,7 +77,7 @@
           {% endif %}
           <p class="section-text">{{ shelf.product_count }} produto(s)</p>
         </div>
-        <a class="button button--secondary" href="{{ shelf.href }}">Ver produtos</a>
+        <a class="button button--secondary" href="{{ shelf.href }}">Acessar</a>
       </div>
     </article>
     {% endfor %}

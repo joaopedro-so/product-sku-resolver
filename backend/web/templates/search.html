@@ -5,6 +5,11 @@
 {% block content %}
 <section class="page-section">
   <div class="search-screen-header">
+    <div class="search-screen-header__copy">
+      <p class="section-kicker">Catálogo técnico</p>
+      <h1 class="section-title">Buscar perfumes e códigos</h1>
+    </div>
+
     <form class="search-entry-form search-entry-form--stacked" method="get" action="/dashboard/search">
       <input
         type="search"
@@ -20,7 +25,7 @@
     </form>
 
     <details class="filter-sheet" {% if filters.brand or filters.sync_status or filters.updated_scope or filters.saved_only or filters.image_only or filters.sort != 'recent' %}open{% endif %}>
-      <summary>Filtros e ordenação</summary>
+      <summary>Filtrar e ordenar</summary>
       <form class="filter-form" method="get" action="/dashboard/search">
         <input type="hidden" name="q" value="{{ filters.q }}" />
 
@@ -73,7 +78,7 @@
         </label>
 
         <div class="filter-form__actions">
-          <button class="button" type="submit">Aplicar</button>
+          <button class="button" type="submit">Aplicar filtros</button>
         </div>
       </form>
     </details>
@@ -84,7 +89,7 @@
   <div class="section-heading">
     <div>
       <p class="section-kicker">Resultados</p>
-      <h1 class="section-title">{{ results_count }} produto(s)</h1>
+      <h2 class="section-title">{{ results_count }} produto(s)</h2>
     </div>
     <a class="button button--secondary button--small" href="/dashboard/products/new">Novo produto</a>
   </div>
