@@ -145,6 +145,59 @@ class FakePageFetcher:
         )
 
 
+class FakeMappedPageFetcher:
+    """
+    Responsabilidade:
+        Simular multiplas paginas remotas para testes de importacao interna.
+
+    Parametros:
+        responses_by_url: Mapa entre cada URL consultada e o HTML correspondente.
+
+    Retorno:
+        Instancia fake compativel com o contrato esperado pelo dashboard.
+
+    Contexto de uso:
+        Utilizada quando a rota sob teste precisa validar mais de uma pagina
+        remota, como acontece na importacao curada de seed interno.
+    """
+
+    def __init__(self, responses_by_url: dict[str, FetchResult]) -> None:
+        """
+        Responsabilidade:
+            Guardar o conjunto de respostas fake que serao usadas no teste.
+
+        Parametros:
+            responses_by_url: Dicionario indexado pela URL esperada.
+
+        Retorno:
+            Nenhum.
+
+        Contexto de uso:
+            Mantem o fake pequeno e explicito, sem depender de rede.
+        """
+
+        self.responses_by_url = responses_by_url
+
+    def fetch_page(self, target_url: str) -> FetchResult:
+        """
+        Responsabilidade:
+            Retornar a resposta fake correspondente a URL solicitada.
+
+        Parametros:
+            target_url: URL consultada pelo fluxo sob teste.
+
+        Retorno:
+            FetchResult configurado previamente pelo teste.
+
+        Contexto de uso:
+            Permite simular varias paginas da Renner em um unico cenario.
+        """
+
+        if target_url not in self.responses_by_url:
+            raise AssertionError(f"URL nao prevista no teste: {target_url}")
+        return self.responses_by_url[target_url]
+
+
 class FailingPersistProductStore(ProductStoreService):
     """
     Responsabilidade:
@@ -343,6 +396,85 @@ def test_dashboard_home_carrega_lista_de_produtos(tmp_path: Path) -> None:
     assert "Prateleira 08 — Giorgio Armani" in content
     assert "Prateleira 09 — Ralph Lauren" in content
     assert "Buscar produto, marca ou SKU" in content
+    assert "Importar prateleira 03" in content
+
+
+def test_dashboard_importa_seed_interno_pela_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    Responsabilidade:
+        Garantir que a acao web importe o seed interno no storage atual.
+
+    Parametros:
+        tmp_path: Diretorio temporario para isolar o arquivo de produtos.
+        monkeypatch: Fixture do pytest para redirecionar o seed interno.
+
+    Retorno:
+        Nenhum; valida redirecionamento e persistencia dos itens importados.
+
+    Contexto de uso:
+        Protege o fluxo pensado para a Railway, onde a importacao precisa
+        acontecer pelo proprio painel web sem shell manual.
+    """
+
+    seed_file_path = tmp_path / "seed_import.json"
+    seed_file_path.write_text(
+        json.dumps(
+            {
+                "entries": [
+                    {
+                        "alias": "produto_importado_50ml",
+                        "brand": "Marca Importada",
+                        "name": "Produto Importado",
+                        "variant": "50ml",
+                        "sku": "123456",
+                        "page_url": "https://www.lojasrenner.com.br/p/produto-importado/-/A-123-br.lr",
+                        "shelf_number": 3,
+                        "display_order": 1,
+                        "expected_title_fragment": "produto importado",
+                    }
+                ]
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        routes_dashboard,
+        "resolve_builtin_curated_seed_file",
+        lambda seed_name: seed_file_path,
+    )
+
+    app = _build_app_with_temp_storage(tmp_path)
+    app.state.product_resolver = FakeResolver(
+        fetcher=FakeMappedPageFetcher(
+            {
+                "https://www.lojasrenner.com.br/p/produto-importado/-/A-123-br.lr": FetchResult(
+                    final_url="https://www.lojasrenner.com.br/p/produto-importado/-/A-123-br.lr",
+                    status_code=200,
+                    html_content=(
+                        "<html><head>"
+                        "<title>Produto Importado 50ml - Lojas Renner</title>"
+                        "<meta property=\"og:title\" content=\"Produto Importado 50ml - Lojas Renner\"/>"
+                        "</head><body>"
+                        "<input type=\"radio\" data-name=\"50ml\" data-sku=\"123456\" />"
+                        "</body></html>"
+                    ),
+                )
+            }
+        )
+    )
+    request = _build_request(app, method="POST", path="/dashboard/imports/prestige-shelf-03")
+
+    response = routes_dashboard.dashboard_import_prestige_shelf_03(request)
+
+    assert isinstance(response, RedirectResponse)
+    assert response.status_code == 303
+    assert "import_status=success" in response.headers["location"]
+    stored_product = app.state.product_store_service.get_by_alias("produto_importado_50ml")
+    assert stored_product is not None
+    assert stored_product.shelf_number == 3
+    assert stored_product.last_known_sku == "123456"
 
 
 def test_dashboard_abre_detalhe_da_prateleira_com_produtos_alocados(tmp_path: Path) -> None:

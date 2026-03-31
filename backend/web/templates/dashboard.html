@@ -8,6 +8,11 @@
     <p class="section-kicker">Perfumaria Prestígio</p>
     <h1 class="page-title">Perfumaria Prestígio</h1>
     <p class="section-text">Localização rápida para conferência</p>
+    {% if import_feedback %}
+    <div class="alert-box alert-box--{{ import_feedback.type }}">
+      <p>{{ import_feedback.message }}</p>
+    </div>
+    {% endif %}
     <form class="search-entry-form" method="get" action="/dashboard/search">
       <input
         type="search"
@@ -16,6 +21,9 @@
         aria-label="Buscar produto, marca ou SKU"
       />
       <button class="button" type="submit">Buscar</button>
+    </form>
+    <form class="inline-admin-form" method="post" action="{{ prestige_shelf_import_action_url }}">
+      <button class="button button--ghost button--small" type="submit">Importar prateleira 03</button>
     </form>
   </div>
 </section>

@@ -16,6 +16,7 @@ from urllib.parse import ParseResult, parse_qsl, urlencode, urlparse, urlunparse
 
 from backend.models.product import ProductRecord
 from backend.services.product_store_service import ProductStoreService
+from backend.services.storage_path_service import resolve_project_file
 from backend.utils.fetcher import Fetcher
 from backend.utils.parser import PageData, parse_page_data
 
@@ -363,3 +364,26 @@ class CuratedRennerImportService:
                 parsed_url.fragment,
             )
         )
+
+
+def resolve_builtin_curated_seed_file(seed_name: str) -> Path:
+    """
+    Responsabilidade:
+        Resolver o caminho de um seed interno embarcado no codigo do projeto.
+
+    Parametros:
+        seed_name: Nome logico do seed sem extensao nem caminho.
+
+    Retorno:
+        Path absoluto do arquivo JSON versionado no repositorio.
+
+    Contexto de uso:
+        Permite que o dashboard e scripts internos leiam seeds curados mesmo
+        quando a pasta `data/` estiver montada como volume na Railway.
+    """
+
+    normalized_seed_name = str(seed_name).strip().replace("\\", "/").split("/")[-1]
+    if not normalized_seed_name:
+        raise ValueError("O nome do seed interno nao pode ser vazio")
+
+    return resolve_project_file(f"backend/resources/imports/{normalized_seed_name}.json")

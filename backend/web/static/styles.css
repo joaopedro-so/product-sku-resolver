@@ -220,6 +220,10 @@ form {
   margin-top: 0.7rem;
 }
 
+.inline-admin-form {
+  margin-top: 0.65rem;
+}
+
 .search-entry-form--compact {
   grid-template-columns: minmax(0, 1fr);
 }

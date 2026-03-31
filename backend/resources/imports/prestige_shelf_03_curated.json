@@ -1,0 +1,224 @@
+{
+  "entries": [
+    {
+      "alias": "calvin_klein_ck_one_100ml",
+      "brand": "Calvin Klein",
+      "name": "CK One",
+      "variant": "100ml",
+      "sku": "519045310",
+      "page_url": "https://www.lojasrenner.com.br/p/perfume-ck-one-unissex-eau-de-toilette/-/A-519045301-br.lr",
+      "shelf_number": 3,
+      "display_order": 1,
+      "expected_title_fragment": "ck one"
+    },
+    {
+      "alias": "calvin_klein_ck_one_200ml",
+      "brand": "Calvin Klein",
+      "name": "CK One",
+      "variant": "200ml",
+      "sku": "519045328",
+      "page_url": "https://www.lojasrenner.com.br/p/perfume-ck-one-unissex-eau-de-toilette/-/A-519045301-br.lr",
+      "shelf_number": 3,
+      "display_order": 2,
+      "expected_title_fragment": "ck one"
+    },
+    {
+      "alias": "calvin_klein_ck_her_50ml",
+      "brand": "Calvin Klein",
+      "name": "CK Her",
+      "variant": "50ml",
+      "sku": "519032834",
+      "page_url": "https://www.lojasrenner.com.br/p/perfume-calvin-klein-her-feminino-eau-de-toilette/-/A-519032818-br.lr",
+      "shelf_number": 3,
+      "display_order": 3,
+      "expected_title_fragment": "calvin klein her"
+    },
+    {
+      "alias": "calvin_klein_ck_her_100ml",
+      "brand": "Calvin Klein",
+      "name": "CK Her",
+      "variant": "100ml",
+      "sku": "519032826",
+      "page_url": "https://www.lojasrenner.com.br/p/perfume-calvin-klein-her-feminino-eau-de-toilette/-/A-519032818-br.lr",
+      "shelf_number": 3,
+      "display_order": 4,
+      "expected_title_fragment": "calvin klein her"
+    },
+    {
+      "alias": "calvin_klein_euphoria_30ml",
+      "brand": "Calvin Klein",
+      "name": "Euphoria",
+      "variant": "30ml",
+      "sku": "522929941",
+      "page_url": "https://www.lojasrenner.com.br/p/perfume-calvin-klein-euphoria-feminino-eau-de-parfum/-/A-519032041-br.lr",
+      "shelf_number": 3,
+      "display_order": 5,
+      "expected_title_fragment": "euphoria"
+    },
+    {
+      "alias": "calvin_klein_euphoria_50ml",
+      "brand": "Calvin Klein",
+      "name": "Euphoria",
+      "variant": "50ml",
+      "sku": "519032076",
+      "page_url": "https://www.lojasrenner.com.br/p/perfume-calvin-klein-euphoria-feminino-eau-de-parfum/-/A-519032041-br.lr",
+      "shelf_number": 3,
+      "display_order": 6,
+      "expected_title_fragment": "euphoria"
+    },
+    {
+      "alias": "calvin_klein_euphoria_100ml",
+      "brand": "Calvin Klein",
+      "name": "Euphoria",
+      "variant": "100ml",
+      "sku": "519032068",
+      "page_url": "https://www.lojasrenner.com.br/p/perfume-calvin-klein-euphoria-feminino-eau-de-parfum/-/A-519032041-br.lr",
+      "shelf_number": 3,
+      "display_order": 7,
+      "expected_title_fragment": "euphoria"
+    },
+    {
+      "alias": "antonio_banderas_the_golden_secret_30ml",
+      "brand": "Antonio Banderas",
+      "name": "The Golden Secret",
+      "variant": "30ml",
+      "sku": "538030973",
+      "page_url": "https://www.lojasrenner.com.br/p/perfume-the-golden-secret-eau-de-toilette-masculino/-/A-526195009-br.lr",
+      "shelf_number": 3,
+      "display_order": 8,
+      "expected_title_fragment": "the golden secret"
+    },
+    {
+      "alias": "antonio_banderas_the_golden_secret_50ml",
+      "brand": "Antonio Banderas",
+      "name": "The Golden Secret",
+      "variant": "50ml",
+      "sku": "526195033",
+      "page_url": "https://www.lojasrenner.com.br/p/perfume-the-golden-secret-eau-de-toilette-masculino/-/A-526195009-br.lr",
+      "shelf_number": 3,
+      "display_order": 9,
+      "expected_title_fragment": "the golden secret"
+    },
+    {
+      "alias": "antonio_banderas_the_golden_secret_100ml",
+      "brand": "Antonio Banderas",
+      "name": "The Golden Secret",
+      "variant": "100ml",
+      "sku": "526195025",
+      "page_url": "https://www.lojasrenner.com.br/p/perfume-the-golden-secret-eau-de-toilette-masculino/-/A-526195009-br.lr",
+      "shelf_number": 3,
+      "display_order": 10,
+      "expected_title_fragment": "the golden secret"
+    },
+    {
+      "alias": "antonio_banderas_the_golden_secret_200ml",
+      "brand": "Antonio Banderas",
+      "name": "The Golden Secret",
+      "variant": "200ml",
+      "sku": "536845079",
+      "page_url": "https://www.lojasrenner.com.br/p/perfume-the-golden-secret-eau-de-toilette-masculino/-/A-536845061-br.lr",
+      "shelf_number": 3,
+      "display_order": 11,
+      "expected_title_fragment": "the golden secret"
+    },
+    {
+      "alias": "antonio_banderas_king_of_seduction_50ml",
+      "brand": "Antonio Banderas",
+      "name": "King of Seduction",
+      "variant": "50ml",
+      "sku": "536814854",
+      "page_url": "https://www.lojasrenner.com.br/p/perfume-king-of-seduction-eau-de-toilette-masculino/-/A-536813763-br.lr",
+      "shelf_number": 3,
+      "display_order": 12,
+      "expected_title_fragment": "king of seduction"
+    },
+    {
+      "alias": "antonio_banderas_king_of_seduction_100ml",
+      "brand": "Antonio Banderas",
+      "name": "King of Seduction",
+      "variant": "100ml",
+      "sku": "536814820",
+      "page_url": "https://www.lojasrenner.com.br/p/perfume-king-of-seduction-eau-de-toilette-masculino/-/A-536813763-br.lr",
+      "shelf_number": 3,
+      "display_order": 13,
+      "expected_title_fragment": "king of seduction"
+    },
+    {
+      "alias": "antonio_banderas_power_of_seduction_100ml",
+      "brand": "Antonio Banderas",
+      "name": "Power of Seduction",
+      "variant": "100ml",
+      "sku": "546583640",
+      "page_url": "https://www.lojasrenner.com.br/p/perfume-masculino-antonio-banderas-power-of-seduction-eau-de-toilette/-/A-546581214-br.lr",
+      "shelf_number": 3,
+      "display_order": 14,
+      "expected_title_fragment": "power of seduction"
+    },
+    {
+      "alias": "antonio_banderas_power_of_seduction_200ml",
+      "brand": "Antonio Banderas",
+      "name": "Power of Seduction",
+      "variant": "200ml",
+      "sku": "549040085",
+      "page_url": "https://www.lojasrenner.com.br/p/perfume-masculino-antonio-banderas-power-of-seduction-eau-de-toilette/-/A-546581214-br.lr",
+      "shelf_number": 3,
+      "display_order": 15,
+      "expected_title_fragment": "power of seduction"
+    },
+    {
+      "alias": "antonio_banderas_the_secret_absolu_50ml",
+      "brand": "Antonio Banderas",
+      "name": "The Secret Absolu",
+      "variant": "50ml",
+      "sku": "928228088",
+      "page_url": "https://www.lojasrenner.com.br/p/perfume-antonio-banderas-the-secret-absolu-eau-de-parfum/-/A-928228061-br.lr",
+      "shelf_number": 3,
+      "display_order": 16,
+      "expected_title_fragment": "the secret absolu"
+    },
+    {
+      "alias": "antonio_banderas_the_secret_absolu_100ml",
+      "brand": "Antonio Banderas",
+      "name": "The Secret Absolu",
+      "variant": "100ml",
+      "sku": "928228070",
+      "page_url": "https://www.lojasrenner.com.br/p/perfume-antonio-banderas-the-secret-absolu-eau-de-parfum/-/A-928228061-br.lr",
+      "shelf_number": 3,
+      "display_order": 17,
+      "expected_title_fragment": "the secret absolu"
+    },
+    {
+      "alias": "antonio_banderas_the_icon_edt_100ml",
+      "brand": "Antonio Banderas",
+      "name": "The Icon Eau de Toilette",
+      "variant": "100ml",
+      "sku": "583186926",
+      "page_url": "https://www.lojasrenner.com.br/p/perfume-antonio-banderas-the-icon-eau-de-toilette/-/A-583186900-br.lr",
+      "shelf_number": 3,
+      "display_order": 18,
+      "expected_title_fragment": "the icon eau de toilette"
+    },
+    {
+      "alias": "antonio_banderas_the_icon_edp_50ml",
+      "brand": "Antonio Banderas",
+      "name": "The Icon Eau de Parfum",
+      "variant": "50ml",
+      "sku": "631857107",
+      "page_url": "https://www.lojasrenner.com.br/p/perfume-antonio-banderas-the-icon-edp/-/A-631857094-br.lr",
+      "shelf_number": 3,
+      "display_order": 19,
+      "expected_title_fragment": "the icon"
+    },
+    {
+      "alias": "antonio_banderas_the_icon_edp_100ml",
+      "brand": "Antonio Banderas",
+      "name": "The Icon Eau de Parfum",
+      "variant": "100ml",
+      "sku": "631857115",
+      "page_url": "https://www.lojasrenner.com.br/p/perfume-antonio-banderas-the-icon-edp/-/A-631857094-br.lr",
+      "shelf_number": 3,
+      "display_order": 20,
+      "expected_title_fragment": "the icon"
+    }
+  ]
+}

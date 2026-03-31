@@ -49,3 +49,23 @@ def resolve_default_data_file(relative_path_inside_data: str) -> Path:
 
     normalized_relative_path = str(relative_path_inside_data).strip().replace("\\", "/").lstrip("/")
     return resolve_project_root() / "data" / normalized_relative_path
+
+
+def resolve_project_file(relative_project_path: str) -> Path:
+    """
+    Responsabilidade:
+        Construir um caminho absoluto para qualquer arquivo versionado no projeto.
+
+    Parametros:
+        relative_project_path: Subcaminho relativo a raiz do repositorio.
+
+    Retorno:
+        Path absoluto apontando para o arquivo ou pasta desejada.
+
+    Contexto de uso:
+        Utilizado quando o app precisa ler recursos embarcados no codigo, como
+        seeds internos de importacao que nao devem depender do volume `/app/data`.
+    """
+
+    normalized_relative_path = str(relative_project_path).strip().replace("\\", "/").lstrip("/")
+    return resolve_project_root() / normalized_relative_path

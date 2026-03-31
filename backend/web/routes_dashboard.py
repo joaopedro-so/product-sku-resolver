@@ -21,6 +21,10 @@ from fastapi.templating import Jinja2Templates
 
 from backend.models.product import ProductRecord
 from backend.models.sku_event import SkuEvent
+from backend.services.curated_renner_import_service import (
+    CuratedRennerImportService,
+    resolve_builtin_curated_seed_file,
+)
 from backend.services.matcher import normalize_text
 from backend.services.product_draft_service import ProductDraftService
 from backend.services.product_group_service import GroupedParentProduct, ProductGroupService
@@ -1441,6 +1445,8 @@ def _build_shelves_context(request: Request) -> Dict[str, Any]:
             }
         )
 
+    import_feedback = _resolve_dashboard_import_feedback_message(request)
+
     return _with_app_shell(
         request=request,
         active_tab="home",
@@ -1448,8 +1454,84 @@ def _build_shelves_context(request: Request) -> Dict[str, Any]:
             "request": request,
             "page_title": "Prateleiras",
             "shelves": shelf_cards,
+            "import_feedback": import_feedback,
+            "prestige_shelf_import_action_url": "/dashboard/imports/prestige-shelf-03",
         },
     )
+
+
+def _resolve_dashboard_import_feedback_message(request: Request) -> Optional[Dict[str, str]]:
+    """
+    Responsabilidade:
+        Traduzir query params de importacao em mensagem curta para a Home.
+
+    Parametros:
+        request: Requisicao atual com possivel feedback apos importacao.
+
+    Retorno:
+        Dicionario com tipo e mensagem ou None quando nao houver feedback.
+
+    Contexto de uso:
+        Permite confirmar no proprio dashboard se a carga da Railway funcionou
+        sem depender de acesso a logs ou shell do ambiente.
+    """
+
+    import_status = request.query_params.get("import_status", "").strip()
+    imported_count = request.query_params.get("import_count", "").strip()
+    seed_name = request.query_params.get("seed", "").strip()
+    if import_status == "success":
+        count_label = imported_count or "0"
+        return {
+            "type": "success",
+            "message": f"Importação concluída no ambiente atual: {count_label} produto(s) processado(s) pelo seed {seed_name or 'interno'}.",
+        }
+
+    if import_status == "error":
+        return {
+            "type": "error",
+            "message": request.query_params.get(
+                "import_message",
+                "Não foi possível importar os produtos neste ambiente.",
+            ).strip()
+            or "Não foi possível importar os produtos neste ambiente.",
+        }
+
+    return None
+
+
+def _run_builtin_curated_seed_import(request: Request, seed_name: str) -> tuple[bool, str, int]:
+    """
+    Responsabilidade:
+        Executar uma importacao curada embarcada no proprio codigo do app.
+
+    Parametros:
+        request: Requisicao atual para obter fetcher e storage compartilhados.
+        seed_name: Nome logico do seed interno que deve ser aplicado.
+
+    Retorno:
+        Tupla com sucesso, mensagem amigavel e quantidade processada.
+
+    Contexto de uso:
+        Permite disparar cargas administrativas direto na Railway pelo painel
+        web, sem exigir shell ou manipulacao manual do volume persistente.
+    """
+
+    fetcher = _get_fetcher_service(request)
+    if fetcher is None:
+        return False, "O ambiente atual não possui fetcher configurado para importar o seed interno.", 0
+
+    seed_file_path = resolve_builtin_curated_seed_file(seed_name)
+    import_service = CuratedRennerImportService(
+        fetcher=fetcher,
+        product_store=_get_store_service(request),
+    )
+    entries = import_service.load_entries_from_file(seed_file_path)
+    results = import_service.import_entries(entries)
+    failed_results = [result for result in results if not result.success]
+    if failed_results:
+        return False, failed_results[0].message, len(results)
+
+    return True, "Importação concluída com sucesso.", len(results)
 
 
 def _build_shelf_detail_context(request: Request, shelf_number: int) -> Dict[str, Any]:
@@ -2063,6 +2145,43 @@ def dashboard_home(request: Request) -> Any:
     """
 
     return templates.TemplateResponse(request, "dashboard.html", _build_shelves_context(request))
+
+
+@router.post("/imports/prestige-shelf-03")
+def dashboard_import_prestige_shelf_03(request: Request) -> RedirectResponse:
+    """
+    Responsabilidade:
+        Importar no ambiente atual o seed curado da prateleira 03.
+
+    Parametros:
+        request: Requisicao HTTP atual com acesso aos servicos compartilhados.
+
+    Retorno:
+        RedirectResponse para a Home com feedback de sucesso ou falha.
+
+    Contexto de uso:
+        Facilita a carga inicial na Railway sem depender de shell, tornando a
+        operacao acessivel a partir do proprio dashboard web.
+    """
+
+    import_succeeded, import_message, processed_count = _run_builtin_curated_seed_import(
+        request=request,
+        seed_name="prestige_shelf_03_curated",
+    )
+    query_params = {
+        "seed": "prestige-shelf-03",
+        "import_count": str(processed_count),
+    }
+    if import_succeeded:
+        query_params["import_status"] = "success"
+    else:
+        query_params["import_status"] = "error"
+        query_params["import_message"] = import_message
+
+    return RedirectResponse(
+        url=f"/dashboard?{urlencode(query_params)}",
+        status_code=status.HTTP_303_SEE_OTHER,
+    )
 
 
 @router.get("/prateleiras/{shelf_number}")
