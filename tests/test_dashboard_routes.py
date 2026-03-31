@@ -5,6 +5,7 @@ Testes básicos das rotas web do dashboard sem depender de cliente HTTP externo.
 from __future__ import annotations
 
 import asyncio
+import json
 from pathlib import Path
 from urllib.parse import urlencode, urlsplit
 
@@ -14,6 +15,8 @@ from starlette.responses import RedirectResponse
 from starlette.templating import _TemplateResponse
 
 from backend.models.product import ProductRecord
+from backend.services.manual_product_group_service import ManualProductGroupService
+from backend.services.product_group_service import ProductGroupService
 from backend.services.saved_product_service import SavedProductService
 from backend.services.product_store_service import ProductStoreService
 from backend.services.resolver import ResolveResult
@@ -217,6 +220,31 @@ def _build_request(app: FastAPI, method: str, path: str, body: bytes = b"", cont
         "app": app,
     }
     return Request(scope=scope, receive=receive)
+
+
+def _configure_manual_product_groups(app: FastAPI, tmp_path: Path, payload: dict) -> None:
+    """
+    Responsabilidade:
+        Injetar um arquivo temporario de grupos manuais no app de teste.
+
+    Parametros:
+        app: Instancia FastAPI usada no teste atual.
+        tmp_path: Diretorio temporario do pytest para gravar o arquivo.
+        payload: Conteudo JSON do override manual desejado no teste.
+
+    Retorno:
+        Nenhum.
+
+    Contexto de uso:
+        Permite validar o comportamento das rotas com curadoria manual sem
+        depender do arquivo real versionado no repositorio.
+    """
+
+    manual_group_file = tmp_path / "manual_product_groups.json"
+    manual_group_file.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    app.state.product_group_service = ProductGroupService(
+        manual_group_service=ManualProductGroupService(storage_file_path=manual_group_file)
+    )
 
 
 def _seed_product(app: FastAPI) -> None:
