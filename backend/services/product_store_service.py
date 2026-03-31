@@ -8,10 +8,13 @@ futura para banco de dados sem quebrar regras de negócio da aplicação.
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 from typing import List, Optional
 
 from backend.models.product import ProductRecord
+
+logger = logging.getLogger(__name__)
 
 
 class ProductStoreService:
@@ -208,7 +211,9 @@ class ProductStoreService:
             updated_products.append(normalized_product)
 
         self._write_all(updated_products)
-        return normalized_product
+        persisted_product = self._confirm_persisted_product(normalized_product.alias)
+        logger.info("Produto persistido com sucesso: alias=%s arquivo=%s", persisted_product.alias, self.storage_file_path)
+        return persisted_product
 
     def replace_product(self, current_alias: str, updated_product: ProductRecord) -> ProductRecord:
         """
@@ -247,7 +252,33 @@ class ProductStoreService:
             raise KeyError(f"Produto com alias '{normalized_current_alias}' nao encontrado")
 
         self._write_all(updated_products)
-        return normalized_updated_product
+        persisted_product = self._confirm_persisted_product(normalized_updated_product.alias)
+        logger.info("Produto atualizado com sucesso: alias=%s arquivo=%s", persisted_product.alias, self.storage_file_path)
+        return persisted_product
+
+    def _confirm_persisted_product(self, product_alias: str) -> ProductRecord:
+        """
+        Responsabilidade:
+            Confirmar que um produto realmente ficou gravado apos a escrita.
+
+        Parametros:
+            product_alias: Alias do registro que acabou de ser persistido.
+
+        Retorno:
+            ProductRecord relido do storage persistente.
+
+        Contexto de uso:
+            Evita sucesso falso no fluxo de cadastro, garantindo a etapa de
+            read-after-write antes de responder para a interface.
+        """
+
+        persisted_product = self.get_by_alias(product_alias)
+        if persisted_product is None:
+            raise RuntimeError(
+                f"Falha de persistencia: o produto '{product_alias}' nao foi encontrado apos a gravacao"
+            )
+
+        return persisted_product
 
     def _ensure_page_family_sku(self, product: ProductRecord) -> ProductRecord:
         """

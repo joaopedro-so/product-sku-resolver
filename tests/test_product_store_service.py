@@ -261,3 +261,41 @@ def test_delete_product_remove_registro_existente(tmp_path: Path) -> None:
     assert removed_product.alias == "produto_excluir"
     assert store.get_by_alias("produto_excluir") is None
     assert store.list_products() == []
+
+
+def test_upsert_persiste_produto_para_nova_instancia_do_storage(tmp_path: Path) -> None:
+    """
+    Responsabilidade:
+        Garantir que o cadastro sobreviva a nova leitura em outra sessao.
+
+    Parametros:
+        tmp_path: Diretorio temporario fornecido pelo pytest.
+
+    Retorno:
+        Nenhum; valida persistencia real no arquivo e releitura posterior.
+
+    Contexto de uso:
+        Protege o fluxo do dashboard em cenarios de refresh, reabertura do app
+        ou nova instancia do servico apontando para o mesmo arquivo.
+    """
+
+    storage_path = tmp_path / "products.json"
+    first_store = ProductStoreService(storage_path)
+    persisted_product = first_store.upsert_product(
+        ProductRecord(
+            alias="perfume_novo",
+            brand="Marca",
+            name="Perfume Novo",
+            variant="100ml",
+            last_known_url="https://exemplo.com/perfume-novo",
+            last_known_sku="sku-100",
+        )
+    )
+
+    second_store = ProductStoreService(storage_path)
+    found_product = second_store.get_by_alias("perfume_novo")
+
+    assert persisted_product.alias == "perfume_novo"
+    assert found_product is not None
+    assert found_product.name == "Perfume Novo"
+    assert found_product.last_known_sku == "sku-100"

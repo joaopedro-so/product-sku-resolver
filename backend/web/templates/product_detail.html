@@ -12,6 +12,11 @@
   </article>
 </section>
 {% else %}
+{% if success_message %}
+<section class="page-section">
+  <div class="alert-box alert-box--success">{{ success_message }}</div>
+</section>
+{% endif %}
 <div data-variant-switcher data-variant-storage-key="detail-{{ parent_product.group_id }}">
 <section class="page-section">
   <div class="detail-hero">

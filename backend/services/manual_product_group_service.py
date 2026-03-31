@@ -15,6 +15,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from backend.services.storage_path_service import resolve_default_data_file
+
 
 @dataclass(slots=True)
 class ManualProductGroupMember:
@@ -302,4 +304,4 @@ def _resolve_default_manual_group_file_path() -> Path:
     if configured_path:
         return Path(configured_path)
 
-    return Path("data/manual_product_groups.json")
+    return resolve_default_data_file("manual_product_groups.json")

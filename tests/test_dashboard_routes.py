@@ -145,6 +145,40 @@ class FakePageFetcher:
         )
 
 
+class FailingPersistProductStore(ProductStoreService):
+    """
+    Responsabilidade:
+        Simular falha de persistencia no cadastro para testar feedback de erro.
+
+    Parametros:
+        storage_file_path: Caminho do arquivo, mantido por compatibilidade.
+
+    Retorno:
+        Instancia de store que sempre falha ao tentar salvar um produto.
+
+    Contexto de uso:
+        Permite validar que o dashboard nao retorna sucesso falso quando o
+        storage real nao consegue confirmar a gravacao.
+    """
+
+    def upsert_product(self, product_to_save: ProductRecord) -> ProductRecord:
+        """
+        Responsabilidade:
+            Forcar uma falha de escrita previsivel durante o cadastro.
+
+        Parametros:
+            product_to_save: Produto que seria persistido pelo fluxo real.
+
+        Retorno:
+            Nunca retorna; sempre levanta RuntimeError controlado.
+
+        Contexto de uso:
+            Isola o teste de UX de erro sem depender de falhas de IO reais.
+        """
+
+        raise RuntimeError("falha simulada de persistencia")
+
+
 def _build_app_with_temp_storage(tmp_path: Path) -> FastAPI:
     """
     Responsabilidade:
@@ -684,9 +718,118 @@ def test_dashboard_cria_produto_via_formulario(tmp_path: Path) -> None:
 
     assert isinstance(response, RedirectResponse)
     assert response.status_code == 303
-    assert response.headers["location"] == "/dashboard"
+    assert response.headers["location"] == "/dashboard/products/novo_produto?created=1"
     assert stored_product is not None
     assert stored_product.last_known_sku == "unknown"
+
+
+def test_dashboard_create_product_sobrevive_a_nova_sessao_e_aparece_na_busca(tmp_path: Path) -> None:
+    """
+    Responsabilidade:
+        Garantir que o cadastro persista apos reabrir o app e reler a lista.
+
+    Parametros:
+        tmp_path: Diretorio temporario usado como storage persistente do teste.
+
+    Retorno:
+        Nenhum; valida persistencia, refresh e nova sessao.
+
+    Contexto de uso:
+        Cobre o bug principal reportado pelo operador, em que o produto parecia
+        ter sido salvo mas nao reaparecia de forma confiavel depois.
+    """
+
+    first_app = _build_app_with_temp_storage(tmp_path)
+    payload = urlencode(
+        {
+            "alias": "perfume_persistente",
+            "brand": "Marca Z",
+            "name": "Perfume Persistente",
+            "variant": "100ml",
+            "last_known_url": "https://example.com/perfume-persistente",
+            "last_known_sku": "sku-persistente",
+            "shelf_number": "8",
+        }
+    ).encode("utf-8")
+    create_request = _build_request(
+        first_app,
+        method="POST",
+        path="/dashboard/products",
+        body=payload,
+        content_type="application/x-www-form-urlencoded",
+    )
+
+    create_response = asyncio.run(routes_dashboard.dashboard_create_product(create_request))
+
+    second_app = _build_app_with_temp_storage(tmp_path)
+    detail_request = _build_request(
+        second_app,
+        method="GET",
+        path="/dashboard/products/perfume_persistente?created=1",
+    )
+    search_request = _build_request(
+        second_app,
+        method="GET",
+        path="/dashboard/search?q=perfume_persistente",
+    )
+
+    detail_response = routes_dashboard.dashboard_product_detail(detail_request, alias="perfume_persistente")
+    search_response = routes_dashboard.dashboard_search(search_request)
+
+    assert isinstance(create_response, RedirectResponse)
+    assert create_response.status_code == 303
+    assert isinstance(detail_response, _TemplateResponse)
+    assert detail_response.status_code == 200
+    assert isinstance(search_response, _TemplateResponse)
+    assert search_response.status_code == 200
+    assert second_app.state.product_store_service.get_by_alias("perfume_persistente") is not None
+    assert "Produto salvo com sucesso" in detail_response.body.decode("utf-8")
+    assert "Perfume Persistente" in search_response.body.decode("utf-8")
+
+
+def test_dashboard_create_product_exibe_erro_real_quando_persistencia_falha(tmp_path: Path) -> None:
+    """
+    Responsabilidade:
+        Garantir que a UI nao mostre sucesso falso quando salvar falha.
+
+    Parametros:
+        tmp_path: Diretorio temporario para manter a fixture do app isolada.
+
+    Retorno:
+        Nenhum; valida erro visivel e ausencia de redirect de sucesso.
+
+    Contexto de uso:
+        Protege o fluxo de cadastro contra falhas silenciosas do storage.
+    """
+
+    app = _build_app_with_temp_storage(tmp_path)
+    app.state.product_store_service = FailingPersistProductStore(tmp_path / "products.json")
+    payload = urlencode(
+        {
+            "alias": "produto_falha",
+            "brand": "Marca",
+            "name": "Produto com Falha",
+            "variant": "100ml",
+            "last_known_url": "https://example.com/falha",
+            "last_known_sku": "sku-falha",
+        }
+    ).encode("utf-8")
+    request = _build_request(
+        app,
+        method="POST",
+        path="/dashboard/products",
+        body=payload,
+        content_type="application/x-www-form-urlencoded",
+    )
+
+    response = asyncio.run(routes_dashboard.dashboard_create_product(request))
+
+    assert isinstance(response, _TemplateResponse)
+    assert response.status_code == 500
+    content = response.body.decode("utf-8")
+    assert "Nao foi possivel salvar o produto" in content
+    assert "falha simulada de persistencia" in content
+    assert app.state.product_store_service.get_by_alias("produto_falha") is None
 
 
 def test_dashboard_aciona_update_de_produto(tmp_path: Path) -> None:

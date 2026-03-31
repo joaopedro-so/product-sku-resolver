@@ -17,6 +17,7 @@ from monitoring.monitor_service import MonitorService
 from backend.search.renner_provider import RennerSearchProvider
 from backend.services.product_store_service import ProductStoreService
 from backend.services.resolver import ProductResolver
+from backend.services.storage_path_service import resolve_default_data_file
 from backend.utils.fetcher import Fetcher
 
 
@@ -67,7 +68,7 @@ def _resolve_storage_path(configured_storage_path: str | None = None) -> Path:
     if env_storage_path:
         return Path(env_storage_path)
 
-    return Path("data/products.json")
+    return resolve_default_data_file("products.json")
 
 
 def _resolve_history_path(configured_history_path: str | None = None) -> Path:
@@ -92,7 +93,7 @@ def _resolve_history_path(configured_history_path: str | None = None) -> Path:
     if env_history_path:
         return Path(env_history_path)
 
-    return Path("data/history.json")
+    return resolve_default_data_file("history.json")
 
 
 def build_runtime_services(

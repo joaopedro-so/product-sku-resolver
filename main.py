@@ -7,13 +7,12 @@ web reutilizem a mesma lógica de negócio já existente no projeto.
 
 from __future__ import annotations
 
-from pathlib import Path
-
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
 from backend.services.product_store_service import ProductStoreService
 from backend.services.resolver import ProductResolver
+from backend.services.storage_path_service import resolve_default_data_file
 from backend.utils.fetcher import Fetcher
 from backend.web.routes_dashboard import router as dashboard_router
 
@@ -38,7 +37,7 @@ def create_app() -> FastAPI:
     # Decisão técnica:
     # Centralizamos a criação dos serviços no bootstrap para permitir reuso
     # entre API REST e dashboard sem re-instanciar dependências por requisição.
-    storage_path = Path("data/products.json")
+    storage_path = resolve_default_data_file("products.json")
     product_store_service = ProductStoreService(storage_file_path=storage_path)
     product_resolver = ProductResolver(
         product_store=product_store_service,

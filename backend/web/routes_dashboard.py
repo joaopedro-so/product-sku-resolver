@@ -26,6 +26,7 @@ from backend.services.product_draft_service import ProductDraftService
 from backend.services.product_group_service import GroupedParentProduct, ProductGroupService
 from backend.services.product_preview_service import ProductPreview, ProductPreviewService
 from backend.services.shelf_service import ShelfPlacement, ShelfService
+from backend.services.storage_path_service import resolve_default_data_file
 from backend.services.product_store_service import ProductStoreService
 from backend.services.resolver import ProductResolver, ResolveResult
 from backend.services.saved_product_service import SavedProductService
@@ -119,7 +120,7 @@ def _resolve_history_storage_path() -> Path:
     configured_path = os.getenv("PRODUCT_HISTORY_FILE", "").strip()
     if configured_path:
         return Path(configured_path)
-    return Path("data/history.json")
+    return resolve_default_data_file("history.json")
 
 
 def _resolve_saved_storage_path() -> Path:
@@ -140,7 +141,7 @@ def _resolve_saved_storage_path() -> Path:
     configured_path = os.getenv("SAVED_PRODUCTS_FILE", "").strip()
     if configured_path:
         return Path(configured_path)
-    return Path("data/saved_products.json")
+    return resolve_default_data_file("saved_products.json")
 
 
 def _resolve_preview_cache_path() -> Path:
@@ -161,7 +162,7 @@ def _resolve_preview_cache_path() -> Path:
     configured_path = os.getenv("PRODUCT_PREVIEW_CACHE_FILE", "").strip()
     if configured_path:
         return Path(configured_path)
-    return Path("data/product_previews.json")
+    return resolve_default_data_file("product_previews.json")
 
 
 def _get_history_store(request: Request) -> HistoryStore:
@@ -656,6 +657,112 @@ def _build_submitted_data_from_product(product: ProductRecord) -> Dict[str, str]
         "shelf_number": str(product.shelf_number or ""),
         "display_order": str(product.display_order or ""),
     }
+
+
+def _extract_product_form_submission(form_data: Any) -> Dict[str, str]:
+    """
+    Responsabilidade:
+        Extrair e normalizar os campos relevantes do formulario de produto.
+
+    Parametros:
+        form_data: Estrutura retornada por `await request.form()`.
+
+    Retorno:
+        Dicionario com strings limpas e defaults operacionais previsiveis.
+
+    Contexto de uso:
+        Centraliza o parsing do formulario para que criacao e edicao usem o
+        mesmo contrato antes de validar ou persistir qualquer dado.
+    """
+
+    submitted_data = {
+        field: str(form_data.get(field, "")).strip()
+        for field in [
+            "alias",
+            "brand",
+            "name",
+            "variant",
+            "last_known_url",
+            "last_known_sku",
+        ]
+    }
+    submitted_data["shelf_number"] = _normalize_optional_numeric_text(form_data.get("shelf_number"))
+    submitted_data["display_order"] = _normalize_optional_numeric_text(form_data.get("display_order"))
+    submitted_data["last_known_sku"] = submitted_data["last_known_sku"] or "unknown"
+    return submitted_data
+
+
+def _validate_product_submission(submitted_data: Dict[str, str]) -> Optional[str]:
+    """
+    Responsabilidade:
+        Validar os campos minimos para persistencia confiavel do produto.
+
+    Parametros:
+        submitted_data: Payload ja normalizado vindo do formulario HTML.
+
+    Retorno:
+        Mensagem de erro quando houver dado invalido; caso contrario, None.
+
+    Contexto de uso:
+        Evita gravacoes inconsistentes ou invisiveis na UI, como alias vazio ou
+        URL ausente, que poderiam dar a impressao de cadastro bem-sucedido.
+    """
+
+    required_fields = {
+        "alias": "Informe um alias para identificar o produto.",
+        "brand": "Informe a marca do produto.",
+        "name": "Informe o nome do produto.",
+        "last_known_url": "Informe a URL conhecida do produto.",
+    }
+    for field_name, error_message in required_fields.items():
+        if not str(submitted_data.get(field_name, "")).strip():
+            return error_message
+
+    raw_display_order = str(submitted_data.get("display_order", "")).strip()
+    if raw_display_order:
+        try:
+            if int(raw_display_order) < 1:
+                return "A ordem na prateleira deve ser maior que zero."
+        except ValueError:
+            return "A ordem na prateleira precisa ser um numero inteiro."
+
+    raw_shelf_number = str(submitted_data.get("shelf_number", "")).strip()
+    if raw_shelf_number:
+        try:
+            if int(raw_shelf_number) < 1:
+                return "A prateleira informada precisa ser valida."
+        except ValueError:
+            return "A prateleira informada precisa ser numerica."
+
+    return None
+
+
+def _build_product_record_from_submission(submitted_data: Dict[str, str]) -> ProductRecord:
+    """
+    Responsabilidade:
+        Converter o payload do formulario em ProductRecord pronto para persistir.
+
+    Parametros:
+        submitted_data: Dicionario validado com os campos do formulario.
+
+    Retorno:
+        ProductRecord com tipos adequados para a camada de storage.
+
+    Contexto de uso:
+        Mantem a montagem do modelo em um ponto unico para reduzir divergencia
+        entre criacao e edicao, especialmente nos campos opcionais numericos.
+    """
+
+    return ProductRecord(
+        alias=submitted_data["alias"],
+        brand=submitted_data["brand"],
+        name=submitted_data["name"],
+        variant=submitted_data["variant"],
+        last_known_url=submitted_data["last_known_url"],
+        last_known_sku=submitted_data["last_known_sku"],
+        shelf_number=int(submitted_data["shelf_number"]) if submitted_data["shelf_number"] else None,
+        display_order=int(submitted_data["display_order"]) if submitted_data["display_order"] else None,
+    )
 
 
 def _validate_alias_availability(
@@ -1530,6 +1637,28 @@ def _build_home_context(request: Request) -> Dict[str, Any]:
     )
 
 
+def _resolve_product_detail_success_message(request: Request) -> Optional[str]:
+    """
+    Responsabilidade:
+        Traduzir marcadores de sucesso da URL em feedback claro na tela.
+
+    Parametros:
+        request: Requisicao atual com query params opcionais de feedback.
+
+    Retorno:
+        Mensagem curta de sucesso ou None quando nao houver marcador.
+
+    Contexto de uso:
+        Mantem o fluxo server-side simples: apos persistir e redirecionar, o
+        detalhe do produto confirma ao operador que o item realmente foi salvo.
+    """
+
+    if request.query_params.get("created", "") == "1":
+        return "Produto salvo com sucesso e relido do armazenamento."
+
+    return None
+
+
 def _build_search_context(request: Request) -> Dict[str, Any]:
     """
     Responsabilidade:
@@ -1895,6 +2024,7 @@ def _build_product_detail_context(request: Request, alias: str) -> Dict[str, Any
         context={
             "request": request,
             "page_title": grouped_product.parent_name,
+            "success_message": _resolve_product_detail_success_message(request),
             "product": selected_variant.product,
             "parent_product": grouped_product,
             "selected_variant": selected_variant_payload,
@@ -2318,17 +2448,21 @@ async def dashboard_create_product(request: Request) -> Any:
     """
 
     form_data = await request.form()
-    submitted_data = {field: str(form_data.get(field, "")).strip() for field in [
-        "alias",
-        "brand",
-        "name",
-        "variant",
-        "last_known_url",
-        "last_known_sku",
-    ]}
-    submitted_data["shelf_number"] = _normalize_optional_numeric_text(form_data.get("shelf_number"))
-    submitted_data["display_order"] = _normalize_optional_numeric_text(form_data.get("display_order"))
-    submitted_data["last_known_sku"] = submitted_data["last_known_sku"] or "unknown"
+    submitted_data = _extract_product_form_submission(form_data)
+
+    validation_error = _validate_product_submission(submitted_data)
+    if validation_error:
+        context = _build_new_product_form_context(submitted_data=submitted_data, error_message=validation_error)
+        return templates.TemplateResponse(
+            request,
+            "add_product.html",
+            _with_app_shell(
+                request,
+                {"request": request, "page_title": "Novo produto", **context, "shelf_options": _build_shelf_options(request)},
+                active_tab="search",
+            ),
+            status_code=400,
+        )
 
     alias_error = _validate_alias_availability(_get_store_service(request), submitted_data["alias"])
     if alias_error:
@@ -2344,18 +2478,30 @@ async def dashboard_create_product(request: Request) -> Any:
             status_code=400,
         )
 
-    saved_product = ProductRecord(
-        alias=submitted_data["alias"],
-        brand=submitted_data["brand"],
-        name=submitted_data["name"],
-        variant=submitted_data["variant"],
-        last_known_url=submitted_data["last_known_url"],
-        last_known_sku=submitted_data["last_known_sku"],
-        shelf_number=int(submitted_data["shelf_number"]) if submitted_data["shelf_number"] else None,
-        display_order=int(submitted_data["display_order"]) if submitted_data["display_order"] else None,
+    try:
+        saved_product = _get_store_service(request).upsert_product(
+            _build_product_record_from_submission(submitted_data)
+        )
+    except (RuntimeError, ValueError) as error:
+        context = _build_new_product_form_context(
+            submitted_data=submitted_data,
+            error_message=f"Nao foi possivel salvar o produto: {error}",
+        )
+        return templates.TemplateResponse(
+            request,
+            "add_product.html",
+            _with_app_shell(
+                request,
+                {"request": request, "page_title": "Novo produto", **context, "shelf_options": _build_shelf_options(request)},
+                active_tab="search",
+            ),
+            status_code=500,
+        )
+
+    return RedirectResponse(
+        url=f"/dashboard/products/{saved_product.alias}?created=1",
+        status_code=status.HTTP_303_SEE_OTHER,
     )
-    _get_store_service(request).upsert_product(saved_product)
-    return RedirectResponse(url="/dashboard", status_code=status.HTTP_303_SEE_OTHER)
 
 
 @router.post("/products/{alias}/edit")
@@ -2393,17 +2539,28 @@ async def dashboard_edit_product(request: Request, alias: str) -> Any:
         )
 
     form_data = await request.form()
-    submitted_data = {field: str(form_data.get(field, "")).strip() for field in [
-        "alias",
-        "brand",
-        "name",
-        "variant",
-        "last_known_url",
-        "last_known_sku",
-    ]}
-    submitted_data["shelf_number"] = _normalize_optional_numeric_text(form_data.get("shelf_number"))
-    submitted_data["display_order"] = _normalize_optional_numeric_text(form_data.get("display_order"))
-    submitted_data["last_known_sku"] = submitted_data["last_known_sku"] or "unknown"
+    submitted_data = _extract_product_form_submission(form_data)
+
+    validation_error = _validate_product_submission(submitted_data)
+    if validation_error:
+        context = _build_new_product_form_context(
+            submitted_data=submitted_data,
+            error_message=validation_error,
+            form_mode="edit",
+            form_action_url=f"/dashboard/products/{alias}/edit",
+            submit_button_label="Salvar alteracoes",
+            cancel_url=f"/dashboard/products/{alias}",
+        )
+        return templates.TemplateResponse(
+            request,
+            "add_product.html",
+            _with_app_shell(
+                request,
+                {"request": request, "page_title": "Editar produto", **context, "shelf_options": _build_shelf_options(request)},
+                active_tab="search",
+            ),
+            status_code=400,
+        )
 
     alias_error = _validate_alias_availability(
         _get_store_service(request),
@@ -2430,17 +2587,31 @@ async def dashboard_edit_product(request: Request, alias: str) -> Any:
             status_code=400,
         )
 
-    updated_product = ProductRecord(
-        alias=submitted_data["alias"],
-        brand=submitted_data["brand"],
-        name=submitted_data["name"],
-        variant=submitted_data["variant"],
-        last_known_url=submitted_data["last_known_url"],
-        last_known_sku=submitted_data["last_known_sku"],
-        shelf_number=int(submitted_data["shelf_number"]) if submitted_data["shelf_number"] else None,
-        display_order=int(submitted_data["display_order"]) if submitted_data["display_order"] else None,
-    )
-    _get_store_service(request).replace_product(current_alias=alias, updated_product=updated_product)
+    try:
+        updated_product = _get_store_service(request).replace_product(
+            current_alias=alias,
+            updated_product=_build_product_record_from_submission(submitted_data),
+        )
+    except (RuntimeError, ValueError) as error:
+        context = _build_new_product_form_context(
+            submitted_data=submitted_data,
+            error_message=f"Nao foi possivel salvar as alteracoes: {error}",
+            form_mode="edit",
+            form_action_url=f"/dashboard/products/{alias}/edit",
+            submit_button_label="Salvar alteracoes",
+            cancel_url=f"/dashboard/products/{alias}",
+        )
+        return templates.TemplateResponse(
+            request,
+            "add_product.html",
+            _with_app_shell(
+                request,
+                {"request": request, "page_title": "Editar produto", **context, "shelf_options": _build_shelf_options(request)},
+                active_tab="search",
+            ),
+            status_code=500,
+        )
+
     return RedirectResponse(
         url=f"/dashboard/products/{updated_product.alias}",
         status_code=status.HTTP_303_SEE_OTHER,
