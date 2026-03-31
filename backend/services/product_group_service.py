@@ -139,10 +139,7 @@ class ProductGroupService:
         """
 
         manually_grouped_products, manually_assigned_aliases = self._group_products_with_manual_overrides(
-            key=lambda grouped_product: (
-                normalize_text(grouped_product.brand),
-                normalize_text(grouped_product.parent_name),
-            ),
+            products
         )
 
         remaining_products = [

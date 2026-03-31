@@ -989,3 +989,169 @@ def test_dashboard_preenche_produto_automaticamente_por_url(tmp_path: Path) -> N
     assert "200ml" in content
     assert "546594103" in content
     assert "paco_rabanne_one_million_200ml" in content
+
+
+def test_dashboard_prateleira_respeita_agrupamento_manual_de_variantes(tmp_path: Path) -> None:
+    """
+    Responsabilidade:
+        Garantir que a prateleira use grupos manuais antes do fallback automatico.
+
+    Parametros:
+        tmp_path: Diretorio temporario para storage e arquivo de override.
+
+    Retorno:
+        Nenhum; valida card unico para variantes curadas manualmente.
+
+    Contexto de uso:
+        Protege a tela principal do operador quando o site separa volumes do
+        mesmo perfume em paginas distintas e a curadoria precisa uni-los.
+    """
+
+    app = _build_app_with_temp_storage(tmp_path)
+    _configure_manual_product_groups(
+        app=app,
+        tmp_path=tmp_path,
+        payload={
+            "groups": [
+                {
+                    "group_id": "the_icon_edt",
+                    "family_name": "The Icon",
+                    "display_name": "The Icon Eau de Toilette",
+                    "brand": "Antonio Banderas",
+                    "variant_members": [
+                        {"alias": "the_icon_edt_50ml", "label": "50ml"},
+                        {"alias": "the_icon_edt_100ml", "label": "100ml"},
+                    ],
+                }
+            ]
+        },
+    )
+    app.state.product_store_service.upsert_product(
+        ProductRecord(
+            alias="the_icon_edt_50ml",
+            brand="Antonio Banderas",
+            name="The Icon Eau de Toilette",
+            variant="50ml",
+            last_known_url="https://example.com/the-icon-edt-50",
+            last_known_sku="sku-edt-50",
+            shelf_number=2,
+        )
+    )
+    app.state.product_store_service.upsert_product(
+        ProductRecord(
+            alias="the_icon_edt_100ml",
+            brand="Antonio Banderas",
+            name="The Icon Eau de Toilette",
+            variant="100ml",
+            last_known_url="https://example.com/the-icon-edt-100",
+            last_known_sku="sku-edt-100",
+            shelf_number=2,
+        )
+    )
+    app.state.product_store_service.upsert_product(
+        ProductRecord(
+            alias="the_icon_edp_100ml",
+            brand="Antonio Banderas",
+            name="The Icon Eau de Parfum",
+            variant="100ml",
+            last_known_url="https://example.com/the-icon-edp-100",
+            last_known_sku="sku-edp-100",
+            shelf_number=2,
+        )
+    )
+    request = _build_request(app, method="GET", path="/dashboard/prateleiras/2")
+
+    response = routes_dashboard.dashboard_shelf_detail(request, shelf_number=2)
+
+    assert isinstance(response, _TemplateResponse)
+    assert response.status_code == 200
+    content = response.body.decode("utf-8")
+    assert content.count('class="shelf-product-card"') == 2
+    assert "The Icon Eau de Toilette" in content
+    assert "The Icon Eau de Parfum" in content
+    assert "50ml" in content
+    assert "100ml" in content
+
+
+def test_dashboard_detalhe_respeita_agrupamento_manual_sem_mesclar_produtos_distintos(tmp_path: Path) -> None:
+    """
+    Responsabilidade:
+        Garantir que o detalhe troque apenas entre variantes do grupo manual.
+
+    Parametros:
+        tmp_path: Diretorio temporario para storage e arquivo de override.
+
+    Retorno:
+        Nenhum; valida seletor restrito ao grupo manual configurado.
+
+    Contexto de uso:
+        Evita que EDT, EDP e flankers semelhantes acabem misturados na mesma
+        tela de detalhe quando a curadoria definiu grupos separados.
+    """
+
+    app = _build_app_with_temp_storage(tmp_path)
+    _configure_manual_product_groups(
+        app=app,
+        tmp_path=tmp_path,
+        payload={
+            "groups": [
+                {
+                    "group_id": "the_icon_edt",
+                    "family_name": "The Icon",
+                    "display_name": "The Icon Eau de Toilette",
+                    "brand": "Antonio Banderas",
+                    "variant_members": [
+                        {"alias": "the_icon_edt_50ml", "label": "50ml"},
+                        {"alias": "the_icon_edt_100ml", "label": "100ml"},
+                    ],
+                }
+            ]
+        },
+    )
+    app.state.product_store_service.upsert_product(
+        ProductRecord(
+            alias="the_icon_edt_50ml",
+            brand="Antonio Banderas",
+            name="The Icon Eau de Toilette",
+            variant="50ml",
+            last_known_url="https://example.com/the-icon-edt-50",
+            last_known_sku="sku-edt-50",
+            shelf_number=2,
+        )
+    )
+    app.state.product_store_service.upsert_product(
+        ProductRecord(
+            alias="the_icon_edt_100ml",
+            brand="Antonio Banderas",
+            name="The Icon Eau de Toilette",
+            variant="100ml",
+            last_known_url="https://example.com/the-icon-edt-100",
+            last_known_sku="sku-edt-100",
+            shelf_number=2,
+        )
+    )
+    app.state.product_store_service.upsert_product(
+        ProductRecord(
+            alias="the_icon_edp_100ml",
+            brand="Antonio Banderas",
+            name="The Icon Eau de Parfum",
+            variant="100ml",
+            last_known_url="https://example.com/the-icon-edp-100",
+            last_known_sku="sku-edp-100",
+            shelf_number=2,
+        )
+    )
+    request = _build_request(app, method="GET", path="/dashboard/products/the_icon_edt_100ml")
+
+    response = routes_dashboard.dashboard_product_detail(request, alias="the_icon_edt_100ml")
+
+    assert isinstance(response, _TemplateResponse)
+    assert response.status_code == 200
+    content = response.body.decode("utf-8")
+    assert "The Icon Eau de Toilette" in content
+    assert "50ml" in content
+    assert "100ml" in content
+    assert "sku-edt-100" in content
+    assert "/dashboard/products/the_icon_edt_50ml/barcode" in content
+    assert "/dashboard/products/the_icon_edt_100ml/barcode" in content
+    assert 'data-variant-alias="the_icon_edp_100ml"' not in content
