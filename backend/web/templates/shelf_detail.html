@@ -32,22 +32,44 @@
 <section class="page-section">
   <div class="shelf-product-list">
     {% for card in products %}
-    <article class="shelf-product-card">
-      <a class="shelf-product-card__media" href="{{ card.detail_href }}">
+    <article class="shelf-product-card" data-variant-switcher data-variant-storage-key="shelf-{{ card.group_id }}">
+      <a class="shelf-product-card__media" href="{{ card.detail_href }}" data-variant-image-link>
         {% if card.image_url %}
-        <img src="{{ card.image_url }}" alt="Imagem do produto {{ card.name }}" loading="lazy" />
+        <img src="{{ card.image_url }}" alt="Imagem do produto {{ card.name }}" loading="lazy" data-variant-image />
         {% else %}
         <div class="product-card__placeholder">Sem imagem</div>
         {% endif %}
       </a>
 
       <div class="shelf-product-card__content">
-        <a class="shelf-product-card__title" href="{{ card.detail_href }}">{{ card.name }}</a>
-        <p class="shelf-product-card__meta">{{ card.brand }}{% if card.variant %} • {{ card.variant }}{% endif %}</p>
-        <p class="shelf-product-card__sku" title="{{ card.sku }}">SKU {{ card.sku }}</p>
+        <a class="shelf-product-card__title" href="{{ card.detail_href }}" data-variant-detail-link>{{ card.name }}</a>
+        <p class="shelf-product-card__meta">{{ card.brand }}</p>
+
+        <div class="variant-chip-list" role="list" aria-label="Variantes disponíveis de {{ card.name }}">
+          {% for variant in card.variants %}
+          <button
+            class="variant-chip {% if variant.alias == card.selected_alias %}variant-chip--active{% endif %}"
+            type="button"
+            data-variant-option
+            data-variant-alias="{{ variant.alias }}"
+            data-variant-label="{{ variant.label }}"
+            data-variant-sku="{{ variant.sku }}"
+            data-variant-detail-href="{{ variant.detail_href }}"
+            data-variant-barcode-href="{{ variant.barcode_href }}"
+            data-variant-image-url="{{ variant.image_url or '' }}"
+            data-variant-status-label="{{ variant.status_label }}"
+          >
+            {{ variant.label }}
+          </button>
+          {% endfor %}
+        </div>
+
+        <p class="shelf-product-card__sku" title="{{ card.sku }}">SKU <span data-variant-sku-label>{{ card.sku }}</span></p>
+        <p class="shelf-product-card__status" data-variant-status-label>{{ card.status_label }}</p>
+
         <div class="shelf-product-card__actions">
-          <a class="button button--secondary button--small" href="{{ card.barcode_href }}">Código</a>
-          <a class="button button--small" href="{{ card.detail_href }}">Abrir</a>
+          <a class="button button--secondary button--small" href="{{ card.barcode_href }}" data-variant-barcode-link>Código</a>
+          <a class="button button--small" href="{{ card.detail_href }}" data-variant-detail-link>Abrir</a>
         </div>
       </div>
     </article>

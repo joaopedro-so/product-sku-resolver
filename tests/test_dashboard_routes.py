@@ -309,6 +309,113 @@ def test_dashboard_abre_detalhe_da_prateleira_com_produtos_alocados(tmp_path: Pa
     assert "Abrir" in content
 
 
+def test_dashboard_prateleira_agrupa_variantes_em_um_unico_card(tmp_path: Path) -> None:
+    """
+    Responsabilidade:
+        Garantir que variantes de volume virem um unico card na prateleira.
+
+    Parametros:
+        tmp_path: Diretorio temporario para isolamento do storage.
+
+    Retorno:
+        Nenhum; valida agrupamento visual e presenca dos chips de variante.
+
+    Contexto de uso:
+        Protege a nova IA da prateleira, que deve representar um perfume pai
+        apenas uma vez, mesmo quando existirem varios volumes cadastrados.
+    """
+
+    app = _build_app_with_temp_storage(tmp_path)
+    app.state.product_store_service.upsert_product(
+        ProductRecord(
+            alias="good_girl_30ml",
+            brand="Carolina Herrera",
+            name="Good Girl",
+            variant="30ml",
+            last_known_url="https://example.com/good-girl?sku=30",
+            last_known_sku="sku-30",
+            shelf_number=5,
+        )
+    )
+    app.state.product_store_service.upsert_product(
+        ProductRecord(
+            alias="good_girl_50ml",
+            brand="Carolina Herrera",
+            name="Good Girl",
+            variant="50ml",
+            last_known_url="https://example.com/good-girl?sku=50",
+            last_known_sku="sku-50",
+            shelf_number=5,
+        )
+    )
+    request = _build_request(app, method="GET", path="/dashboard/prateleiras/5")
+
+    response = routes_dashboard.dashboard_shelf_detail(request, shelf_number=5)
+
+    assert isinstance(response, _TemplateResponse)
+    assert response.status_code == 200
+    content = response.body.decode("utf-8")
+    assert content.count('class="shelf-product-card"') == 1
+    assert "Good Girl" in content
+    assert "30ml" in content
+    assert "50ml" in content
+    assert "SKU" in content
+
+
+def test_dashboard_detalhe_agrupa_variantes_sem_trocar_de_produto(tmp_path: Path) -> None:
+    """
+    Responsabilidade:
+        Garantir que o detalhe exponha seletor de variantes do mesmo perfume pai.
+
+    Parametros:
+        tmp_path: Diretorio temporario para isolamento do storage.
+
+    Retorno:
+        Nenhum; valida chips, acoes por variante e SKU inicial selecionado.
+
+    Contexto de uso:
+        Protege a tela operacional em que o operador precisa trocar volume sem
+        sair do mesmo produto pai para acessar outro barcode.
+    """
+
+    app = _build_app_with_temp_storage(tmp_path)
+    app.state.product_store_service.upsert_product(
+        ProductRecord(
+            alias="good_girl_30ml",
+            brand="Carolina Herrera",
+            name="Good Girl",
+            variant="30ml",
+            last_known_url="https://example.com/good-girl?sku=30",
+            last_known_sku="sku-30",
+            shelf_number=5,
+        )
+    )
+    app.state.product_store_service.upsert_product(
+        ProductRecord(
+            alias="good_girl_50ml",
+            brand="Carolina Herrera",
+            name="Good Girl",
+            variant="50ml",
+            last_known_url="https://example.com/good-girl?sku=50",
+            last_known_sku="sku-50",
+            shelf_number=5,
+        )
+    )
+    request = _build_request(app, method="GET", path="/dashboard/products/good_girl_50ml")
+
+    response = routes_dashboard.dashboard_product_detail(request, alias="good_girl_50ml")
+
+    assert isinstance(response, _TemplateResponse)
+    assert response.status_code == 200
+    content = response.body.decode("utf-8")
+    assert "Good Girl" in content
+    assert "30ml" in content
+    assert "50ml" in content
+    assert "sku-50" in content
+    assert "/dashboard/products/good_girl_30ml/barcode" in content
+    assert "/dashboard/products/good_girl_50ml/barcode" in content
+
+
 def test_dashboard_respeita_prateleira_manual_no_cadastro(tmp_path: Path) -> None:
     """
     Responsabilidade:

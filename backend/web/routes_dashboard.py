@@ -22,6 +22,7 @@ from fastapi.templating import Jinja2Templates
 from backend.models.product import ProductRecord
 from backend.models.sku_event import SkuEvent
 from backend.services.product_draft_service import ProductDraftService
+from backend.services.product_group_service import GroupedParentProduct, ProductGroupService
 from backend.services.product_preview_service import ProductPreview, ProductPreviewService
 from backend.services.shelf_service import ShelfPlacement, ShelfService
 from backend.services.product_store_service import ProductStoreService
@@ -301,6 +302,31 @@ def _get_shelf_service(request: Request) -> ShelfService:
     initialized_shelf_service = ShelfService()
     request.app.state.shelf_service = initialized_shelf_service
     return initialized_shelf_service
+
+
+def _get_product_group_service(request: Request) -> ProductGroupService:
+    """
+    Responsabilidade:
+        Recuperar ou inicializar o servico de agrupamento por produto pai.
+
+    Parametros:
+        request: Requisicao HTTP atual.
+
+    Retorno:
+        ProductGroupService compartilhado pelo dashboard.
+
+    Contexto de uso:
+        Reorganiza variantes de volume em uma estrutura semantica unica para
+        listas e detalhe, sem alterar o formato persistido no storage.
+    """
+
+    cached_group_service = getattr(request.app.state, "product_group_service", None)
+    if isinstance(cached_group_service, ProductGroupService):
+        return cached_group_service
+
+    initialized_group_service = ProductGroupService()
+    request.app.state.product_group_service = initialized_group_service
+    return initialized_group_service
 
 
 def _parse_iso_timestamp(raw_timestamp: Optional[str]) -> Optional[datetime]:
@@ -1023,6 +1049,113 @@ def _build_short_product_name(product_name: str, product_brand: str) -> str:
     return normalized_name
 
 
+def _build_group_variant_payload(
+    grouped_product: GroupedParentProduct,
+    variant_alias: str,
+    preview: Optional[ProductPreview],
+    activity: Dict[str, str],
+    barcode_module_width_px: int,
+    barcode_height_px: int,
+    include_barcode_data_uri: bool = True,
+) -> Dict[str, Any]:
+    """
+    Responsabilidade:
+        Converter uma variante agrupada em dados prontos para a interface web.
+
+    Parametros:
+        grouped_product: Produto pai ao qual a variante pertence.
+        variant_alias: Alias real da variante selecionada.
+        preview: Preview visual opcional carregado do cache/fetcher.
+        activity: Resumo operacional de sincronizacao da variante.
+        barcode_module_width_px: Largura do modulo usada ao montar o SVG.
+        barcode_height_px: Altura das barras usada no SVG.
+        include_barcode_data_uri: Define se o payload precisa incluir o SVG.
+
+    Retorno:
+        Dicionario serializavel com links, SKU, status e barcode da variante.
+
+    Contexto de uso:
+        Reutilizado tanto nas listas por prateleira quanto na tela de detalhe
+        para manter o frontend sincronizado com o alias real da variante.
+    """
+
+    variant_product = next(
+        (
+            grouped_variant.product
+            for grouped_variant in grouped_product.variants
+            if grouped_variant.alias == variant_alias
+        ),
+        None,
+    )
+    if variant_product is None:
+        raise KeyError(f"Variante '{variant_alias}' nao encontrada no grupo '{grouped_product.group_id}'")
+
+    variant_label = next(
+        (
+            grouped_variant.label
+            for grouped_variant in grouped_product.variants
+            if grouped_variant.alias == variant_alias
+        ),
+        variant_product.variant or "Padrao",
+    )
+
+    barcode_data_uri = None
+    if include_barcode_data_uri:
+        barcode_data_uri = build_code128_svg_data_uri(
+            variant_product.last_known_sku,
+            module_width_px=barcode_module_width_px,
+            bar_height_px=barcode_height_px,
+        )
+
+    return {
+        "alias": variant_product.alias,
+        "label": variant_label,
+        "sku": variant_product.last_known_sku,
+        "image_url": preview.image_url if preview else None,
+        "detail_href": f"/dashboard/products/{variant_product.alias}",
+        "barcode_href": f"/dashboard/products/{variant_product.alias}/barcode",
+        "update_href": f"/dashboard/products/{variant_product.alias}/update",
+        "edit_href": f"/dashboard/products/{variant_product.alias}/edit",
+        "delete_href": f"/dashboard/products/{variant_product.alias}/delete",
+        "save_href": f"/dashboard/products/{variant_product.alias}/toggle-saved",
+        "last_known_url": variant_product.last_known_url,
+        "status_label": activity["status_label"],
+        "status_tone": activity["status_tone"],
+        "timestamp_label": activity["timestamp_label"],
+        "barcode_data_uri": barcode_data_uri,
+    }
+
+
+def _build_group_search_text(grouped_product: GroupedParentProduct) -> str:
+    """
+    Responsabilidade:
+        Consolidar o texto pesquisavel de um produto pai e suas variantes.
+
+    Parametros:
+        grouped_product: Produto pai com todas as variantes agrupadas.
+
+    Retorno:
+        String unica em minusculas contendo sinais uteis para filtro.
+
+    Contexto de uso:
+        Permite que a busca da prateleira continue funcionando por nome, SKU ou
+        variante mesmo quando a UI deixa de exibir as variantes como cards separados.
+    """
+
+    searchable_parts = [grouped_product.parent_name, grouped_product.brand]
+    for variant in grouped_product.variants:
+        searchable_parts.extend(
+            [
+                variant.label,
+                variant.product.last_known_sku,
+                variant.product.alias,
+                variant.product.name,
+            ]
+        )
+
+    return " ".join(part for part in searchable_parts if part).lower()
+
+
 def _build_shelf_card_visual_metadata(shelf_number: int, shelf_title: str) -> Dict[str, str]:
     """
     Responsabilidade:
@@ -1187,39 +1320,59 @@ def _build_shelf_detail_context(request: Request, shelf_number: int) -> Dict[str
 
     products = _get_store_service(request).list_products()
     shelf_products = shelf_service.list_products_for_shelf(products, shelf_number)
+    grouped_products = _get_product_group_service(request).group_products(shelf_products)
     latest_events = _build_latest_event_map(_get_history_store(request).list_events())
-    preview_map = _build_preview_map(request, shelf_products, fetch_limit=12)
+    preview_map = _build_preview_map(request, shelf_products, fetch_limit=max(12, len(shelf_products)))
     query_text = request.query_params.get("q", "").strip().lower()
 
     shelf_product_cards = []
-    for product in shelf_products:
-        if query_text:
-            searchable_text = " ".join(
-                [
-                    product.name,
-                    product.brand,
-                    product.variant,
-                    product.last_known_sku,
-                ]
-            ).lower()
-            if query_text not in searchable_text:
-                continue
+    for grouped_product in grouped_products:
+        if query_text and query_text not in _build_group_search_text(grouped_product):
+            continue
 
-        preview = preview_map.get(product.alias)
-        placement = shelf_service.get_product_placement(product=product, all_products=products)
-        activity = _build_product_activity(product, latest_events.get(product.alias), last_update_by_alias.get(product.alias))
+        selected_variant = _get_product_group_service(request).choose_default_variant(grouped_product)
+        selected_preview = preview_map.get(selected_variant.alias)
+        selected_activity = _build_product_activity(
+            selected_variant.product,
+            latest_events.get(selected_variant.alias),
+            last_update_by_alias.get(selected_variant.alias),
+        )
+
+        variant_options = []
+        for grouped_variant in grouped_product.variants:
+            variant_options.append(
+                _build_group_variant_payload(
+                    grouped_product=grouped_product,
+                    variant_alias=grouped_variant.alias,
+                    preview=preview_map.get(grouped_variant.alias),
+                    activity=_build_product_activity(
+                        grouped_variant.product,
+                        latest_events.get(grouped_variant.alias),
+                        last_update_by_alias.get(grouped_variant.alias),
+                    ),
+                    barcode_module_width_px=2,
+                    barcode_height_px=72,
+                    include_barcode_data_uri=False,
+                )
+            )
+
         shelf_product_cards.append(
             {
-                "alias": product.alias,
-                "name": _build_short_product_name(product.name, product.brand),
-                "brand": product.brand,
-                "variant": product.variant,
-                "sku": product.last_known_sku,
-                "image_url": preview.image_url if preview else None,
-                "barcode_href": f"/dashboard/products/{product.alias}/barcode",
-                "detail_href": f"/dashboard/products/{product.alias}",
-                "status_label": activity["status_label"],
-                "placement": placement,
+                "group_id": grouped_product.group_id,
+                "name": _build_short_product_name(grouped_product.parent_name, grouped_product.brand),
+                "brand": grouped_product.brand,
+                "sku": selected_variant.product.last_known_sku,
+                "image_url": selected_preview.image_url if selected_preview else None,
+                "barcode_href": f"/dashboard/products/{selected_variant.alias}/barcode",
+                "detail_href": f"/dashboard/products/{selected_variant.alias}",
+                "status_label": selected_activity["status_label"],
+                "placement": shelf_service.get_product_placement(
+                    product=selected_variant.product,
+                    all_products=products,
+                ),
+                "selected_alias": selected_variant.alias,
+                "selected_variant_label": selected_variant.label,
+                "variants": variant_options,
             }
         )
 
@@ -1553,7 +1706,9 @@ def _build_product_detail_context(request: Request, alias: str) -> Dict[str, Any
         Centraliza a tela que confirma imagem, SKU e barcode acima da dobra.
     """
 
-    product = _get_store_service(request).get_by_alias(alias)
+    store_service = _get_store_service(request)
+    all_products = store_service.list_products()
+    product = store_service.get_by_alias(alias)
     if product is None:
         return _with_app_shell(
             request=request,
@@ -1565,36 +1720,93 @@ def _build_product_detail_context(request: Request, alias: str) -> Dict[str, Any
             },
         )
 
-    history_events = _get_history_store(request).list_events_by_alias(alias)
+    grouped_product = _get_product_group_service(request).get_group_for_alias(all_products, alias)
+    if grouped_product is None:
+        return _with_app_shell(
+            request=request,
+            active_tab="search",
+            context={
+                "request": request,
+                "page_title": "Produto nao encontrado",
+                "error_message": "O produto informado nao foi encontrado no catalogo.",
+            },
+        )
+
+    selected_variant = _get_product_group_service(request).choose_default_variant(
+        grouped_product,
+        preferred_alias=alias,
+    )
+    history_events = _get_history_store(request).list_events_by_alias(selected_variant.alias)
     history_events = sorted(
         history_events,
         key=lambda item: _parse_iso_timestamp(item.timestamp) or datetime.min.replace(tzinfo=timezone.utc),
         reverse=True,
     )
     latest_event = history_events[0] if history_events else None
-    preview_service = _get_preview_service(request)
-    product_preview = preview_service.ensure_preview(product) if preview_service else None
-    visual_snapshot = _build_product_visual_snapshot(request, product)
-    activity = _build_product_activity(product, latest_event, last_update_by_alias.get(alias))
+    variant_products = [grouped_variant.product for grouped_variant in grouped_product.variants]
+    preview_map = _build_preview_map(request, variant_products, fetch_limit=max(4, len(variant_products)))
+    product_preview = preview_map.get(selected_variant.alias)
+    visual_snapshot = _build_product_visual_snapshot(request, selected_variant.product)
+    activity = _build_product_activity(
+        selected_variant.product,
+        latest_event,
+        last_update_by_alias.get(selected_variant.alias),
+    )
     shelf_placement = _get_shelf_service(request).get_product_placement(
-        product=product,
-        all_products=_get_store_service(request).list_products(),
+        product=selected_variant.product,
+        all_products=all_products,
     )
 
+    latest_history_event_by_alias: Dict[str, Optional[SkuEvent]] = {}
+    for grouped_variant in grouped_product.variants:
+        variant_history_events = sorted(
+            _get_history_store(request).list_events_by_alias(grouped_variant.alias),
+            key=lambda item: _parse_iso_timestamp(item.timestamp) or datetime.min.replace(tzinfo=timezone.utc),
+            reverse=True,
+        )
+        latest_history_event_by_alias[grouped_variant.alias] = variant_history_events[0] if variant_history_events else None
+
+    variant_options = []
+    for grouped_variant in grouped_product.variants:
+        variant_options.append(
+            _build_group_variant_payload(
+                grouped_product=grouped_product,
+                variant_alias=grouped_variant.alias,
+                preview=preview_map.get(grouped_variant.alias),
+                activity=_build_product_activity(
+                    grouped_variant.product,
+                    latest_history_event_by_alias.get(grouped_variant.alias),
+                    last_update_by_alias.get(grouped_variant.alias),
+                ),
+                barcode_module_width_px=3,
+                barcode_height_px=124,
+                include_barcode_data_uri=True,
+            )
+        )
+
     related_products = []
-    for related_product in _get_store_service(request).list_products():
-        if related_product.alias == product.alias:
+    for related_group in _get_product_group_service(request).group_products(all_products):
+        if related_group.group_id == grouped_product.group_id:
             continue
-        if related_product.brand != product.brand:
+        if related_group.brand != grouped_product.brand:
             continue
         related_products.append(
             {
-                "alias": related_product.alias,
-                "name": related_product.name,
-                "variant": related_product.variant,
-                "sku": related_product.last_known_sku,
+                "alias": related_group.variants[0].alias,
+                "name": related_group.parent_name,
+                "variant": related_group.variants[0].label,
+                "sku": related_group.variants[0].product.last_known_sku,
             }
         )
+
+    selected_variant_payload = next(
+        (
+            variant_payload
+            for variant_payload in variant_options
+            if variant_payload["alias"] == selected_variant.alias
+        ),
+        variant_options[0] if variant_options else None,
+    )
 
     history_cards = [
         {
@@ -1612,17 +1824,24 @@ def _build_product_detail_context(request: Request, alias: str) -> Dict[str, Any
         active_tab="home",
         context={
             "request": request,
-            "page_title": product.name,
-            "product": product,
+            "page_title": grouped_product.parent_name,
+            "product": selected_variant.product,
+            "parent_product": grouped_product,
+            "selected_variant": selected_variant_payload,
+            "variant_options": variant_options,
             "product_preview": product_preview,
             "visual_snapshot": visual_snapshot,
             "activity": activity,
             "shelf_placement": shelf_placement,
-            "barcode_data_uri": build_code128_svg_data_uri(product.last_known_sku, module_width_px=3, bar_height_px=124),
-            "is_saved": _get_saved_service(request).is_saved(alias),
+            "barcode_data_uri": build_code128_svg_data_uri(
+                selected_variant.product.last_known_sku,
+                module_width_px=3,
+                bar_height_px=124,
+            ),
+            "is_saved": _get_saved_service(request).is_saved(selected_variant.alias),
             "history_cards": history_cards,
             "related_products": related_products[:4],
-            "last_update": last_update_by_alias.get(alias),
+            "last_update": last_update_by_alias.get(selected_variant.alias),
         },
     )
 

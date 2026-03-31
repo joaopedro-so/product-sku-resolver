@@ -16,8 +16,15 @@
   <div class="fullscreen-barcode__header">
     <a class="button button--secondary button--small" href="/dashboard/products/{{ product.alias }}">Fechar</a>
     <div>
-      <h1>{{ product.name }}</h1>
-      <p>{{ product.brand }}{% if product.variant %} • {{ product.variant }}{% endif %}</p>
+      <h1>{{ parent_product.parent_name if parent_product else product.name }}</h1>
+      <p>
+        {{ parent_product.brand if parent_product else product.brand }}
+        {% if selected_variant %}
+        • {{ selected_variant.label }}
+        {% elif product.variant %}
+        • {{ product.variant }}
+        {% endif %}
+      </p>
     </div>
   </div>
 
