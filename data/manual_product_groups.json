@@ -1,3 +1,33 @@
 {
-  "groups": []
+  "groups": [
+    {
+      "group_id": "antonio_banderas_the_golden_secret",
+      "family_name": "The Golden Secret",
+      "display_name": "The Golden Secret",
+      "brand": "Antonio Banderas",
+      "product_type": "Eau de Toilette",
+      "variant_members": [
+        {
+          "alias": "antonio_banderas_the_golden_secret_30ml",
+          "label": "30ml",
+          "display_order": 1
+        },
+        {
+          "alias": "antonio_banderas_the_golden_secret_50ml",
+          "label": "50ml",
+          "display_order": 2
+        },
+        {
+          "alias": "antonio_banderas_the_golden_secret_100ml",
+          "label": "100ml",
+          "display_order": 3
+        },
+        {
+          "alias": "antonio_banderas_the_golden_secret_200ml",
+          "label": "200ml",
+          "display_order": 4
+        }
+      ]
+    }
+  ]
 }
