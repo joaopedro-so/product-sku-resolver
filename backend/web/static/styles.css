@@ -1099,7 +1099,7 @@ form {
   align-items: center;
   justify-content: center;
   min-height: 2.1rem;
-  min-width: 0;
+  min-width: 4.25rem;
   padding: 0.44rem 0.7rem;
   border: 1px solid rgba(27, 27, 29, 0.12);
   border-radius: 0.74rem;
@@ -1109,7 +1109,14 @@ form {
   font-weight: 700;
   letter-spacing: 0.03em;
   line-height: 1;
+  white-space: nowrap;
   transition: border-color 160ms ease, background 160ms ease, transform 160ms ease;
+}
+
+.variant-chip [data-variant-option-label] {
+  display: inline-block;
+  color: inherit;
+  line-height: 1;
 }
 
 .variant-chip--active,

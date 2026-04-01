@@ -61,6 +61,17 @@ function applyVariantSelection(variantRoot, variantOption) {
   const selectedStockQty = variantOption.dataset.variantStockQty || "0";
   const selectedIsSyncable = variantOption.dataset.variantIsSyncable === "1";
 
+  variantRoot.querySelectorAll("[data-variant-option]").forEach((element) => {
+    const labelElement = element.querySelector("[data-variant-option-label]");
+    const fallbackLabel = element.dataset.variantLabel || "Variante";
+    if (labelElement) {
+      labelElement.textContent = fallbackLabel;
+    } else {
+      element.textContent = fallbackLabel;
+    }
+    element.setAttribute("aria-label", `Selecionar variante ${fallbackLabel}`);
+  });
+
   variantRoot.querySelectorAll("[data-variant-code-label]").forEach((element) => {
     element.textContent = selectedVariantCode;
     element.setAttribute("title", selectedVariantCode);
