@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Any, Dict
+from typing import Any, Dict, List
 
 
 @dataclass(slots=True)
@@ -62,6 +62,15 @@ class ProductRecord:
     is_active: bool = True
     shelf_number: int | None = None
     display_order: int | None = None
+    site_link_status: str = "linked_to_site"
+    site_product_id: str = ""
+    site_candidate_id: str = ""
+    match_confidence: float | None = None
+    match_signals: List[str] | None = None
+    last_matched_at: str = ""
+    site_variant_id: str = ""
+    current_site_code: str = ""
+    current_barcode_value: str = ""
 
     @classmethod
     def from_dict(cls, source: Dict[str, Any]) -> "ProductRecord":
@@ -98,6 +107,19 @@ class ProductRecord:
         normalized_url = str(source.get("last_known_url", "")).strip()
         normalized_source_type = _normalize_source_type(source.get("source_type"))
         normalized_parent_reference = str(source.get("parent_reference", "")).strip()
+        normalized_page_family_sku = _resolve_page_family_sku(
+            raw_page_family_sku=source.get("page_family_sku"),
+            last_known_url=normalized_url,
+        )
+        normalized_site_product_id = str(source.get("site_product_id", "")).strip() or normalized_page_family_sku
+        normalized_site_link_status = _normalize_site_link_status(
+            raw_site_link_status=source.get("site_link_status"),
+            source_type=normalized_source_type,
+            has_site_url=bool(normalized_url),
+            has_site_product_id=bool(normalized_site_product_id),
+        )
+        normalized_current_site_code = str(source.get("current_site_code", "")).strip()
+        normalized_current_barcode_value = str(source.get("current_barcode_value", "")).strip()
 
         # Decisão técnica:
         # Forçamos string para reduzir inconsistência de tipos vindos de JSON
@@ -109,10 +131,7 @@ class ProductRecord:
             variant=str(source["variant"]).strip(),
             last_known_url=normalized_url,
             last_known_sku=str(source["last_known_sku"]).strip(),
-            page_family_sku=_resolve_page_family_sku(
-                raw_page_family_sku=source.get("page_family_sku"),
-                last_known_url=normalized_url,
-            ),
+            page_family_sku=normalized_page_family_sku,
             parent_reference=normalized_parent_reference,
             source_type=normalized_source_type,
             concentration=str(source.get("concentration", "")).strip(),
@@ -124,6 +143,15 @@ class ProductRecord:
             is_active=_optional_to_bool(source.get("is_active"), default_value=True),
             shelf_number=_optional_to_int(source.get("shelf_number")),
             display_order=_optional_to_int(source.get("display_order")),
+            site_link_status=normalized_site_link_status,
+            site_product_id=normalized_site_product_id,
+            site_candidate_id=str(source.get("site_candidate_id", "")).strip(),
+            match_confidence=_optional_to_float(source.get("match_confidence")),
+            match_signals=_normalize_string_list(source.get("match_signals")),
+            last_matched_at=str(source.get("last_matched_at", "")).strip(),
+            site_variant_id=str(source.get("site_variant_id", "")).strip(),
+            current_site_code=normalized_current_site_code,
+            current_barcode_value=normalized_current_barcode_value or str(source["last_known_sku"]).strip(),
         )
 
     def to_dict(self) -> Dict[str, Any]:
@@ -159,6 +187,15 @@ class ProductRecord:
             "stock_qty": self.stock_qty,
             "variant_notes": self.variant_notes,
             "is_active": self.is_active,
+            "site_link_status": self.site_link_status,
+            "site_product_id": self.site_product_id,
+            "site_candidate_id": self.site_candidate_id,
+            "match_confidence": self.match_confidence,
+            "match_signals": self.match_signals or [],
+            "last_matched_at": self.last_matched_at,
+            "site_variant_id": self.site_variant_id,
+            "current_site_code": self.current_site_code,
+            "current_barcode_value": self.current_barcode_value,
         }
         if self.shelf_number is not None:
             payload["shelf_number"] = self.shelf_number
@@ -183,7 +220,7 @@ class ProductRecord:
             estável da página, sem quebrar compatibilidade com o storage atual.
         """
 
-        return self.last_known_sku
+        return self.current_barcode_value or self.current_site_code or self.last_known_sku
 
     @property
     def source_label(self) -> str:
@@ -209,6 +246,29 @@ class ProductRecord:
         return "Site"
 
     @property
+    def site_link_status_label(self) -> str:
+        """
+        Responsabilidade:
+            Traduzir o estado de vínculo do site em um texto curto para a UI.
+
+        Parâmetros:
+            Nenhum.
+
+        Retorno:
+            Rótulo amigável como `Vinculado ao site` ou `Sem vínculo`.
+
+        Contexto de uso:
+            Exposto em listas e detalhes quando a interface precisar explicar
+            por que um item manual voltou a sincronizar com o site.
+        """
+
+        if self.site_link_status == "candidate_found":
+            return "Possível correspondência"
+        if self.site_link_status == "linked_to_site":
+            return "Vinculado ao site"
+        return "Sem vínculo"
+
+    @property
     def is_syncable(self) -> bool:
         """
         Responsabilidade:
@@ -225,7 +285,26 @@ class ProductRecord:
             legados, sem precisar repetir essa regra em vários módulos.
         """
 
-        return self.source_type == "site"
+        return self.site_link_status == "linked_to_site" and bool(self.last_known_url.strip())
+
+    @property
+    def has_site_candidate(self) -> bool:
+        """
+        Responsabilidade:
+            Indicar se a variante possui um candidato de vínculo pendente.
+
+        Parâmetros:
+            Nenhum.
+
+        Retorno:
+            True quando houver uma possível correspondência preservada.
+
+        Contexto de uso:
+            Permite que a interface e a camada de serviço diferenciem itens
+            totalmente soltos de itens que já voltaram a ter um candidato do site.
+        """
+
+        return self.site_link_status == "candidate_found" and bool(self.site_candidate_id.strip())
 
 
 def _optional_to_int(raw_value: Any) -> int | None:
@@ -307,6 +386,53 @@ def _optional_to_bool(raw_value: Any, default_value: bool = True) -> bool:
     return default_value
 
 
+def _optional_to_float(raw_value: Any) -> float | None:
+    """
+    Responsabilidade:
+        Normalizar um valor opcional para float de forma resiliente.
+
+    Parâmetros:
+        raw_value: Valor bruto vindo de JSON ou payloads externos.
+
+    Retorno:
+        Float quando houver conteúdo válido; caso contrário, None.
+
+    Contexto de uso:
+        Usado para persistir a confiança da reconciliação sem quebrar registros
+        antigos que ainda não possuem esse campo no storage.
+    """
+
+    if raw_value in (None, ""):
+        return None
+
+    try:
+        return float(raw_value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _normalize_string_list(raw_value: Any) -> List[str]:
+    """
+    Responsabilidade:
+        Normalizar uma lista opcional de textos para formato seguro.
+
+    Parâmetros:
+        raw_value: Valor bruto vindo do storage, potencialmente ausente.
+
+    Retorno:
+        Lista de strings limpas, pronta para auditoria de matching.
+
+    Contexto de uso:
+        Mantém `match_signals` previsível ao ler JSON antigo ou parcialmente
+        preenchido, evitando verificações especiais na camada de serviço.
+    """
+
+    if not isinstance(raw_value, list):
+        return []
+
+    return [str(item).strip() for item in raw_value if str(item).strip()]
+
+
 def _normalize_source_type(raw_source_type: Any) -> str:
     """
     Responsabilidade:
@@ -327,6 +453,45 @@ def _normalize_source_type(raw_source_type: Any) -> str:
     if normalized_source_type in {"manual", "legacy"}:
         return normalized_source_type
     return "site"
+
+
+def _normalize_site_link_status(
+    raw_site_link_status: Any,
+    source_type: str,
+    has_site_url: bool,
+    has_site_product_id: bool,
+) -> str:
+    """
+    Responsabilidade:
+        Consolidar o estado de vínculo ao site em um conjunto controlado.
+
+    Parâmetros:
+        raw_site_link_status: Valor bruto opcional vindo do JSON.
+        source_type: Origem principal do item já normalizada.
+        has_site_url: Indica se existe URL conhecida para sincronização.
+        has_site_product_id: Indica se já existe referência estável do site.
+
+    Retorno:
+        Uma das strings válidas: `manual_unlinked`, `candidate_found` ou
+        `linked_to_site`.
+
+    Contexto de uso:
+        Mantém compatibilidade entre registros antigos e o novo fluxo de
+        reconciliação, derivando um estado seguro quando o campo ainda não
+        estiver persistido.
+    """
+
+    normalized_status = str(raw_site_link_status or "").strip().lower()
+    if normalized_status in {"manual_unlinked", "candidate_found", "linked_to_site"}:
+        return normalized_status
+
+    if source_type == "site":
+        return "linked_to_site"
+
+    if has_site_url and has_site_product_id:
+        return "linked_to_site"
+
+    return "manual_unlinked"
 
 
 def _resolve_page_family_sku(raw_page_family_sku: Any, last_known_url: str) -> str:

@@ -299,3 +299,256 @@ def test_upsert_persiste_produto_para_nova_instancia_do_storage(tmp_path: Path) 
     assert found_product is not None
     assert found_product.name == "Perfume Novo"
     assert found_product.last_known_sku == "sku-100"
+
+
+def test_upsert_reconcilia_produto_manual_com_retorno_do_site_sem_duplicar(tmp_path: Path) -> None:
+    """
+    Responsabilidade:
+        Garantir que um item manual volte a sincronizar sem virar duplicata.
+
+    Parametros:
+        tmp_path: Diretorio temporario fornecido pelo pytest.
+
+    Retorno:
+        Nenhum; valida preservacao do alias interno e ausencia de registro extra.
+
+    Contexto de uso:
+        Protege o fluxo em que um perfume cadastrado manualmente reaparece no
+        site e precisa retomar o sync mantendo identidade interna unica.
+    """
+
+    store = ProductStoreService(tmp_path / "products.json")
+    manual_product = ProductRecord(
+        alias="ck_one_interno_100ml",
+        brand="Calvin Klein",
+        name="CK One Eau de Toilette",
+        variant="100ml",
+        last_known_url="",
+        last_known_sku="manual-100",
+        source_type="manual",
+        site_link_status="manual_unlinked",
+        shelf_number=3,
+        display_order=2,
+    )
+    store.upsert_product(manual_product)
+
+    persisted_product = store.upsert_product(
+        ProductRecord(
+            alias="calvin_klein_ck_one_100ml",
+            brand="Calvin Klein",
+            name="Calvin Klein CK One Eau de Toilette",
+            variant="100 ml",
+            last_known_url="https://www.lojasrenner.com.br/p/ck-one/-/A-111-br.lr?sku=999",
+            last_known_sku="999",
+            source_type="site",
+            page_family_sku="111",
+        )
+    )
+
+    assert persisted_product.alias == "ck_one_interno_100ml"
+    assert persisted_product.site_link_status == "linked_to_site"
+    assert persisted_product.site_product_id == "111"
+    assert persisted_product.last_known_sku == "999"
+    assert persisted_product.variant_code == "999"
+    assert persisted_product.shelf_number == 3
+    assert persisted_product.display_order == 2
+    assert store.get_by_alias("calvin_klein_ck_one_100ml") is None
+    assert len(store.list_products()) == 1
+
+
+def test_upsert_mantem_produto_manual_sem_link_quando_o_site_traz_item_ambiguo(tmp_path: Path) -> None:
+    """
+    Responsabilidade:
+        Garantir que itens ambiguos nao sejam unidos automaticamente.
+
+    Parametros:
+        tmp_path: Diretorio temporario fornecido pelo pytest.
+
+    Retorno:
+        Nenhum; valida coexistencia segura entre manual e produto do site.
+
+    Contexto de uso:
+        Evita regressao em casos como EDT versus EDP dentro da mesma familia.
+    """
+
+    store = ProductStoreService(tmp_path / "products.json")
+    store.upsert_product(
+        ProductRecord(
+            alias="the_icon_edt_interno_100ml",
+            brand="Antonio Banderas",
+            name="The Icon Eau de Toilette",
+            variant="100ml",
+            last_known_url="",
+            last_known_sku="manual-100",
+            source_type="manual",
+            concentration="EDT",
+            site_link_status="manual_unlinked",
+        )
+    )
+
+    persisted_site_product = store.upsert_product(
+        ProductRecord(
+            alias="the_icon_edp_site_100ml",
+            brand="Antonio Banderas",
+            name="The Icon Eau de Parfum",
+            variant="100ml",
+            last_known_url="https://www.lojasrenner.com.br/p/the-icon-edp/-/A-222-br.lr?sku=333",
+            last_known_sku="333",
+            source_type="site",
+            concentration="EDP",
+            page_family_sku="222",
+        )
+    )
+
+    assert persisted_site_product.alias == "the_icon_edp_site_100ml"
+    assert store.get_by_alias("the_icon_edt_interno_100ml") is not None
+    assert len(store.list_products()) == 2
+
+
+def test_upsert_reconcilia_variantes_do_mesmo_produto_pai_por_volume(tmp_path: Path) -> None:
+    """
+    Responsabilidade:
+        Garantir que cada variante manual seja religada ao site corretamente.
+
+    Parametros:
+        tmp_path: Diretorio temporario fornecido pelo pytest.
+
+    Retorno:
+        Nenhum; valida reconciliacao de multiplas variantes de um mesmo perfume.
+
+    Contexto de uso:
+        Protege o modelo pai + variantes quando um produto volta ao site com
+        mais de um volume e cada codigo precisa ser atualizado separadamente.
+    """
+
+    store = ProductStoreService(tmp_path / "products.json")
+    store.upsert_product(
+        ProductRecord(
+            alias="good_girl_interno_50ml",
+            brand="Carolina Herrera",
+            name="Good Girl",
+            variant="50ml",
+            last_known_url="",
+            last_known_sku="manual-50",
+            source_type="manual",
+            site_link_status="manual_unlinked",
+            parent_reference="good_girl",
+            shelf_number=5,
+        )
+    )
+    store.upsert_product(
+        ProductRecord(
+            alias="good_girl_interno_80ml",
+            brand="Carolina Herrera",
+            name="Good Girl",
+            variant="80ml",
+            last_known_url="",
+            last_known_sku="manual-80",
+            source_type="manual",
+            site_link_status="manual_unlinked",
+            parent_reference="good_girl",
+            shelf_number=5,
+        )
+    )
+
+    store.upsert_product(
+        ProductRecord(
+            alias="good_girl_site_50ml",
+            brand="Carolina Herrera",
+            name="Good Girl",
+            variant="50ml",
+            last_known_url="https://www.lojasrenner.com.br/p/good-girl/-/A-500-br.lr?sku=550",
+            last_known_sku="550",
+            source_type="site",
+            page_family_sku="500",
+        )
+    )
+    store.upsert_product(
+        ProductRecord(
+            alias="good_girl_site_80ml",
+            brand="Carolina Herrera",
+            name="Good Girl",
+            variant="80ml",
+            last_known_url="https://www.lojasrenner.com.br/p/good-girl/-/A-500-br.lr?sku=880",
+            last_known_sku="880",
+            source_type="site",
+            page_family_sku="500",
+        )
+    )
+
+    persisted_variant_50ml = store.get_by_alias("good_girl_interno_50ml")
+    persisted_variant_80ml = store.get_by_alias("good_girl_interno_80ml")
+
+    assert persisted_variant_50ml is not None
+    assert persisted_variant_80ml is not None
+    assert persisted_variant_50ml.site_link_status == "linked_to_site"
+    assert persisted_variant_80ml.site_link_status == "linked_to_site"
+    assert persisted_variant_50ml.last_known_sku == "550"
+    assert persisted_variant_80ml.last_known_sku == "880"
+    assert persisted_variant_50ml.shelf_number == 5
+    assert persisted_variant_80ml.shelf_number == 5
+    assert len(store.list_products()) == 2
+
+
+def test_upsert_atualiza_registro_ja_vinculado_sem_recriar_alias_do_site(tmp_path: Path) -> None:
+    """
+    Responsabilidade:
+        Garantir que futuras leituras do site atualizem o item ja reconciliado.
+
+    Parametros:
+        tmp_path: Diretorio temporario fornecido pelo pytest.
+
+    Retorno:
+        Nenhum; valida ausencia de duplicata apos o primeiro vinculo.
+
+    Contexto de uso:
+        Protege o caso em que o mesmo perfume religado volta a ser importado ou
+        atualizado novamente em ciclos seguintes de sincronizacao.
+    """
+
+    store = ProductStoreService(tmp_path / "products.json")
+    store.upsert_product(
+        ProductRecord(
+            alias="ck_one_interno_100ml",
+            brand="Calvin Klein",
+            name="CK One Eau de Toilette",
+            variant="100ml",
+            last_known_url="",
+            last_known_sku="manual-100",
+            source_type="manual",
+            site_link_status="manual_unlinked",
+            shelf_number=3,
+        )
+    )
+    store.upsert_product(
+        ProductRecord(
+            alias="calvin_klein_ck_one_100ml",
+            brand="Calvin Klein",
+            name="Calvin Klein CK One Eau de Toilette",
+            variant="100ml",
+            last_known_url="https://www.lojasrenner.com.br/p/ck-one/-/A-111-br.lr?sku=999",
+            last_known_sku="999",
+            source_type="site",
+            page_family_sku="111",
+        )
+    )
+
+    refreshed_product = store.upsert_product(
+        ProductRecord(
+            alias="site_alias_novo_ck_one_100ml",
+            brand="Calvin Klein",
+            name="Calvin Klein CK One Eau de Toilette",
+            variant="100ml",
+            last_known_url="https://www.lojasrenner.com.br/p/ck-one/-/A-111-br.lr?sku=1001",
+            last_known_sku="1001",
+            source_type="site",
+            page_family_sku="111",
+        )
+    )
+
+    assert refreshed_product.alias == "ck_one_interno_100ml"
+    assert refreshed_product.last_known_sku == "1001"
+    assert refreshed_product.current_site_code == "1001"
+    assert refreshed_product.shelf_number == 3
+    assert store.get_by_alias("site_alias_novo_ck_one_100ml") is None
+    assert len(store.list_products()) == 1

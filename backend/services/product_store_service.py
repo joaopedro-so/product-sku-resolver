@@ -13,6 +13,11 @@ from pathlib import Path
 from typing import List, Optional
 
 from backend.models.product import ProductRecord
+from backend.services.matcher import normalize_variant
+from backend.services.product_reconciliation_service import (
+    ProductReconciliationService,
+    ReconciliationDecision,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -33,13 +38,19 @@ class ProductStoreService:
         atualizar produtos sem conhecer detalhes de IO em arquivo.
     """
 
-    def __init__(self, storage_file_path: Path) -> None:
+    def __init__(
+        self,
+        storage_file_path: Path,
+        reconciliation_service: Optional[ProductReconciliationService] = None,
+    ) -> None:
         """
         Responsabilidade:
             Inicializar serviço de armazenamento e garantir arquivo válido.
 
         Parâmetros:
             storage_file_path: Caminho para arquivo de produtos em JSON.
+            reconciliation_service: Serviço opcional responsável por religar
+                itens manuais a produtos que voltaram ao site.
 
         Retorno:
             Nenhum.
@@ -50,6 +61,7 @@ class ProductStoreService:
         """
 
         self.storage_file_path = storage_file_path
+        self.reconciliation_service = reconciliation_service or ProductReconciliationService()
         self._ensure_storage_exists()
 
     def _ensure_storage_exists(self) -> None:
@@ -197,6 +209,42 @@ class ProductStoreService:
 
         normalized_product = self._ensure_page_family_sku(product_to_save)
         products = self._read_all()
+        linked_target = self._find_linked_target_for_site_product(
+            incoming_site_product=normalized_product,
+            existing_products=products,
+        )
+        if linked_target is not None:
+            linked_product = self._build_refreshed_linked_product(
+                current_product=linked_target,
+                incoming_site_product=normalized_product,
+            )
+            updated_products = self._replace_product_by_alias(
+                products=products,
+                target_alias=linked_target.alias,
+                replacement_product=linked_product,
+                discarded_alias=normalized_product.alias,
+            )
+            self._write_all(updated_products)
+            persisted_product = self._confirm_persisted_product(linked_product.alias)
+            logger.info(
+                "Produto de site reconciliado com registro ja vinculado: alias=%s arquivo=%s",
+                persisted_product.alias,
+                self.storage_file_path,
+            )
+            return persisted_product
+
+        reconciliation_decision = self.reconciliation_service.decide_site_link(
+            incoming_site_product=normalized_product,
+            existing_products=products,
+        )
+        reconciled_product = self._apply_reconciliation_decision(
+            current_products=products,
+            incoming_site_product=normalized_product,
+            reconciliation_decision=reconciliation_decision,
+        )
+        if reconciled_product is not None:
+            return reconciled_product
+
         updated_products: List[ProductRecord] = []
         has_replaced_existing = False
 
@@ -236,8 +284,17 @@ class ProductStoreService:
         if not normalized_current_alias:
             raise KeyError("Alias atual nao pode ser vazio para substituir produto")
 
-        normalized_updated_product = self._ensure_page_family_sku(updated_product)
         products = self._read_all()
+        current_product = self._find_product_by_alias(products, normalized_current_alias)
+        if current_product is None:
+            raise KeyError(f"Produto com alias '{normalized_current_alias}' nao encontrado")
+
+        normalized_updated_product = self._ensure_page_family_sku(
+            self._preserve_existing_site_metadata(
+                current_product=current_product,
+                updated_product=updated_product,
+            )
+        )
         updated_products: List[ProductRecord] = []
         has_replaced_existing = False
 
@@ -247,9 +304,6 @@ class ProductStoreService:
                 has_replaced_existing = True
             else:
                 updated_products.append(current_product)
-
-        if not has_replaced_existing:
-            raise KeyError(f"Produto com alias '{normalized_current_alias}' nao encontrado")
 
         self._write_all(updated_products)
         persisted_product = self._confirm_persisted_product(normalized_updated_product.alias)
@@ -299,25 +353,11 @@ class ProductStoreService:
         if product.page_family_sku:
             return product
 
-        return ProductRecord(
-            alias=product.alias,
-            brand=product.brand,
-            name=product.name,
-            variant=product.variant,
-            last_known_url=product.last_known_url,
-            last_known_sku=product.last_known_sku,
-            page_family_sku=ProductRecord.from_dict(product.to_dict()).page_family_sku,
-            parent_reference=product.parent_reference,
-            source_type=product.source_type,
-            concentration=product.concentration,
-            shelf_reference_label=product.shelf_reference_label,
-            notes=product.notes,
-            image_url=product.image_url,
-            stock_qty=product.stock_qty,
-            variant_notes=product.variant_notes,
-            is_active=product.is_active,
-            shelf_number=product.shelf_number,
-            display_order=product.display_order,
+        return self._build_product_from_payload(
+            base_product=product,
+            payload_updates={
+                "page_family_sku": ProductRecord.from_dict(product.to_dict()).page_family_sku,
+            },
         )
 
     def delete_product(self, product_alias: str) -> ProductRecord:
@@ -403,7 +443,310 @@ class ProductStoreService:
             is_active=existing_product.is_active,
             shelf_number=existing_product.shelf_number,
             display_order=existing_product.display_order,
+            site_link_status="linked_to_site",
+            site_product_id=existing_product.site_product_id or existing_product.page_family_sku,
+            site_candidate_id="",
+            match_confidence=existing_product.match_confidence,
+            match_signals=existing_product.match_signals,
+            last_matched_at=existing_product.last_matched_at,
+            site_variant_id=existing_product.site_variant_id,
+            current_site_code=new_sku.strip(),
+            current_barcode_value=new_sku.strip(),
         )
 
-        self.upsert_product(updated_product)
-        return updated_product
+        return self.upsert_product(updated_product)
+
+    def _apply_reconciliation_decision(
+        self,
+        current_products: List[ProductRecord],
+        incoming_site_product: ProductRecord,
+        reconciliation_decision: ReconciliationDecision,
+    ) -> Optional[ProductRecord]:
+        """
+        Responsabilidade:
+            Aplicar no storage a decisao produzida pela camada de reconciliacao.
+
+        Parametros:
+            current_products: Lista atual do catalogo antes da nova gravacao.
+            incoming_site_product: Variante recem-chegada do site.
+            reconciliation_decision: Acao segura decidida pelo reconciliador.
+
+        Retorno:
+            ProductRecord persistido quando a decisao consumir o item; caso
+            contrario, None para que o fluxo siga no upsert normal por alias.
+
+        Contexto de uso:
+            Isola o efeito de `candidate_found` e `linked_to_site` em um unico
+            ponto, evitando que a regra de nao duplicar fique espalhada.
+        """
+
+        if reconciliation_decision.decision_type not in {"linked_to_site", "candidate_found"}:
+            return None
+
+        target_product = self._find_product_by_alias(
+            products=current_products,
+            product_alias=reconciliation_decision.target_alias,
+        )
+        if target_product is None:
+            return None
+
+        if reconciliation_decision.decision_type == "linked_to_site":
+            replacement_product = self.reconciliation_service.build_linked_product(
+                current_product=target_product,
+                incoming_site_product=incoming_site_product,
+                confidence=reconciliation_decision.confidence,
+                match_signals=reconciliation_decision.match_signals,
+            )
+        else:
+            replacement_product = self.reconciliation_service.build_candidate_product(
+                current_product=target_product,
+                incoming_site_product=incoming_site_product,
+                confidence=reconciliation_decision.confidence,
+                match_signals=reconciliation_decision.match_signals,
+            )
+
+        updated_products = self._replace_product_by_alias(
+            products=current_products,
+            target_alias=target_product.alias,
+            replacement_product=replacement_product,
+            discarded_alias=incoming_site_product.alias,
+        )
+        self._write_all(updated_products)
+        persisted_product = self._confirm_persisted_product(replacement_product.alias)
+        logger.info(
+            "Reconciliacao aplicada com sucesso: alias=%s decisao=%s arquivo=%s",
+            persisted_product.alias,
+            reconciliation_decision.decision_type,
+            self.storage_file_path,
+        )
+        return persisted_product
+
+    def _find_linked_target_for_site_product(
+        self,
+        incoming_site_product: ProductRecord,
+        existing_products: List[ProductRecord],
+    ) -> Optional[ProductRecord]:
+        """
+        Responsabilidade:
+            Encontrar um registro ja vinculado ao site que representa a mesma variante.
+
+        Parametros:
+            incoming_site_product: Variante atual recebida do fluxo do site.
+            existing_products: Catalogo inteiro carregado do storage.
+
+        Retorno:
+            ProductRecord existente quando o item ja estiver vinculado; senao None.
+
+        Contexto de uso:
+            Evita que um produto manual, depois de religado ao site, volte a
+            duplicar no catalogo em futuras importacoes ou atualizacoes.
+        """
+
+        if incoming_site_product.source_type != "site":
+            return None
+
+        resolved_site_product_id = incoming_site_product.site_product_id or incoming_site_product.page_family_sku
+        normalized_variant = normalize_variant(incoming_site_product.variant)
+        normalized_site_variant_id = incoming_site_product.site_variant_id.strip()
+
+        # Decisao tecnica:
+        # Essa reconciliacao de "item ja vinculado" so pode acontecer quando o
+        # site traz um identificador estavel do produto pai ou da propria
+        # variante. Sem isso, preferimos nao deduplicar para evitar mesclas
+        # indevidas entre perfumes diferentes com o mesmo volume.
+        if not resolved_site_product_id and not normalized_site_variant_id:
+            return None
+
+        for current_product in existing_products:
+            if current_product.site_link_status != "linked_to_site":
+                continue
+
+            if resolved_site_product_id:
+                current_site_product_id = current_product.site_product_id or current_product.page_family_sku
+                if current_site_product_id != resolved_site_product_id:
+                    continue
+
+            if normalized_site_variant_id and current_product.site_variant_id:
+                if current_product.site_variant_id == normalized_site_variant_id:
+                    return current_product
+
+            if normalized_variant and normalize_variant(current_product.variant) == normalized_variant:
+                return current_product
+
+        return None
+
+    def _build_refreshed_linked_product(
+        self,
+        current_product: ProductRecord,
+        incoming_site_product: ProductRecord,
+    ) -> ProductRecord:
+        """
+        Responsabilidade:
+            Atualizar um item ja vinculado ao site preservando identidade interna.
+
+        Parametros:
+            current_product: Registro persistido que deve continuar sendo o mesmo item.
+            incoming_site_product: Dados recem-observados no site para a variante.
+
+        Retorno:
+            ProductRecord pronto para substituir o registro atual no storage.
+
+        Contexto de uso:
+            Mantem alias, prateleira, estoque e historico local enquanto os
+            campos operacionais do site seguem sendo atualizados normalmente.
+        """
+
+        return self._build_product_from_payload(
+            base_product=current_product,
+            payload_updates={
+                "brand": current_product.brand or incoming_site_product.brand,
+                "name": current_product.name or incoming_site_product.name,
+                "variant": current_product.variant or incoming_site_product.variant,
+                "last_known_url": incoming_site_product.last_known_url,
+                "last_known_sku": incoming_site_product.last_known_sku,
+                "page_family_sku": incoming_site_product.page_family_sku,
+                "concentration": current_product.concentration or incoming_site_product.concentration,
+                "image_url": current_product.image_url or incoming_site_product.image_url,
+                "site_link_status": "linked_to_site",
+                "site_product_id": incoming_site_product.site_product_id or incoming_site_product.page_family_sku,
+                "site_candidate_id": "",
+                "site_variant_id": incoming_site_product.site_variant_id,
+                "current_site_code": incoming_site_product.last_known_sku,
+                "current_barcode_value": incoming_site_product.variant_code,
+            },
+        )
+
+    def _preserve_existing_site_metadata(
+        self,
+        current_product: ProductRecord,
+        updated_product: ProductRecord,
+    ) -> ProductRecord:
+        """
+        Responsabilidade:
+            Preservar metadados de vinculo ao editar um produto ja persistido.
+
+        Parametros:
+            current_product: Registro existente antes da edicao manual.
+            updated_product: Novo estado enviado pelo formulario.
+
+        Retorno:
+            ProductRecord enriquecido com os metadados que nao devem sumir.
+
+        Contexto de uso:
+            Evita que uma simples edicao de nome, notas ou prateleira apague o
+            estado de reconciliacao ou o vinculo ja retomado com o site.
+        """
+
+        if updated_product.source_type == "site":
+            normalized_site_link_status = "linked_to_site"
+        elif current_product.site_link_status in {"candidate_found", "linked_to_site"}:
+            normalized_site_link_status = current_product.site_link_status
+        else:
+            normalized_site_link_status = "manual_unlinked"
+
+        return self._build_product_from_payload(
+            base_product=updated_product,
+            payload_updates={
+                "page_family_sku": updated_product.page_family_sku or current_product.page_family_sku,
+                "site_link_status": normalized_site_link_status,
+                "site_product_id": current_product.site_product_id,
+                "site_candidate_id": current_product.site_candidate_id,
+                "match_confidence": current_product.match_confidence,
+                "match_signals": current_product.match_signals or [],
+                "last_matched_at": current_product.last_matched_at,
+                "site_variant_id": current_product.site_variant_id,
+                "current_site_code": current_product.current_site_code if updated_product.source_type != "site" else updated_product.last_known_sku,
+                "current_barcode_value": updated_product.last_known_sku,
+            },
+        )
+
+    def _replace_product_by_alias(
+        self,
+        products: List[ProductRecord],
+        target_alias: str,
+        replacement_product: ProductRecord,
+        discarded_alias: str = "",
+    ) -> List[ProductRecord]:
+        """
+        Responsabilidade:
+            Substituir um alias alvo e descartar um alias redundante se necessario.
+
+        Parametros:
+            products: Lista atual carregada do storage.
+            target_alias: Alias que deve ser substituido.
+            replacement_product: Novo registro que ocupara o lugar do alvo.
+            discarded_alias: Alias redundante que deve ser removido do resultado.
+
+        Retorno:
+            Nova lista de produtos pronta para persistencia.
+
+        Contexto de uso:
+            Centraliza a regra de nao duplicar itens quando o fluxo recebe uma
+            variante do site que na pratica representa um cadastro interno ja existente.
+        """
+
+        updated_products: List[ProductRecord] = []
+        normalized_discarded_alias = discarded_alias.strip()
+
+        for current_product in products:
+            if current_product.alias == target_alias:
+                updated_products.append(replacement_product)
+                continue
+
+            if normalized_discarded_alias and current_product.alias == normalized_discarded_alias:
+                continue
+
+            updated_products.append(current_product)
+
+        return updated_products
+
+    def _find_product_by_alias(
+        self,
+        products: List[ProductRecord],
+        product_alias: str,
+    ) -> Optional[ProductRecord]:
+        """
+        Responsabilidade:
+            Localizar rapidamente um produto dentro de uma colecao ja carregada.
+
+        Parametros:
+            products: Lista de produtos previamente lida do storage.
+            product_alias: Alias procurado dentro da colecao.
+
+        Retorno:
+            ProductRecord correspondente quando existir; senao None.
+
+        Contexto de uso:
+            Evita releitura desnecessaria do arquivo em fluxos internos do store.
+        """
+
+        normalized_alias = product_alias.strip()
+        for product in products:
+            if product.alias == normalized_alias:
+                return product
+        return None
+
+    def _build_product_from_payload(
+        self,
+        base_product: ProductRecord,
+        payload_updates: dict,
+    ) -> ProductRecord:
+        """
+        Responsabilidade:
+            Recriar um ProductRecord preservando compatibilidade com o schema atual.
+
+        Parametros:
+            base_product: Produto usado como base para gerar o novo payload.
+            payload_updates: Campos que devem sobrescrever o estado original.
+
+        Retorno:
+            ProductRecord reidratado via `from_dict` com os updates aplicados.
+
+        Contexto de uso:
+            Evita esquecer campos novos do modelo ao reconstruir registros em
+            operacoes de edicao, reconciliacao e refresh de vinculo.
+        """
+
+        payload = base_product.to_dict()
+        payload.update(payload_updates)
+        return ProductRecord.from_dict(payload)

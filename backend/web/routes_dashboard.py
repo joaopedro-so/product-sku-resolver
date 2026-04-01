@@ -1018,6 +1018,9 @@ def _build_product_record_from_submission(submitted_data: Dict[str, str]) -> Pro
     """
 
     parent_reference = submitted_data.get("parent_reference") or _build_default_parent_reference(submitted_data)
+    normalized_source_type = str(submitted_data.get("source_type", "site")).strip().lower() or "site"
+    normalized_site_link_status = "linked_to_site" if normalized_source_type == "site" else "manual_unlinked"
+    normalized_current_code = submitted_data["last_known_sku"]
 
     return ProductRecord(
         alias=submitted_data["alias"],
@@ -1027,7 +1030,7 @@ def _build_product_record_from_submission(submitted_data: Dict[str, str]) -> Pro
         last_known_url=submitted_data["last_known_url"],
         last_known_sku=submitted_data["last_known_sku"],
         parent_reference=parent_reference,
-        source_type=submitted_data["source_type"],
+        source_type=normalized_source_type,
         concentration=submitted_data["concentration"],
         shelf_reference_label=submitted_data["shelf_reference_label"],
         notes=submitted_data["notes"],
@@ -1037,6 +1040,9 @@ def _build_product_record_from_submission(submitted_data: Dict[str, str]) -> Pro
         is_active=submitted_data.get("is_active", "1") != "0",
         shelf_number=int(submitted_data["shelf_number"]) if submitted_data["shelf_number"] else None,
         display_order=int(submitted_data["display_order"]) if submitted_data["display_order"] else None,
+        site_link_status=normalized_site_link_status,
+        current_site_code=normalized_current_code if normalized_source_type == "site" else "",
+        current_barcode_value=normalized_current_code,
     )
 
 
@@ -1311,7 +1317,18 @@ def _build_product_activity(
         Reutilizado por Home, Search, Saved e detalhe do produto.
     """
 
-    if product.source_type == "manual":
+    if product.site_link_status == "candidate_found":
+        return {
+            "status_key": "candidate_found",
+            "status_tone": "warning",
+            "status_label": "Possível correspondência",
+            "status_message": "Esse item manual pode ser o mesmo produto que voltou ao site.",
+            "timestamp": product.last_matched_at or None,
+            "timestamp_label": _format_timestamp_label(product.last_matched_at),
+            "is_today": _is_today(product.last_matched_at),
+        }
+
+    if product.source_type == "manual" and product.site_link_status != "linked_to_site":
         return {
             "status_key": "manual_catalog",
             "status_tone": "neutral",
@@ -1322,7 +1339,7 @@ def _build_product_activity(
             "is_today": False,
         }
 
-    if product.source_type == "legacy":
+    if product.source_type == "legacy" and product.site_link_status != "linked_to_site":
         return {
             "status_key": "legacy_catalog",
             "status_tone": "warning",
