@@ -46,7 +46,7 @@ function applyVariantSelection(variantRoot, variantOption) {
   const selectedStatusTone = variantOption.dataset.variantStatusToneValue || "";
   const selectedTimestamp = variantOption.dataset.variantTimestampValue || "";
   const selectedBarcodeDataUri = variantOption.dataset.variantBarcodeDataUri || "";
-  const selectedSourceLabel = variantOption.dataset.variantSourceLabel || "";
+  const selectedSourceLabel = variantOption.dataset.variantSourceValue || "";
   const selectedSourceType = variantOption.dataset.variantSourceType || "";
   const selectedStockQty = variantOption.dataset.variantStockQty || "0";
   const selectedIsSyncable = variantOption.dataset.variantIsSyncable === "1";
