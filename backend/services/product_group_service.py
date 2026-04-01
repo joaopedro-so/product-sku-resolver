@@ -273,7 +273,7 @@ class ProductGroupService:
         """
 
         grouped_items_map: Dict[str, List[ProductVariantGroupItem]] = {}
-        group_identity_map: Dict[str, tuple[str, str, str]] = {}
+        group_identity_map: Dict[str, tuple[str, str, str, str]] = {}
 
         for product in products:
             canonical_key = self._build_group_key(product)
@@ -283,13 +283,14 @@ class ProductGroupService:
                 (
                     self._derive_parent_name(product),
                     self._resolve_display_brand(product),
+                    self._resolve_product_type(product),
                     product.page_family_sku,
                 ),
             )
 
         grouped_products: List[GroupedParentProduct] = []
         for canonical_key, variants in grouped_items_map.items():
-            parent_name, brand, parent_page_sku = group_identity_map[canonical_key]
+            parent_name, brand, product_type, parent_page_sku = group_identity_map[canonical_key]
             ordered_variants = self._order_group_variants(variants)
             grouped_products.append(
                 GroupedParentProduct(
@@ -298,7 +299,7 @@ class ProductGroupService:
                     parent_name=parent_name,
                     brand=brand,
                     family_name="",
-                    product_type="",
+                    product_type=product_type,
                     parent_page_sku=parent_page_sku,
                     is_manual_override=False,
                     variants=ordered_variants,
@@ -468,17 +469,21 @@ class ProductGroupService:
             representar o produto pai, enquanto a query muda por variante.
         """
 
+        if product.parent_reference:
+            return f"parent-reference::{normalize_text(product.parent_reference)}"
+
         if product.page_family_sku:
             return f"page-sku::{product.page_family_sku}"
 
         canonical_url_key = self._build_canonical_url_key(product.last_known_url)
         normalized_parent_name = normalize_text(self._derive_parent_name(product))
         normalized_brand = normalize_text(self._resolve_display_brand(product))
+        normalized_product_type = normalize_text(self._resolve_product_type(product))
 
         if canonical_url_key:
-            return canonical_url_key
+            return f"{canonical_url_key}::{normalized_product_type}"
 
-        return f"{normalized_brand}::{normalized_parent_name}"
+        return f"{normalized_brand}::{normalized_parent_name}::{normalized_product_type}"
 
     def _build_canonical_url_key(self, product_url: str) -> str:
         """
@@ -553,6 +558,24 @@ class ProductGroupService:
         """
 
         return str(product.brand).strip()
+
+    def _resolve_product_type(self, product: ProductRecord) -> str:
+        """
+        Responsabilidade:
+            Resolver o tipo/concentração principal que diferencia grupos irmãos.
+
+        Parametros:
+            product: Produto plano que oferece o sinal de concentração.
+
+        Retorno:
+            Texto curto como EDT, EDP ou string vazia quando indisponível.
+
+        Contexto de uso:
+            Evita que perfumes com o mesmo nome-base, mas concentrações
+            diferentes, sejam agrupados como se fossem a mesma família de ml.
+        """
+
+        return str(product.concentration).strip()
 
     def _build_variant_label(self, product: ProductRecord) -> str:
         """

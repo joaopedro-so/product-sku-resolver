@@ -59,7 +59,7 @@
   <div class="shelf-product-list">
     {% for card in products %}
     <article class="shelf-product-card" data-variant-switcher data-variant-storage-key="shelf-{{ card.group_id }}">
-      <a class="shelf-product-card__media" href="{{ card.detail_href }}" data-variant-image-link>
+      <a class="shelf-product-card__media" href="{{ card.detail_href }}" data-variant-detail-link>
         <span class="shelf-product-card__media-frame">
           {% if card.image_url %}
           <img src="{{ card.image_url }}" alt="Imagem do produto {{ card.name }}" loading="lazy" data-variant-image />
@@ -70,7 +70,18 @@
       </a>
 
       <div class="shelf-product-card__content">
-        <p class="shelf-product-card__brand">{{ card.brand }}</p>
+        <div class="product-card__topline">
+          <p class="shelf-product-card__brand">{{ card.brand }}</p>
+          {% if card.source_type != 'site' %}
+          <span
+            class="status-badge {% if card.source_type == 'legacy' %}status-badge--warning{% else %}status-badge--neutral{% endif %}"
+            data-variant-source-badge
+          >
+            {{ card.source_label }}
+          </span>
+          {% endif %}
+        </div>
+
         <a class="shelf-product-card__title" href="{{ card.detail_href }}" data-variant-detail-link>{{ card.name }}</a>
 
         <div class="variant-chip-list" role="list" aria-label="Variantes disponíveis de {{ card.name }}">
@@ -86,6 +97,10 @@
             data-variant-barcode-href="{{ variant.barcode_href }}"
             data-variant-image-url="{{ variant.image_url or '' }}"
             data-variant-status-value="{{ variant.status_label }}"
+            data-variant-source-label="{{ variant.source_label }}"
+            data-variant-source-type="{{ variant.source_type }}"
+            data-variant-stock-qty="{{ variant.stock_qty }}"
+            data-variant-is-syncable="{{ '1' if variant.is_syncable else '0' }}"
           >
             {{ variant.label }}
           </button>
@@ -93,8 +108,11 @@
         </div>
 
         <div class="shelf-product-card__technical-line">
-          <p class="shelf-product-card__sku" title="{{ card.variant_code }}">SKU <span data-variant-code-label>{{ card.variant_code }}</span></p>
+          <p class="shelf-product-card__sku" title="{{ card.variant_code }}">Código <span data-variant-code-label>{{ card.variant_code }}</span></p>
           <p class="shelf-product-card__status" data-variant-status-label>{{ card.status_label }}</p>
+          <p class="shelf-product-card__meta">
+            <span data-variant-stock-label>Estoque {{ card.stock_qty }}</span>
+          </p>
         </div>
 
         <div class="shelf-product-card__actions">

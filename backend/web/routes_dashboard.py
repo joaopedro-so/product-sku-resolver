@@ -15,8 +15,8 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
 from urllib.parse import urlencode
 
-from fastapi import APIRouter, Request, status
-from fastapi.responses import RedirectResponse
+from fastapi import APIRouter, HTTPException, Request, UploadFile, status
+from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from backend.models.product import ProductRecord
@@ -35,6 +35,7 @@ from backend.services.storage_path_service import resolve_default_data_file
 from backend.services.product_store_service import ProductStoreService
 from backend.services.resolver import ProductResolver, ResolveResult
 from backend.services.saved_product_service import SavedProductService
+from backend.services.uploaded_image_service import UploadedImageService, resolve_uploaded_images_directory
 from backend.utils.barcode import build_code128_svg_data_uri
 from backend.utils.fetcher import FetchResult, Fetcher
 from backend.utils.parser import PageData, parse_page_data
@@ -285,6 +286,33 @@ def _get_preview_service(request: Request) -> Optional[ProductPreviewService]:
     )
     request.app.state.product_preview_service = initialized_preview_service
     return initialized_preview_service
+
+
+def _get_uploaded_image_service(request: Request) -> UploadedImageService:
+    """
+    Responsabilidade:
+        Recuperar ou inicializar o serviço de uploads persistentes do catálogo.
+
+    Parâmetros:
+        request: Requisição HTTP atual com acesso ao `app.state`.
+
+    Retorno:
+        UploadedImageService compartilhado pela interface web.
+
+    Contexto de uso:
+        Usado pelos fluxos de cadastro manual e edição para salvar imagens
+        tiradas do celular ou escolhidas da galeria sem depender do site.
+    """
+
+    cached_service = getattr(request.app.state, "uploaded_image_service", None)
+    if isinstance(cached_service, UploadedImageService):
+        return cached_service
+
+    initialized_service = UploadedImageService(
+        storage_directory=resolve_uploaded_images_directory(),
+    )
+    request.app.state.uploaded_image_service = initialized_service
+    return initialized_service
 
 
 def _get_shelf_service(request: Request) -> ShelfService:
@@ -575,6 +603,7 @@ def _with_app_shell(
 
 def _build_new_product_form_context(
     submitted_data: Optional[Dict[str, str]] = None,
+    manual_variant_rows: Optional[List[Dict[str, Any]]] = None,
     error_message: Optional[str] = None,
     autofill_message: Optional[str] = None,
     autofill_error_message: Optional[str] = None,
@@ -590,6 +619,7 @@ def _build_new_product_form_context(
 
     Parametros:
         submitted_data: Valores atuais do formulario para re-renderizacao.
+        manual_variant_rows: Variantes manuais exibidas no formulario.
         error_message: Mensagem de erro de validacao final.
         autofill_message: Feedback de sucesso do auto-preenchimento.
         autofill_error_message: Feedback de falha do auto-preenchimento.
@@ -609,6 +639,16 @@ def _build_new_product_form_context(
     return {
         "error_message": error_message,
         "submitted_data": submitted_data or {},
+        "manual_variant_rows": manual_variant_rows
+        or [
+            {
+                "alias": "",
+                "label": "",
+                "code": "",
+                "stock_qty": "0",
+                "notes": "",
+            }
+        ],
         "autofill_message": autofill_message,
         "autofill_error_message": autofill_error_message,
         "autofill_preview": autofill_preview,
@@ -684,9 +724,151 @@ def _build_submitted_data_from_product(product: ProductRecord) -> Dict[str, str]
         "variant": product.variant,
         "last_known_url": product.last_known_url,
         "last_known_sku": product.last_known_sku,
+        "source_type": product.source_type,
+        "concentration": product.concentration,
+        "shelf_reference_label": product.shelf_reference_label,
+        "notes": product.notes,
+        "image_url": product.image_url,
+        "stock_qty": str(product.stock_qty),
+        "variant_notes": product.variant_notes,
+        "is_active": "1" if product.is_active else "0",
         "shelf_number": str(product.shelf_number or ""),
         "display_order": str(product.display_order or ""),
     }
+
+
+def _build_safe_alias_fragment(raw_value: str) -> str:
+    """
+    Responsabilidade:
+        Transformar texto livre em fragmento seguro para composição de alias.
+
+    Parametros:
+        raw_value: Texto bruto vindo do formulário manual.
+
+    Retorno:
+        Fragmento enxuto, em snake_case, pronto para compor aliases únicos.
+
+    Contexto de uso:
+        Reutilizado na criação manual de variantes para evitar aliases gigantes
+        ou inconsistentes quando o operador adiciona volumes dinamicamente.
+    """
+
+    normalized_value = normalize_text(raw_value).replace(" ", "_").strip("_")
+    return normalized_value
+
+
+def _build_default_parent_reference(submitted_data: Dict[str, str]) -> str:
+    """
+    Responsabilidade:
+        Definir o identificador pai estável usado pelo agrupamento interno.
+
+    Parametros:
+        submitted_data: Payload principal já normalizado do formulário.
+
+    Retorno:
+        String estável para unir variantes do mesmo perfume manual.
+
+    Contexto de uso:
+        Permite que múltiplas variantes manuais compartilhem o mesmo produto
+        pai sem depender de URL do site ou SKU de página.
+    """
+
+    alias_fragment = _build_safe_alias_fragment(submitted_data.get("alias", ""))
+    if alias_fragment:
+        return alias_fragment
+
+    composed_reference = " ".join(
+        [
+            submitted_data.get("brand", ""),
+            submitted_data.get("name", ""),
+            submitted_data.get("concentration", ""),
+        ]
+    )
+    return _build_safe_alias_fragment(composed_reference) or "produto-manual"
+
+
+def _normalize_uploaded_file(raw_value: Any) -> UploadFile | None:
+    """
+    Responsabilidade:
+        Validar se um valor do formulário realmente representa um upload útil.
+
+    Parametros:
+        raw_value: Valor bruto vindo de `form_data.get` ou `form_data.getlist`.
+
+    Retorno:
+        UploadFile quando houver arquivo enviado; caso contrário, None.
+
+    Contexto de uso:
+        Evita que campos vazios de input file sejam tratados como imagens reais
+        durante a criação manual com câmera ou galeria.
+    """
+
+    if not isinstance(raw_value, UploadFile):
+        return None
+
+    if not str(raw_value.filename or "").strip():
+        return None
+
+    return raw_value
+
+
+def _extract_manual_variant_submissions(form_data: Any) -> List[Dict[str, Any]]:
+    """
+    Responsabilidade:
+        Consolidar as linhas de variantes manuais enviadas pelo formulário.
+
+    Parametros:
+        form_data: Estrutura retornada por `await request.form()`.
+
+    Retorno:
+        Lista de dicionários, um por variante preenchida pelo operador.
+
+    Contexto de uso:
+        Mantém a lógica de variantes fora das rotas, permitindo criar um lote
+        de `ProductRecord` a partir de inputs repetidos no cadastro manual.
+    """
+
+    variant_labels = [str(item).strip() for item in form_data.getlist("manual_variant_label")]
+    variant_codes = [str(item).strip() for item in form_data.getlist("manual_variant_code")]
+    variant_stocks = [str(item).strip() for item in form_data.getlist("manual_variant_stock_qty")]
+    variant_notes = [str(item).strip() for item in form_data.getlist("manual_variant_notes")]
+    variant_aliases = [str(item).strip() for item in form_data.getlist("manual_variant_alias")]
+    raw_variant_files = list(form_data.getlist("manual_variant_image"))
+
+    max_row_count = max(
+        len(variant_labels),
+        len(variant_codes),
+        len(variant_stocks),
+        len(variant_notes),
+        len(variant_aliases),
+        len(raw_variant_files),
+        0,
+    )
+
+    variant_rows: List[Dict[str, Any]] = []
+    for row_index in range(max_row_count):
+        row_label = variant_labels[row_index] if row_index < len(variant_labels) else ""
+        row_code = variant_codes[row_index] if row_index < len(variant_codes) else ""
+        row_stock_qty = variant_stocks[row_index] if row_index < len(variant_stocks) else ""
+        row_notes = variant_notes[row_index] if row_index < len(variant_notes) else ""
+        row_alias = variant_aliases[row_index] if row_index < len(variant_aliases) else ""
+        row_file = raw_variant_files[row_index] if row_index < len(raw_variant_files) else None
+
+        if not any([row_label, row_code, row_stock_qty, row_notes, row_alias, _normalize_uploaded_file(row_file)]):
+            continue
+
+        variant_rows.append(
+            {
+                "label": row_label,
+                "code": row_code,
+                "stock_qty": row_stock_qty,
+                "notes": row_notes,
+                "alias": row_alias,
+                "image_file": _normalize_uploaded_file(row_file),
+            }
+        )
+
+    return variant_rows
 
 
 def _extract_product_form_submission(form_data: Any) -> Dict[str, str]:
@@ -714,21 +896,35 @@ def _extract_product_form_submission(form_data: Any) -> Dict[str, str]:
             "variant",
             "last_known_url",
             "last_known_sku",
+            "source_type",
+            "concentration",
+            "shelf_reference_label",
+            "notes",
+            "image_url",
+            "stock_qty",
+            "variant_notes",
         ]
     }
     submitted_data["shelf_number"] = _normalize_optional_numeric_text(form_data.get("shelf_number"))
     submitted_data["display_order"] = _normalize_optional_numeric_text(form_data.get("display_order"))
+    submitted_data["source_type"] = submitted_data["source_type"] or "site"
+    submitted_data["stock_qty"] = _normalize_optional_numeric_text(form_data.get("stock_qty")) or "0"
+    submitted_data["is_active"] = "1" if str(form_data.get("is_active", "1")).strip() not in {"0", "false", "off"} else "0"
     submitted_data["last_known_sku"] = submitted_data["last_known_sku"] or "unknown"
     return submitted_data
 
 
-def _validate_product_submission(submitted_data: Dict[str, str]) -> Optional[str]:
+def _validate_product_submission(
+    submitted_data: Dict[str, str],
+    manual_variants: Optional[List[Dict[str, Any]]] = None,
+) -> Optional[str]:
     """
     Responsabilidade:
         Validar os campos minimos para persistencia confiavel do produto.
 
     Parametros:
         submitted_data: Payload ja normalizado vindo do formulario HTML.
+        manual_variants: Variantes extras enviadas no fluxo manual.
 
     Retorno:
         Mensagem de erro quando houver dado invalido; caso contrario, None.
@@ -738,15 +934,45 @@ def _validate_product_submission(submitted_data: Dict[str, str]) -> Optional[str
         URL ausente, que poderiam dar a impressao de cadastro bem-sucedido.
     """
 
+    manual_variants = manual_variants or []
     required_fields = {
         "alias": "Informe um alias para identificar o produto.",
         "brand": "Informe a marca do produto.",
         "name": "Informe o nome do produto.",
-        "last_known_url": "Informe a URL conhecida do produto.",
     }
     for field_name, error_message in required_fields.items():
         if not str(submitted_data.get(field_name, "")).strip():
             return error_message
+
+    source_type = str(submitted_data.get("source_type", "site")).strip().lower()
+    if source_type == "site" and not str(submitted_data.get("last_known_url", "")).strip():
+        return "Informe a URL conhecida do produto."
+
+    if source_type in {"manual", "legacy"}:
+        if manual_variants:
+            for variant_index, variant_row in enumerate(manual_variants, start=1):
+                if not variant_row.get("label"):
+                    return f"Informe o rótulo da variante {variant_index}."
+                if not variant_row.get("code"):
+                    return f"Informe o código da variante {variant_index}."
+                raw_variant_stock = str(variant_row.get("stock_qty", "")).strip()
+                if raw_variant_stock:
+                    try:
+                        if int(raw_variant_stock) < 0:
+                            return f"O estoque da variante {variant_index} não pode ser negativo."
+                    except ValueError:
+                        return f"O estoque da variante {variant_index} precisa ser um número inteiro."
+        elif not str(submitted_data.get("last_known_sku", "")).strip():
+            return "Informe ao menos um código para o cadastro manual."
+
+    if source_type in {"manual", "legacy"}:
+        for variant_index, variant_row in enumerate(manual_variants, start=1):
+            normalized_variant_code = str(variant_row.get("code", "")).strip().lower()
+            if normalized_variant_code in {"", "unknown"}:
+                return f"Informe o codigo da variante {variant_index}."
+
+        if not manual_variants and str(submitted_data.get("last_known_sku", "")).strip().lower() in {"", "unknown"}:
+            return "Informe ao menos um codigo para o cadastro manual."
 
     raw_display_order = str(submitted_data.get("display_order", "")).strip()
     if raw_display_order:
@@ -763,6 +989,14 @@ def _validate_product_submission(submitted_data: Dict[str, str]) -> Optional[str
                 return "A prateleira informada precisa ser valida."
         except ValueError:
             return "A prateleira informada precisa ser numerica."
+
+    raw_stock_qty = str(submitted_data.get("stock_qty", "")).strip()
+    if raw_stock_qty:
+        try:
+            if int(raw_stock_qty) < 0:
+                return "O estoque da variante não pode ser negativo."
+        except ValueError:
+            return "O estoque da variante precisa ser um número inteiro."
 
     return None
 
@@ -783,6 +1017,8 @@ def _build_product_record_from_submission(submitted_data: Dict[str, str]) -> Pro
         entre criacao e edicao, especialmente nos campos opcionais numericos.
     """
 
+    parent_reference = submitted_data.get("parent_reference") or _build_default_parent_reference(submitted_data)
+
     return ProductRecord(
         alias=submitted_data["alias"],
         brand=submitted_data["brand"],
@@ -790,9 +1026,162 @@ def _build_product_record_from_submission(submitted_data: Dict[str, str]) -> Pro
         variant=submitted_data["variant"],
         last_known_url=submitted_data["last_known_url"],
         last_known_sku=submitted_data["last_known_sku"],
+        parent_reference=parent_reference,
+        source_type=submitted_data["source_type"],
+        concentration=submitted_data["concentration"],
+        shelf_reference_label=submitted_data["shelf_reference_label"],
+        notes=submitted_data["notes"],
+        image_url=submitted_data["image_url"],
+        stock_qty=int(submitted_data["stock_qty"]) if submitted_data["stock_qty"] else 0,
+        variant_notes=submitted_data["variant_notes"],
+        is_active=submitted_data.get("is_active", "1") != "0",
         shelf_number=int(submitted_data["shelf_number"]) if submitted_data["shelf_number"] else None,
         display_order=int(submitted_data["display_order"]) if submitted_data["display_order"] else None,
     )
+
+
+def _build_manual_variant_alias(
+    base_alias: str,
+    variant_label: str,
+    row_index: int,
+) -> str:
+    """
+    Responsabilidade:
+        Gerar alias previsível para variantes manuais a partir do alias pai.
+
+    Parâmetros:
+        base_alias: Alias base informado para o produto pai.
+        variant_label: Rótulo textual da variante, como 50ml ou 100ml.
+        row_index: Índice da linha no formulário, usado como fallback estável.
+
+    Retorno:
+        Alias único e legível para a variante persistida.
+
+    Contexto de uso:
+        Permite criar várias variantes manuais sem obrigar o operador a pensar
+        no alias interno de cada uma delas durante o cadastro inicial.
+    """
+
+    normalized_base_alias = _build_safe_alias_fragment(base_alias) or "produto"
+    normalized_variant_alias = _build_safe_alias_fragment(variant_label)
+    if normalized_variant_alias:
+        return f"{normalized_base_alias}_{normalized_variant_alias}"
+    return f"{normalized_base_alias}_variante_{row_index + 1}"
+
+
+def _ensure_batch_aliases_are_available(
+    product_store: ProductStoreService,
+    products_to_persist: List[ProductRecord],
+    current_alias: Optional[str] = None,
+) -> Optional[str]:
+    """
+    Responsabilidade:
+        Validar colisões de alias considerando um lote inteiro de variantes.
+
+    Parâmetros:
+        product_store: Storage consultado para verificar aliases persistidos.
+        products_to_persist: Lote de produtos que será salvo de uma vez.
+        current_alias: Alias atual permitido no fluxo de edição simples.
+
+    Retorno:
+        Mensagem de erro quando houver colisão; caso contrário, None.
+
+    Contexto de uso:
+        Impede que o cadastro manual de múltiplas variantes sobrescreva itens
+        existentes silenciosamente ou gere aliases duplicados no próprio lote.
+    """
+
+    seen_aliases: set[str] = set()
+    for product in products_to_persist:
+        normalized_alias = product.alias.strip()
+        if normalized_alias in seen_aliases:
+            return f"O alias '{normalized_alias}' foi repetido no lote de variantes."
+        seen_aliases.add(normalized_alias)
+
+        alias_error = _validate_alias_availability(
+            product_store=product_store,
+            desired_alias=normalized_alias,
+            current_alias=current_alias,
+        )
+        if alias_error:
+            return alias_error
+
+    return None
+
+
+def _build_product_records_from_submission(
+    request: Request,
+    submitted_data: Dict[str, str],
+    manual_variants: List[Dict[str, Any]],
+    product_image_file: UploadFile | None,
+) -> List[ProductRecord]:
+    """
+    Responsabilidade:
+        Converter o formulário em um lote de ProductRecord persistíveis.
+
+    Parâmetros:
+        request: Requisição atual para acesso ao serviço de uploads.
+        submitted_data: Payload principal já validado.
+        manual_variants: Linhas extras de variantes do cadastro manual.
+        product_image_file: Upload geral do produto, usado como fallback visual.
+
+    Retorno:
+        Lista de ProductRecord pronta para persistência no storage atual.
+
+    Contexto de uso:
+        Reaproveita o modelo plano por variante da aplicação e evita criar um
+        segundo formato de persistência apenas para o fluxo manual.
+    """
+
+    uploaded_image_service = _get_uploaded_image_service(request)
+    product_level_image_url = submitted_data.get("image_url", "")
+    if product_image_file is not None:
+        product_level_image_url = uploaded_image_service.save_uploaded_file(
+            product_image_file,
+            product_alias=submitted_data.get("alias", ""),
+            variant_label=submitted_data.get("variant", ""),
+        )
+
+    source_type = submitted_data.get("source_type", "site")
+    parent_reference = _build_default_parent_reference(submitted_data)
+
+    if source_type in {"manual", "legacy"} and manual_variants:
+        variant_products: List[ProductRecord] = []
+        for row_index, variant_row in enumerate(manual_variants):
+            variant_image_url = product_level_image_url
+            variant_image_file = variant_row.get("image_file")
+            if isinstance(variant_image_file, UploadFile):
+                variant_image_url = uploaded_image_service.save_uploaded_file(
+                    variant_image_file,
+                    product_alias=submitted_data.get("alias", ""),
+                    variant_label=str(variant_row.get("label", "")),
+                )
+
+            variant_submission = {
+                **submitted_data,
+                "alias": variant_row.get("alias") or _build_manual_variant_alias(
+                    base_alias=submitted_data.get("alias", ""),
+                    variant_label=str(variant_row.get("label", "")),
+                    row_index=row_index,
+                ),
+                "variant": str(variant_row.get("label", "")).strip(),
+                "last_known_sku": str(variant_row.get("code", "")).strip(),
+                "stock_qty": _normalize_optional_numeric_text(variant_row.get("stock_qty")) or "0",
+                "variant_notes": str(variant_row.get("notes", "")).strip(),
+                "image_url": variant_image_url,
+                "last_known_url": submitted_data.get("last_known_url", ""),
+                "parent_reference": parent_reference,
+            }
+            variant_products.append(_build_product_record_from_submission(variant_submission))
+
+        return variant_products
+
+    single_variant_submission = {
+        **submitted_data,
+        "image_url": product_level_image_url,
+        "parent_reference": parent_reference,
+    }
+    return [_build_product_record_from_submission(single_variant_submission)]
 
 
 def _validate_alias_availability(
@@ -873,13 +1262,24 @@ def _build_preview_map(
         Balanceia qualidade visual com custo de rede em listas mobile-first.
     """
 
-    preview_service = _get_preview_service(request)
-    if preview_service is None:
-        return {product.alias: None for product in products}
-
     preview_map: Dict[str, Optional[ProductPreview]] = {}
+    preview_service = _get_preview_service(request)
     fetched_count = 0
     for product in products:
+        if product.image_url:
+            preview_map[product.alias] = ProductPreview(
+                alias=product.alias,
+                source_url=product.last_known_url,
+                title=product.name,
+                image_url=product.image_url,
+                cached_at="",
+            )
+            continue
+
+        if preview_service is None:
+            preview_map[product.alias] = None
+            continue
+
         preview = preview_service.get_cached_preview(product)
         if preview is None and fetched_count < fetch_limit:
             preview = preview_service.ensure_preview(product)
@@ -910,6 +1310,28 @@ def _build_product_activity(
     Contexto de uso:
         Reutilizado por Home, Search, Saved e detalhe do produto.
     """
+
+    if product.source_type == "manual":
+        return {
+            "status_key": "manual_catalog",
+            "status_tone": "neutral",
+            "status_label": "Cadastro interno",
+            "status_message": "Produto mantido manualmente no catálogo operacional.",
+            "timestamp": None,
+            "timestamp_label": "Sem dependência de sync",
+            "is_today": False,
+        }
+
+    if product.source_type == "legacy":
+        return {
+            "status_key": "legacy_catalog",
+            "status_tone": "warning",
+            "status_label": "Fora do site",
+            "status_message": "Item preservado no catálogo mesmo sem página ativa no site.",
+            "timestamp": None,
+            "timestamp_label": "Sync desativado",
+            "is_today": False,
+        }
 
     if manual_snapshot:
         recorded_at = manual_snapshot.get("recorded_at")
@@ -1012,6 +1434,7 @@ def _build_product_card(
         "name": product.name,
         "brand": product.brand,
         "variant": product.variant,
+        "concentration": product.concentration,
         "variant_summary": " • ".join(variant_summary_parts) if variant_summary_parts else "Sem variante",
         "sku": product.last_known_sku,
         "url": product.last_known_url,
@@ -1019,6 +1442,10 @@ def _build_product_card(
         "preview_title": preview.title if preview else None,
         "activity": activity,
         "is_saved": is_saved,
+        "source_type": product.source_type,
+        "source_label": product.source_label,
+        "stock_qty": product.stock_qty,
+        "is_syncable": product.is_syncable,
     }
 
 
@@ -1262,6 +1689,12 @@ def _build_group_variant_payload(
         "status_tone": activity["status_tone"],
         "timestamp_label": activity["timestamp_label"],
         "barcode_data_uri": barcode_data_uri,
+        "source_type": variant_product.source_type,
+        "source_label": variant_product.source_label,
+        "stock_qty": variant_product.stock_qty,
+        "concentration": variant_product.concentration,
+        "variant_notes": variant_product.variant_notes,
+        "is_syncable": variant_product.is_syncable,
     }
 
 
@@ -1622,6 +2055,11 @@ def _build_shelf_detail_context(request: Request, shelf_number: int) -> Dict[str
                 "barcode_href": f"/dashboard/products/{selected_variant.alias}/barcode",
                 "detail_href": f"/dashboard/products/{selected_variant.alias}",
                 "status_label": selected_activity["status_label"],
+                "source_label": selected_variant.product.source_label,
+                "source_type": selected_variant.product.source_type,
+                "stock_qty": selected_variant.product.stock_qty,
+                "concentration": selected_variant.product.concentration,
+                "is_syncable": selected_variant.product.is_syncable,
                 "placement": shelf_service.get_product_placement(
                     product=selected_variant.product,
                     all_products=products,
@@ -1745,6 +2183,9 @@ def _resolve_product_detail_success_message(request: Request) -> Optional[str]:
     if request.query_params.get("created", "") == "1":
         return "Produto salvo com sucesso e relido do armazenamento."
 
+    if request.query_params.get("sync_blocked", "") == "1":
+        return "Este item nao depende mais da sincronizacao do site."
+
     return None
 
 
@@ -1814,6 +2255,8 @@ def _build_search_context(request: Request) -> Dict[str, Any]:
             "available_statuses": [
                 {"value": "manual_ok", "label": "Atualizado agora"},
                 {"value": "manual_error", "label": "Falha manual"},
+                {"value": "manual_catalog", "label": "Cadastro interno"},
+                {"value": "legacy_catalog", "label": "Fora do site"},
                 {"value": "changed", "label": "Código atualizado"},
                 {"value": "failed", "label": "Falha na sincronização"},
                 {"value": "idle", "label": "Sem sincronização"},
@@ -2310,6 +2753,31 @@ def dashboard_saved(request: Request) -> Any:
     return templates.TemplateResponse(request, "saved.html", _build_saved_context(request))
 
 
+@router.get("/uploads/{filename}")
+def dashboard_uploaded_image(request: Request, filename: str) -> FileResponse:
+    """
+    Responsabilidade:
+        Servir imagens manuais persistidas no storage do catálogo.
+
+    Parâmetros:
+        request: Requisição HTTP atual.
+        filename: Nome do arquivo solicitado pela interface.
+
+    Retorno:
+        FileResponse com a imagem persistida.
+
+    Contexto de uso:
+        Permite que fotos enviadas no cadastro manual sejam exibidas em cards,
+        detalhe e variantes mesmo estando fora do diretório estático versionado.
+    """
+
+    resolved_image_path = _get_uploaded_image_service(request).resolve_public_path(filename)
+    if resolved_image_path is None:
+        raise HTTPException(status_code=404, detail="Imagem não encontrada.")
+
+    return FileResponse(resolved_image_path)
+
+
 @router.post("/products/{alias}/toggle-saved")
 async def dashboard_toggle_saved_product(request: Request, alias: str) -> RedirectResponse:
     """
@@ -2353,16 +2821,18 @@ def dashboard_new_product_form(request: Request) -> Any:
         request,
         "add_product.html",
         _with_app_shell(
-            request=request,
-            active_tab="search",
-            context={
-                "request": request,
-                "page_title": "Novo produto",
-                **_build_new_product_form_context(),
-                "shelf_options": _build_shelf_options(request),
-            },
-        ),
-    )
+                request=request,
+                active_tab="search",
+                context={
+                    "request": request,
+                    "page_title": "Novo produto",
+                    **_build_new_product_form_context(
+                        submitted_data={"source_type": "site", "stock_qty": "0", "is_active": "1"}
+                    ),
+                    "shelf_options": _build_shelf_options(request),
+                },
+            ),
+        )
 
 
 @router.post("/products/auto-fill")
@@ -2388,6 +2858,7 @@ async def dashboard_autofill_product_form(request: Request) -> Any:
     if fetcher is None:
         context = _build_new_product_form_context(
             submitted_data={"last_known_url": submitted_url},
+            manual_variant_rows=[{"alias": "", "label": "", "code": "", "stock_qty": "0", "notes": ""}],
             autofill_error_message="O ambiente atual nao possui fetcher configurado para auto-preenchimento.",
         )
         return templates.TemplateResponse(
@@ -2405,6 +2876,7 @@ async def dashboard_autofill_product_form(request: Request) -> Any:
     if not draft_result.success or draft_result.draft is None:
         context = _build_new_product_form_context(
             submitted_data={"last_known_url": submitted_url},
+            manual_variant_rows=[{"alias": "", "label": "", "code": "", "stock_qty": "0", "notes": ""}],
             autofill_error_message=draft_result.message,
             autofill_preview={
                 "title": draft_result.page_data.title if draft_result.page_data else None,
@@ -2432,9 +2904,21 @@ async def dashboard_autofill_product_form(request: Request) -> Any:
         "variant": draft_result.draft.variant,
         "last_known_url": draft_result.draft.last_known_url,
         "last_known_sku": draft_result.draft.last_known_sku,
+        "source_type": "site",
+        "stock_qty": "0",
+        "is_active": "1",
     }
     context = _build_new_product_form_context(
         submitted_data=submitted_data,
+        manual_variant_rows=[
+            {
+                "alias": submitted_data["alias"],
+                "label": submitted_data["variant"],
+                "code": submitted_data["last_known_sku"],
+                "stock_qty": "0",
+                "notes": "",
+            }
+        ],
         autofill_message=draft_result.message,
         autofill_preview={
             "title": draft_result.draft.source_title,
@@ -2490,6 +2974,15 @@ def dashboard_edit_product_form(request: Request, alias: str) -> Any:
 
     context = _build_new_product_form_context(
         submitted_data=_build_submitted_data_from_product(product),
+        manual_variant_rows=[
+            {
+                "alias": product.alias,
+                "label": product.variant,
+                "code": product.last_known_sku,
+                "stock_qty": str(product.stock_qty),
+                "notes": product.variant_notes,
+            }
+        ],
         form_mode="edit",
         form_action_url=f"/dashboard/products/{alias}/edit",
         submit_button_label="Salvar alteracoes",
@@ -2575,10 +3068,16 @@ async def dashboard_create_product(request: Request) -> Any:
 
     form_data = await request.form()
     submitted_data = _extract_product_form_submission(form_data)
+    manual_variants = _extract_manual_variant_submissions(form_data)
+    product_image_file = _normalize_uploaded_file(form_data.get("product_image_file"))
 
-    validation_error = _validate_product_submission(submitted_data)
+    validation_error = _validate_product_submission(submitted_data, manual_variants)
     if validation_error:
-        context = _build_new_product_form_context(submitted_data=submitted_data, error_message=validation_error)
+        context = _build_new_product_form_context(
+            submitted_data=submitted_data,
+            manual_variant_rows=manual_variants,
+            error_message=validation_error,
+        )
         return templates.TemplateResponse(
             request,
             "add_product.html",
@@ -2590,9 +3089,23 @@ async def dashboard_create_product(request: Request) -> Any:
             status_code=400,
         )
 
-    alias_error = _validate_alias_availability(_get_store_service(request), submitted_data["alias"])
+    products_to_persist = _build_product_records_from_submission(
+        request=request,
+        submitted_data=submitted_data,
+        manual_variants=manual_variants,
+        product_image_file=product_image_file,
+    )
+
+    alias_error = _ensure_batch_aliases_are_available(
+        _get_store_service(request),
+        products_to_persist,
+    )
     if alias_error:
-        context = _build_new_product_form_context(submitted_data=submitted_data, error_message=alias_error)
+        context = _build_new_product_form_context(
+            submitted_data=submitted_data,
+            manual_variant_rows=manual_variants,
+            error_message=alias_error,
+        )
         return templates.TemplateResponse(
             request,
             "add_product.html",
@@ -2605,12 +3118,15 @@ async def dashboard_create_product(request: Request) -> Any:
         )
 
     try:
-        saved_product = _get_store_service(request).upsert_product(
-            _build_product_record_from_submission(submitted_data)
-        )
+        saved_product = products_to_persist[0]
+        for product_to_persist in products_to_persist:
+            persisted_product = _get_store_service(request).upsert_product(product_to_persist)
+            if product_to_persist.alias == saved_product.alias:
+                saved_product = persisted_product
     except (RuntimeError, ValueError) as error:
         context = _build_new_product_form_context(
             submitted_data=submitted_data,
+            manual_variant_rows=manual_variants,
             error_message=f"Nao foi possivel salvar o produto: {error}",
         )
         return templates.TemplateResponse(
@@ -2666,11 +3182,21 @@ async def dashboard_edit_product(request: Request, alias: str) -> Any:
 
     form_data = await request.form()
     submitted_data = _extract_product_form_submission(form_data)
+    product_image_file = _normalize_uploaded_file(form_data.get("product_image_file"))
 
-    validation_error = _validate_product_submission(submitted_data)
+    validation_error = _validate_product_submission(submitted_data, [])
     if validation_error:
         context = _build_new_product_form_context(
             submitted_data=submitted_data,
+            manual_variant_rows=[
+                {
+                    "alias": submitted_data.get("alias", alias),
+                    "label": submitted_data.get("variant", ""),
+                    "code": submitted_data.get("last_known_sku", ""),
+                    "stock_qty": submitted_data.get("stock_qty", "0"),
+                    "notes": submitted_data.get("variant_notes", ""),
+                }
+            ],
             error_message=validation_error,
             form_mode="edit",
             form_action_url=f"/dashboard/products/{alias}/edit",
@@ -2696,6 +3222,15 @@ async def dashboard_edit_product(request: Request, alias: str) -> Any:
     if alias_error:
         context = _build_new_product_form_context(
             submitted_data=submitted_data,
+            manual_variant_rows=[
+                {
+                    "alias": submitted_data.get("alias", alias),
+                    "label": submitted_data.get("variant", ""),
+                    "code": submitted_data.get("last_known_sku", ""),
+                    "stock_qty": submitted_data.get("stock_qty", "0"),
+                    "notes": submitted_data.get("variant_notes", ""),
+                }
+            ],
             error_message=alias_error,
             form_mode="edit",
             form_action_url=f"/dashboard/products/{alias}/edit",
@@ -2714,6 +3249,17 @@ async def dashboard_edit_product(request: Request, alias: str) -> Any:
         )
 
     try:
+        if product_image_file is not None:
+            submitted_data["image_url"] = _get_uploaded_image_service(request).save_uploaded_file(
+                product_image_file,
+                product_alias=submitted_data.get("alias", alias),
+                variant_label=submitted_data.get("variant", ""),
+            )
+        else:
+            submitted_data["image_url"] = submitted_data.get("image_url") or existing_product.image_url
+
+        submitted_data["parent_reference"] = existing_product.parent_reference or _build_default_parent_reference(submitted_data)
+        submitted_data["source_type"] = submitted_data.get("source_type") or existing_product.source_type
         updated_product = _get_store_service(request).replace_product(
             current_alias=alias,
             updated_product=_build_product_record_from_submission(submitted_data),
@@ -2721,6 +3267,15 @@ async def dashboard_edit_product(request: Request, alias: str) -> Any:
     except (RuntimeError, ValueError) as error:
         context = _build_new_product_form_context(
             submitted_data=submitted_data,
+            manual_variant_rows=[
+                {
+                    "alias": submitted_data.get("alias", alias),
+                    "label": submitted_data.get("variant", ""),
+                    "code": submitted_data.get("last_known_sku", ""),
+                    "stock_qty": submitted_data.get("stock_qty", "0"),
+                    "notes": submitted_data.get("variant_notes", ""),
+                }
+            ],
             error_message=f"Nao foi possivel salvar as alteracoes: {error}",
             form_mode="edit",
             form_action_url=f"/dashboard/products/{alias}/edit",
@@ -2803,6 +3358,16 @@ def dashboard_update_product(request: Request, alias: str) -> RedirectResponse:
     Contexto de uso:
         Acao operacional primaria da tela de detalhe e dos cards.
     """
+
+    existing_product = _get_store_service(request).get_by_alias(alias)
+    if existing_product is None:
+        return RedirectResponse(url="/dashboard/search", status_code=status.HTTP_303_SEE_OTHER)
+
+    if not existing_product.is_syncable:
+        return RedirectResponse(
+            url=f"/dashboard/products/{alias}?sync_blocked=1",
+            status_code=status.HTTP_303_SEE_OTHER,
+        )
 
     resolve_result = _get_resolver_service(request).resolve_sku_for_alias(alias)
     last_update_by_alias[alias] = _build_update_snapshot(resolve_result)

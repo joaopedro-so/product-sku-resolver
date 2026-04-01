@@ -46,6 +46,10 @@ function applyVariantSelection(variantRoot, variantOption) {
   const selectedStatusTone = variantOption.dataset.variantStatusToneValue || "";
   const selectedTimestamp = variantOption.dataset.variantTimestampValue || "";
   const selectedBarcodeDataUri = variantOption.dataset.variantBarcodeDataUri || "";
+  const selectedSourceLabel = variantOption.dataset.variantSourceLabel || "";
+  const selectedSourceType = variantOption.dataset.variantSourceType || "";
+  const selectedStockQty = variantOption.dataset.variantStockQty || "0";
+  const selectedIsSyncable = variantOption.dataset.variantIsSyncable === "1";
 
   variantRoot.querySelectorAll("[data-variant-code-label]").forEach((element) => {
     element.textContent = selectedVariantCode;
@@ -112,12 +116,42 @@ function applyVariantSelection(variantRoot, variantOption) {
     element.classList.add(`status-badge--${selectedStatusTone || "neutral"}`);
   });
 
+  variantRoot.querySelectorAll("[data-variant-source-label]").forEach((element) => {
+    element.textContent = selectedSourceLabel || "Site";
+  });
+
+  variantRoot.querySelectorAll("[data-variant-source-badge]").forEach((element) => {
+    element.textContent = selectedSourceLabel || "Site";
+    element.className = "status-badge";
+    if (selectedSourceType === "legacy") {
+      element.classList.add("status-badge--warning");
+      return;
+    }
+    element.classList.add("status-badge--neutral");
+  });
+
   variantRoot.querySelectorAll("[data-variant-timestamp-label]").forEach((element) => {
     element.textContent = selectedTimestamp;
   });
 
+  variantRoot.querySelectorAll("[data-variant-stock-label]").forEach((element) => {
+    if (element.textContent.trim().toLowerCase().startsWith("estoque")) {
+      element.textContent = `Estoque ${selectedStockQty || "0"}`;
+      return;
+    }
+    element.textContent = selectedStockQty || "0";
+  });
+
   variantRoot.querySelectorAll("[data-variant-copy-trigger]").forEach((element) => {
     element.setAttribute("data-copy-text", selectedVariantCode);
+  });
+
+  variantRoot.querySelectorAll("[data-variant-sync-action]").forEach((element) => {
+    element.hidden = !selectedIsSyncable;
+  });
+
+  variantRoot.querySelectorAll("[data-variant-product-link-wrapper]").forEach((element) => {
+    element.hidden = !selectedProductUrl;
   });
 
   const variantImage = variantRoot.querySelector("[data-variant-image]");
@@ -135,6 +169,209 @@ function applyVariantSelection(variantRoot, variantOption) {
   if (storageKey && selectedAlias) {
     window.localStorage.setItem(storageKey, selectedAlias);
   }
+}
+
+function syncSourceTypeFields(formRoot) {
+  /*
+    Responsabilidade:
+      Ajustar a visibilidade dos blocos do formulario conforme a origem escolhida.
+
+    Parametros:
+      formRoot: Formulario que concentra radios e blocos condicionais.
+
+    Retorno:
+      Nenhum.
+
+    Contexto de uso:
+      Mantem o mesmo HTML para site, manual e legado, mas reduz ruido visual
+      quando o operador escolhe um cadastro que nao depende do site.
+  */
+
+  if (!formRoot) {
+    return;
+  }
+
+  const selectedField = formRoot.querySelector("[data-source-type-field]:checked");
+  const selectedSourceType = selectedField?.value || "site";
+  const supportsManualFields = selectedSourceType === "manual" || selectedSourceType === "legacy";
+
+  formRoot.querySelectorAll("[data-source-type-field]").forEach((field) => {
+    field.closest(".source-switch__option")?.classList.toggle("source-switch__option--active", field.checked);
+  });
+
+  formRoot.querySelectorAll("[data-site-field], [data-site-single-variant]").forEach((element) => {
+    element.hidden = supportsManualFields;
+  });
+
+  formRoot.querySelectorAll("[data-manual-variants-section]").forEach((element) => {
+    element.hidden = !supportsManualFields;
+  });
+}
+
+function clearVariantRowInputs(variantRow) {
+  /*
+    Responsabilidade:
+      Limpar os campos de uma linha de variante sem remover a estrutura HTML.
+
+    Parametros:
+      variantRow: Linha visual da variante a ser reiniciada.
+
+    Retorno:
+      Nenhum.
+
+    Contexto de uso:
+      Evita deixar o formulario sem nenhuma linha visivel quando o operador
+      remove a ultima variante manual cadastrada na tela.
+  */
+
+  if (!variantRow) {
+    return;
+  }
+
+  variantRow.querySelectorAll("input").forEach((input) => {
+    if (input.type === "number") {
+      input.value = "0";
+      return;
+    }
+
+    if (input.type === "file") {
+      input.value = "";
+      return;
+    }
+
+    input.value = "";
+  });
+}
+
+function initializeManualProductForm() {
+  /*
+    Responsabilidade:
+      Ativar comportamentos leves do formulario de cadastro manual.
+
+    Parametros:
+      Nenhum.
+
+    Retorno:
+      Nenhum.
+
+    Contexto de uso:
+      Permite adicionar/remover variantes e alternar origem sem reescrever o
+      fluxo server-side existente nem depender de frameworks adicionais.
+  */
+
+  const formRoot = document.querySelector("[data-manual-product-form]");
+  if (!formRoot) {
+    return;
+  }
+
+  syncSourceTypeFields(formRoot);
+
+  formRoot.querySelectorAll("[data-source-type-field]").forEach((field) => {
+    field.addEventListener("change", () => {
+      syncSourceTypeFields(formRoot);
+    });
+  });
+
+  const variantList = formRoot.querySelector("[data-manual-variant-list]");
+  const variantTemplate = formRoot.querySelector("[data-manual-variant-template]");
+  const addVariantButton = formRoot.querySelector("[data-add-variant-row]");
+
+  if (variantList && variantTemplate && addVariantButton) {
+    addVariantButton.addEventListener("click", () => {
+      const fragment = variantTemplate.content.cloneNode(true);
+      variantList.appendChild(fragment);
+    });
+
+    variantList.addEventListener("click", (event) => {
+      const removeButton = event.target.closest("[data-remove-variant-row]");
+      if (!removeButton) {
+        return;
+      }
+
+      const variantRows = variantList.querySelectorAll("[data-manual-variant-row]");
+      const variantRow = removeButton.closest("[data-manual-variant-row]");
+      if (!variantRow) {
+        return;
+      }
+
+      if (variantRows.length <= 1) {
+        clearVariantRowInputs(variantRow);
+        return;
+      }
+
+      variantRow.remove();
+    });
+  }
+}
+
+function updateImagePreview(targetKey, imageUrl) {
+  /*
+    Responsabilidade:
+      Exibir ou ocultar previews de imagem vinculados ao formulario.
+
+    Parametros:
+      targetKey: Identificador logico do preview, como `product`.
+      imageUrl: URL temporaria gerada pelo navegador para o arquivo selecionado.
+
+    Retorno:
+      Nenhum.
+
+    Contexto de uso:
+      Ajuda o operador mobile a confirmar rapidamente a foto escolhida antes
+      de persistir o cadastro manual.
+  */
+
+  const previewImage = document.querySelector(`[data-image-preview-image="${targetKey}"]`);
+  const previewEmpty = document.querySelector(`[data-image-preview-empty="${targetKey}"]`);
+  if (!previewImage) {
+    return;
+  }
+
+  if (!imageUrl) {
+    previewImage.setAttribute("hidden", "hidden");
+    previewImage.removeAttribute("src");
+    if (previewEmpty) {
+      previewEmpty.hidden = false;
+    }
+    return;
+  }
+
+  previewImage.removeAttribute("hidden");
+  previewImage.setAttribute("src", imageUrl);
+  if (previewEmpty) {
+    previewEmpty.hidden = true;
+  }
+}
+
+function initializeImageInputPreviews() {
+  /*
+    Responsabilidade:
+      Conectar inputs de arquivo ao preview visual imediato das imagens.
+
+    Parametros:
+      Nenhum.
+
+    Retorno:
+      Nenhum.
+
+    Contexto de uso:
+      Mantem o fluxo manual amigavel no celular, onde a confirmacao visual da
+      foto escolhida evita cadastros com imagem errada.
+  */
+
+  document.querySelectorAll("[data-image-preview-input]").forEach((input) => {
+    input.addEventListener("change", () => {
+      const targetKey = input.dataset.imagePreviewTarget || "";
+      const selectedFile = input.files?.[0];
+      if (!targetKey || !selectedFile) {
+        updateImagePreview(targetKey, "");
+        return;
+      }
+
+      const objectUrl = window.URL.createObjectURL(selectedFile);
+      updateImagePreview(targetKey, objectUrl);
+    });
+  });
 }
 
 function initializeVariantSwitchers() {
@@ -302,3 +539,5 @@ document.querySelectorAll("[data-copy-text]").forEach((element) => {
 
 initializeVariantSwitchers();
 initializeCreateFab();
+initializeManualProductForm();
+initializeImageInputPreviews();

@@ -19,6 +19,9 @@
       <h1>{{ parent_product.parent_name if parent_product else product.name }}</h1>
       <p>
         {{ parent_product.brand if parent_product else product.brand }}
+        {% if product.concentration %}
+        • {{ product.concentration }}
+        {% endif %}
         {% if selected_variant %}
         • {{ selected_variant.label }}
         {% elif product.variant %}
@@ -43,9 +46,13 @@
 
   <div class="fullscreen-barcode__actions">
     <button class="button button--secondary" type="button" data-copy-text="{{ product.variant_code }}">Copiar código</button>
+    {% if product.is_syncable %}
     <form method="post" action="/dashboard/products/{{ product.alias }}/update">
       <button class="button" type="submit">Atualizar</button>
     </form>
+    {% else %}
+    <a class="button" href="/dashboard/products/{{ product.alias }}/edit">Editar cadastro</a>
+    {% endif %}
   </div>
 </section>
 {% endif %}

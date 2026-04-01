@@ -17,204 +17,246 @@
   <div class="alert-box alert-box--success">{{ success_message }}</div>
 </section>
 {% endif %}
+
 <div data-variant-switcher data-variant-storage-key="detail-{{ parent_product.group_id }}">
-<section class="page-section">
-  <div class="detail-hero">
-    <div class="detail-hero__media">
-      {% if product_preview and product_preview.image_url %}
-      <img src="{{ product_preview.image_url }}" alt="Imagem do produto {{ parent_product.parent_name }}" data-variant-image />
-      {% elif visual_snapshot and visual_snapshot.image_url %}
-      <img src="{{ visual_snapshot.image_url }}" alt="Imagem do produto {{ parent_product.parent_name }}" data-variant-image />
-      {% else %}
-      <div class="detail-hero__placeholder">Imagem do produto indisponível</div>
-      {% endif %}
-    </div>
-
-    <div class="detail-hero__content">
-      <div class="detail-hero__badges">
-        <span class="status-badge status-badge--{{ activity.status_tone }}" data-variant-status-badge>{{ activity.status_label }}</span>
-      </div>
-
-      <h1 class="page-title">{{ parent_product.parent_name }}</h1>
-      <p class="detail-subtitle">
-        {{ parent_product.brand }}
-        {% if selected_variant %}
-        <span data-variant-label-display>• {{ selected_variant.label }}</span>
-        {% endif %}
-      </p>
-      {% if shelf_placement %}
-      <p class="detail-location">Prateleira {{ "%02d"|format(shelf_placement.shelf_number) }} — {{ shelf_placement.shelf_title }}</p>
-      {% endif %}
-
-      <div class="variant-selector-card">
-        <p class="section-kicker">Variantes</p>
-        <div class="variant-chip-list" role="list" aria-label="Variantes disponíveis de {{ parent_product.parent_name }}">
-          {% for variant in variant_options %}
-          <button
-            class="variant-chip {% if selected_variant and variant.alias == selected_variant.alias %}variant-chip--active{% endif %}"
-            type="button"
-            data-variant-option
-            data-variant-alias="{{ variant.alias }}"
-            data-variant-label="{{ variant.label }}"
-            data-variant-code="{{ variant.variant_code }}"
-            data-variant-detail-href="{{ variant.detail_href }}"
-            data-variant-barcode-href="{{ variant.barcode_href }}"
-            data-variant-update-href="{{ variant.update_href }}"
-            data-variant-edit-href="{{ variant.edit_href }}"
-            data-variant-delete-href="{{ variant.delete_href }}"
-            data-variant-save-href="{{ variant.save_href }}"
-            data-variant-product-url="{{ variant.last_known_url }}"
-            data-variant-image-url="{{ variant.image_url or '' }}"
-            data-variant-status-value="{{ variant.status_label }}"
-            data-variant-status-tone-value="{{ variant.status_tone }}"
-            data-variant-timestamp-value="{{ variant.timestamp_label }}"
-            data-variant-barcode-data-uri="{{ variant.barcode_data_uri or '' }}"
-          >
-            {{ variant.label }}
-          </button>
-          {% endfor %}
-        </div>
-      </div>
-
-      <div class="detail-summary">
-        <div>
-          <span class="detail-summary__label">Código da variante</span>
-          <strong class="detail-summary__sku" title="{{ product.variant_code }}" data-variant-code-label>{{ product.variant_code }}</strong>
-        </div>
-        <div>
-          <span class="detail-summary__label">Última sincronização</span>
-          <strong class="detail-summary__value" data-variant-timestamp-label>{{ activity.timestamp_label }}</strong>
-        </div>
-      </div>
-
-      <article class="barcode-panel barcode-panel--inline">
-        <div class="section-heading section-heading--tight">
-          <div>
-            <p class="section-kicker">Código de barras</p>
-            <h2 class="section-title">Pronto para leitura</h2>
-          </div>
-          <a class="button button--secondary button--small" href="/dashboard/products/{{ product.alias }}/barcode" data-variant-barcode-link>Código em tela cheia</a>
-        </div>
-
-        {% if barcode_data_uri %}
-        <img
-          class="barcode-panel__image"
-          src="{{ barcode_data_uri }}"
-          alt="Código de barras do código {{ product.variant_code }}"
-          data-variant-barcode-image
-        />
+  <section class="page-section">
+    <div class="detail-hero">
+      <div class="detail-hero__media">
+        {% if product_preview and product_preview.image_url %}
+        <img src="{{ product_preview.image_url }}" alt="Imagem do produto {{ parent_product.parent_name }}" data-variant-image />
+        {% elif visual_snapshot and visual_snapshot.image_url %}
+        <img src="{{ visual_snapshot.image_url }}" alt="Imagem do produto {{ parent_product.parent_name }}" data-variant-image />
         {% else %}
-        <div class="barcode-panel__empty">Código de barras indisponível para o SKU atual.</div>
+        <div class="detail-hero__placeholder">Imagem do produto indisponível</div>
+        {% endif %}
+      </div>
+
+      <div class="detail-hero__content">
+        <div class="detail-hero__badges detail-hero__badges--stacked">
+          <span class="status-badge status-badge--{{ activity.status_tone }}" data-variant-status-badge>{{ activity.status_label }}</span>
+          <span
+            class="status-badge {% if selected_variant and selected_variant.source_type == 'legacy' %}status-badge--warning{% else %}status-badge--neutral{% endif %}"
+            data-variant-source-badge
+          >
+            {{ selected_variant.source_label if selected_variant else product.source_label }}
+          </span>
+        </div>
+
+        <h1 class="page-title">{{ parent_product.parent_name }}</h1>
+        <p class="detail-subtitle">
+          {{ parent_product.brand }}
+          {% if product.concentration %}
+          <span>• {{ product.concentration }}</span>
+          {% endif %}
+          {% if selected_variant %}
+          <span data-variant-label-display>• {{ selected_variant.label }}</span>
+          {% endif %}
+        </p>
+        {% if shelf_placement %}
+        <p class="detail-location">Prateleira {{ "%02d"|format(shelf_placement.shelf_number) }} — {{ shelf_placement.shelf_title }}</p>
         {% endif %}
 
-        <strong class="barcode-panel__sku" title="{{ product.variant_code }}" data-variant-code-label>{{ product.variant_code }}</strong>
+        <div class="variant-selector-card">
+          <p class="section-kicker">Variantes</p>
+          <div class="variant-chip-list" role="list" aria-label="Variantes disponíveis de {{ parent_product.parent_name }}">
+            {% for variant in variant_options %}
+            <button
+              class="variant-chip {% if selected_variant and variant.alias == selected_variant.alias %}variant-chip--active{% endif %}"
+              type="button"
+              data-variant-option
+              data-variant-alias="{{ variant.alias }}"
+              data-variant-label="{{ variant.label }}"
+              data-variant-code="{{ variant.variant_code }}"
+              data-variant-detail-href="{{ variant.detail_href }}"
+              data-variant-barcode-href="{{ variant.barcode_href }}"
+              data-variant-update-href="{{ variant.update_href }}"
+              data-variant-edit-href="{{ variant.edit_href }}"
+              data-variant-delete-href="{{ variant.delete_href }}"
+              data-variant-save-href="{{ variant.save_href }}"
+              data-variant-product-url="{{ variant.last_known_url }}"
+              data-variant-image-url="{{ variant.image_url or '' }}"
+              data-variant-status-value="{{ variant.status_label }}"
+              data-variant-status-tone-value="{{ variant.status_tone }}"
+              data-variant-timestamp-value="{{ variant.timestamp_label }}"
+              data-variant-barcode-data-uri="{{ variant.barcode_data_uri or '' }}"
+              data-variant-source-label="{{ variant.source_label }}"
+              data-variant-source-type="{{ variant.source_type }}"
+              data-variant-stock-qty="{{ variant.stock_qty }}"
+              data-variant-is-syncable="{{ '1' if variant.is_syncable else '0' }}"
+            >
+              {{ variant.label }}
+            </button>
+            {% endfor %}
+          </div>
+        </div>
+
+        <div class="detail-summary">
+          <div>
+            <span class="detail-summary__label">Código da variante</span>
+            <strong class="detail-summary__sku" title="{{ product.variant_code }}" data-variant-code-label>{{ product.variant_code }}</strong>
+          </div>
+          <div>
+            <span class="detail-summary__label">Estoque</span>
+            <strong class="detail-summary__value" data-variant-stock-label>{{ selected_variant.stock_qty if selected_variant else product.stock_qty }}</strong>
+          </div>
+          <div>
+            <span class="detail-summary__label">Origem</span>
+            <strong class="detail-summary__value" data-variant-source-label>{{ selected_variant.source_label if selected_variant else product.source_label }}</strong>
+          </div>
+          <div>
+            <span class="detail-summary__label">{{ 'Última sincronização' if product.is_syncable else 'Estado do catálogo' }}</span>
+            <strong class="detail-summary__value" data-variant-timestamp-label>{{ activity.timestamp_label }}</strong>
+          </div>
+        </div>
+
+        <article class="barcode-panel barcode-panel--inline">
+          <div class="section-heading section-heading--tight">
+            <div>
+              <p class="section-kicker">Código de barras</p>
+              <h2 class="section-title">Pronto para leitura</h2>
+            </div>
+            <a class="button button--secondary button--small" href="/dashboard/products/{{ product.alias }}/barcode" data-variant-barcode-link>Código em tela cheia</a>
+          </div>
+
+          {% if barcode_data_uri %}
+          <img
+            class="barcode-panel__image"
+            src="{{ barcode_data_uri }}"
+            alt="Código de barras do código {{ product.variant_code }}"
+            data-variant-barcode-image
+          />
+          {% else %}
+          <div class="barcode-panel__empty">Código de barras indisponível para o código atual.</div>
+          {% endif %}
+
+          <strong class="barcode-panel__sku" title="{{ product.variant_code }}" data-variant-code-label>{{ product.variant_code }}</strong>
+        </article>
+
+        <div class="detail-actions">
+          <a class="button button--secondary" href="/dashboard/products/{{ product.alias }}/barcode" data-variant-barcode-link>Código em tela cheia</a>
+          <form method="post" action="/dashboard/products/{{ product.alias }}/update" data-variant-update-form data-variant-sync-action {% if not product.is_syncable %}hidden{% endif %}>
+            <button class="button" type="submit">Atualizar agora</button>
+          </form>
+          <a class="button button--secondary" href="/dashboard/products/{{ product.alias }}/edit" data-variant-edit-link>Editar cadastro</a>
+          <button class="button button--ghost" type="button" data-copy-text="{{ product.variant_code }}" data-variant-copy-trigger>Copiar código</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="page-section">
+    <div class="detail-block-grid">
+      <article class="info-card">
+        <p class="section-kicker">Informações</p>
+        <dl class="detail-meta-grid">
+          <div>
+            <dt>Marca</dt>
+            <dd>{{ parent_product.brand }}</dd>
+          </div>
+          <div>
+            <dt>Variante</dt>
+            <dd data-variant-label-only>{{ selected_variant.label if selected_variant else product.variant or 'Sem variante informada' }}</dd>
+          </div>
+          <div>
+            <dt>Origem</dt>
+            <dd data-variant-source-label>{{ selected_variant.source_label if selected_variant else product.source_label }}</dd>
+          </div>
+          <div>
+            <dt>Estoque</dt>
+            <dd data-variant-stock-label>{{ selected_variant.stock_qty if selected_variant else product.stock_qty }}</dd>
+          </div>
+          <div>
+            <dt>SKU da página</dt>
+            <dd>{{ parent_product.parent_page_sku or 'Não disponível' }}</dd>
+          </div>
+          <div>
+            <dt>Localização</dt>
+            <dd>
+              {% if shelf_placement %}
+              Prateleira {{ "%02d"|format(shelf_placement.shelf_number) }} — {{ shelf_placement.shelf_title }}
+              {% else %}
+              Não mapeada
+              {% endif %}
+            </dd>
+          </div>
+          {% if product.last_known_url %}
+          <div data-variant-product-link-wrapper>
+            <dt>Página atual</dt>
+            <dd><a href="{{ product.last_known_url }}" target="_blank" rel="noreferrer" data-variant-product-link>Abrir produto</a></dd>
+          </div>
+          {% endif %}
+          {% if product.shelf_reference_label %}
+          <div>
+            <dt>Referência interna</dt>
+            <dd>{{ product.shelf_reference_label }}</dd>
+          </div>
+          {% endif %}
+          {% if product.notes %}
+          <div>
+            <dt>Notas</dt>
+            <dd>{{ product.notes }}</dd>
+          </div>
+          {% endif %}
+        </dl>
+
+        <div class="detail-inline-actions">
+          <a class="button button--secondary button--small" href="/dashboard/products/{{ product.alias }}/edit" data-variant-edit-link>Editar cadastro</a>
+          <form method="post" action="/dashboard/products/{{ product.alias }}/toggle-saved" data-variant-save-form>
+            <input type="hidden" name="next" value="{{ request.url }}" />
+            <button class="button button--ghost button--small" type="submit">{{ 'Remover dos salvos' if is_saved else 'Salvar' }}</button>
+          </form>
+          <form method="post" action="/dashboard/products/{{ product.alias }}/delete" data-variant-delete-form onsubmit="return confirm('Deseja excluir esta variante do catálogo?');">
+            <button class="button button--danger button--small" type="submit">Excluir variante</button>
+          </form>
+        </div>
       </article>
 
-      <div class="detail-actions">
-        <a class="button button--secondary" href="/dashboard/products/{{ product.alias }}/barcode" data-variant-barcode-link>Código em tela cheia</a>
-        <form method="post" action="/dashboard/products/{{ product.alias }}/update" data-variant-update-form>
-          <button class="button" type="submit">Atualizar agora</button>
-        </form>
-        <button class="button button--ghost" type="button" data-copy-text="{{ product.variant_code }}" data-variant-copy-trigger>Copiar código</button>
+      <article class="info-card">
+        <p class="section-kicker">Histórico curto</p>
+        <div class="history-list">
+          {% for item in history_cards %}
+          <div class="history-item">
+            <strong>{{ item.timestamp_label }}</strong>
+            <span>{{ item.event_type }}</span>
+            <small>{{ item.old_sku or 'sem código' }} → {{ item.new_sku or 'sem código' }}</small>
+          </div>
+          {% else %}
+          <p class="empty-inline">Sem eventos persistidos para esta variante.</p>
+          {% endfor %}
+        </div>
+      </article>
+    </div>
+  </section>
+
+  {% if related_products %}
+  <section class="page-section">
+    <div class="section-heading">
+      <div>
+        <p class="section-kicker">Relacionados</p>
+        <h2 class="section-title">Mais perfumes da mesma marca</h2>
       </div>
     </div>
-  </div>
-</section>
-
-<section class="page-section">
-  <div class="detail-block-grid">
-    <article class="info-card">
-      <p class="section-kicker">Informações</p>
-      <dl class="detail-meta-grid">
-        <div>
-          <dt>Marca</dt>
-          <dd>{{ parent_product.brand }}</dd>
-        </div>
-        <div>
-          <dt>Variante</dt>
-          <dd data-variant-label-only>{{ selected_variant.label if selected_variant else product.variant or 'Sem variante informada' }}</dd>
-        </div>
-        <div>
-          <dt>SKU da página</dt>
-          <dd>{{ parent_product.parent_page_sku or 'Não disponível' }}</dd>
-        </div>
-        <div>
-          <dt>Localização</dt>
-          <dd>
-            {% if shelf_placement %}
-            Prateleira {{ "%02d"|format(shelf_placement.shelf_number) }} — {{ shelf_placement.shelf_title }}
-            {% else %}
-            Não mapeada
-            {% endif %}
-          </dd>
-        </div>
-        <div>
-          <dt>Página atual</dt>
-          <dd><a href="{{ product.last_known_url }}" target="_blank" rel="noreferrer" data-variant-product-link>Abrir produto</a></dd>
-        </div>
-        <div>
-          <dt>Título da página</dt>
-          <dd>{{ product_preview.title if product_preview and product_preview.title else 'Não disponível' }}</dd>
-        </div>
-      </dl>
-      <div class="detail-inline-actions">
-        <a class="button button--secondary button--small" href="/dashboard/products/{{ product.alias }}/edit" data-variant-edit-link>Editar</a>
-        <form method="post" action="/dashboard/products/{{ product.alias }}/toggle-saved" data-variant-save-form>
-          <input type="hidden" name="next" value="{{ request.url }}" />
-          <button class="button button--ghost button--small" type="submit">{{ 'Remover dos salvos' if is_saved else 'Salvar' }}</button>
-        </form>
-        <form method="post" action="/dashboard/products/{{ product.alias }}/delete" data-variant-delete-form onsubmit="return confirm('Deseja excluir esta variante do catálogo?');">
-          <button class="button button--danger button--small" type="submit">Excluir variante</button>
-        </form>
-      </div>
-    </article>
-
-    <article class="info-card">
-      <p class="section-kicker">Histórico curto</p>
-      <div class="history-list">
-        {% for item in history_cards %}
-        <div class="history-item">
-          <strong>{{ item.timestamp_label }}</strong>
-          <span>{{ item.event_type }}</span>
-          <small>{{ item.old_sku or 'sem SKU' }} → {{ item.new_sku or 'sem SKU' }}</small>
-        </div>
-        {% else %}
-        <p class="empty-inline">Sem eventos persistidos para esta variante.</p>
-        {% endfor %}
-      </div>
-    </article>
-  </div>
-</section>
-
-{% if related_products %}
-<section class="page-section">
-  <div class="section-heading">
-    <div>
-      <p class="section-kicker">Relacionados</p>
-      <h2 class="section-title">Mais perfumes da mesma marca</h2>
+    <div class="related-list">
+      {% for item in related_products %}
+      <a class="related-item" href="/dashboard/products/{{ item.alias }}">
+        <strong>{{ item.name }}</strong>
+        <span>{{ item.variant or 'Sem variante' }}</span>
+        <small>{{ item.sku }}</small>
+      </a>
+      {% endfor %}
     </div>
-  </div>
-  <div class="related-list">
-    {% for item in related_products %}
-    <a class="related-item" href="/dashboard/products/{{ item.alias }}">
-      <strong>{{ item.name }}</strong>
-      <span>{{ item.variant or 'Sem variante' }}</span>
-      <small>{{ item.sku }}</small>
-    </a>
-    {% endfor %}
-  </div>
-</section>
-{% endif %}
-
-<div class="sticky-action-bar">
-  {% if selected_variant %}
-  <a class="button button--secondary" href="{{ selected_variant.barcode_href }}" data-variant-barcode-link>Código em tela cheia</a>
-  <form method="post" action="{{ selected_variant.update_href }}" data-variant-update-form>
-    <button class="button" type="submit">Atualizar agora</button>
-  </form>
-  <button class="button button--ghost" type="button" data-copy-text="{{ selected_variant.variant_code }}" data-variant-copy-trigger>Copiar código</button>
+  </section>
   {% endif %}
-</div>
+
+  <div class="sticky-action-bar">
+    {% if selected_variant %}
+    <a class="button button--secondary" href="{{ selected_variant.barcode_href }}" data-variant-barcode-link>Código em tela cheia</a>
+    <form method="post" action="{{ selected_variant.update_href }}" data-variant-update-form data-variant-sync-action {% if not selected_variant.is_syncable %}hidden{% endif %}>
+      <button class="button" type="submit">Atualizar agora</button>
+    </form>
+    <button class="button button--ghost" type="button" data-copy-text="{{ selected_variant.variant_code }}" data-variant-copy-trigger>Copiar código</button>
+    {% endif %}
+  </div>
 </div>
 {% endif %}
 {% endblock %}

@@ -1,7 +1,7 @@
 {#
   Componente reutilizável:
-  Este card assume a nova linguagem de nicho premium, com mídia em moldura,
-  plaqueta técnica para o código e ações integradas ao layout operacional.
+  Este card mantém a leitura rápida do catálogo, mas agora explicita quando o
+  item é manual/legado e evita exibir CTA de sync onde ele não faz sentido.
 #}
 <article class="product-card">
   <a class="product-card__media" href="/dashboard/products/{{ card.alias }}">
@@ -15,23 +15,41 @@
   </a>
 
   <div class="product-card__content">
-    <p class="product-card__eyebrow">{{ card.brand }}</p>
+    <div class="product-card__topline">
+      <p class="product-card__eyebrow">{{ card.brand }}</p>
+      {% if card.source_type != 'site' %}
+      <span class="status-badge {% if card.source_type == 'legacy' %}status-badge--warning{% else %}status-badge--neutral{% endif %}">
+        {{ card.source_label }}
+      </span>
+      {% endif %}
+    </div>
+
     <a class="product-card__title-link" href="/dashboard/products/{{ card.alias }}">
       <h3 class="product-card__title">{{ card.name }}</h3>
     </a>
-    <p class="product-card__subtitle">{{ card.variant_summary }}</p>
+    <p class="product-card__subtitle">
+      {{ card.variant_summary }}
+      {% if card.stock_qty %}
+      <span>• Estoque {{ card.stock_qty }}</span>
+      {% endif %}
+    </p>
+
     <div class="product-card__technical-line">
       <p class="product-card__sku" title="{{ card.sku }}">Código {{ card.sku }}</p>
       <p class="product-card__status">
-        {{ card.activity.status_label }}{% if card.activity.status_key != 'idle' and card.activity.timestamp_label %} • {{ card.activity.timestamp_label }}{% endif %}
+        {{ card.activity.status_label }}{% if card.activity.timestamp_label %} • {{ card.activity.timestamp_label }}{% endif %}
       </p>
     </div>
 
     <div class="product-card__actions">
       <a class="button button--secondary button--small" href="/dashboard/products/{{ card.alias }}">Abrir</a>
+      {% if card.is_syncable %}
       <form method="post" action="/dashboard/products/{{ card.alias }}/update">
         <button class="button button--small" type="submit">Atualizar</button>
       </form>
+      {% else %}
+      <a class="button button--small" href="/dashboard/products/{{ card.alias }}/barcode">Código</a>
+      {% endif %}
     </div>
   </div>
 </article>

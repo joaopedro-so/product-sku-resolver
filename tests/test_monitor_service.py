@@ -180,3 +180,72 @@ def test_monitor_service_registers_error_event(tmp_path: Path) -> None:
     events = history_store.list_events_by_alias("item_error")
     assert len(events) == 1
     assert events[0].event_type == "error"
+
+
+def test_monitor_service_ignora_produtos_manuais_e_legados(tmp_path: Path) -> None:
+    """
+    Responsabilidade:
+        Garantir que o monitor em lote processe apenas itens sincronizaveis.
+
+    Parametros:
+        tmp_path: Diretorio temporario para arquivos de produtos/historico.
+
+    Retorno:
+        Nenhum.
+
+    Contexto de uso:
+        Evita que perfumes internos ou fora do site aparecam como falha de
+        sincronizacao quando o operador roda "Atualizar todos".
+    """
+
+    product_store = ProductStoreService(tmp_path / "products.json")
+    history_store = HistoryStore(tmp_path / "history.json")
+
+    product_store.upsert_product(
+        ProductRecord(
+            alias="item_site",
+            brand="Marca",
+            name="Produto Site",
+            variant="100ml",
+            last_known_url="https://old.exemplo/item-site",
+            last_known_sku="SKU-SITE",
+            source_type="site",
+        )
+    )
+    product_store.upsert_product(
+        ProductRecord(
+            alias="item_manual",
+            brand="Marca",
+            name="Produto Manual",
+            variant="100ml",
+            last_known_url="",
+            last_known_sku="SKU-MANUAL",
+            source_type="manual",
+        )
+    )
+    product_store.upsert_product(
+        ProductRecord(
+            alias="item_legacy",
+            brand="Marca",
+            name="Produto Legacy",
+            variant="100ml",
+            last_known_url="",
+            last_known_sku="SKU-LEGACY",
+            source_type="legacy",
+        )
+    )
+
+    monitor_service = MonitorService(
+        product_store=product_store,
+        resolver=FakeResolverMonitor(product_store),
+        history_store=history_store,
+    )
+
+    summary = monitor_service.run()
+
+    assert summary.processed_count == 1
+    assert summary.success_count == 1
+    assert summary.error_count == 0
+    assert history_store.list_events_by_alias("item_site")
+    assert history_store.list_events_by_alias("item_manual") == []
+    assert history_store.list_events_by_alias("item_legacy") == []

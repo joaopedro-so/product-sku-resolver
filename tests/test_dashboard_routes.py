@@ -559,7 +559,7 @@ def test_dashboard_prateleira_agrupa_variantes_em_um_unico_card(tmp_path: Path) 
     assert "Good Girl" in content
     assert "30ml" in content
     assert "50ml" in content
-    assert "SKU" in content
+    assert 'data-variant-code-label' in content
 
 
 def test_dashboard_detalhe_agrupa_variantes_sem_trocar_de_produto(tmp_path: Path) -> None:
@@ -964,6 +964,144 @@ def test_dashboard_create_product_exibe_erro_real_quando_persistencia_falha(tmp_
     assert "Nao foi possivel salvar o produto" in content
     assert "falha simulada de persistencia" in content
     assert app.state.product_store_service.get_by_alias("produto_falha") is None
+
+
+def test_dashboard_cria_produto_manual_com_variantes_e_persistencia_real(tmp_path: Path) -> None:
+    """
+    Responsabilidade:
+        Garantir que o cadastro manual persista variantes com estoque e origem.
+
+    Parametros:
+        tmp_path: Diretorio temporario para isolar os arquivos do app.
+
+    Retorno:
+        Nenhum; valida redirect, storage, detalhe e sobrevivencia ao reload.
+
+    Contexto de uso:
+        Protege o novo fluxo de perfumes internos que nao existem mais no site,
+        mas ainda precisam de barcode e localizacao na perfumaria.
+    """
+
+    first_app = _build_app_with_temp_storage(tmp_path)
+    payload = urlencode(
+        [
+            ("source_type", "manual"),
+            ("alias", "good_girl_interno"),
+            ("brand", "Carolina Herrera"),
+            ("name", "Good Girl"),
+            ("concentration", "EDP"),
+            ("shelf_number", "5"),
+            ("display_order", "2"),
+            ("notes", "Cadastro interno da perfumaria."),
+            ("manual_variant_label", "50ml"),
+            ("manual_variant_code", "111222333"),
+            ("manual_variant_stock_qty", "2"),
+            ("manual_variant_notes", "Frasco principal."),
+            ("manual_variant_alias", "good_girl_interno_50ml"),
+            ("manual_variant_label", "80ml"),
+            ("manual_variant_code", "444555666"),
+            ("manual_variant_stock_qty", "1"),
+            ("manual_variant_notes", "Ultima unidade."),
+            ("manual_variant_alias", "good_girl_interno_80ml"),
+        ],
+        doseq=True,
+    ).encode("utf-8")
+    create_request = _build_request(
+        first_app,
+        method="POST",
+        path="/dashboard/products",
+        body=payload,
+        content_type="application/x-www-form-urlencoded",
+    )
+
+    create_response = asyncio.run(routes_dashboard.dashboard_create_product(create_request))
+
+    assert isinstance(create_response, RedirectResponse)
+    assert create_response.status_code == 303
+    assert create_response.headers["location"] == "/dashboard/products/good_girl_interno_50ml?created=1"
+
+    stored_variant_50ml = first_app.state.product_store_service.get_by_alias("good_girl_interno_50ml")
+    stored_variant_80ml = first_app.state.product_store_service.get_by_alias("good_girl_interno_80ml")
+    assert stored_variant_50ml is not None
+    assert stored_variant_80ml is not None
+    assert stored_variant_50ml.source_type == "manual"
+    assert stored_variant_80ml.source_type == "manual"
+    assert stored_variant_50ml.stock_qty == 2
+    assert stored_variant_80ml.stock_qty == 1
+    assert stored_variant_50ml.parent_reference == stored_variant_80ml.parent_reference
+    assert stored_variant_50ml.shelf_number == 5
+
+    second_app = _build_app_with_temp_storage(tmp_path)
+    reloaded_variant_50ml = second_app.state.product_store_service.get_by_alias("good_girl_interno_50ml")
+    assert reloaded_variant_50ml is not None
+    assert reloaded_variant_50ml.source_type == "manual"
+    assert reloaded_variant_50ml.stock_qty == 2
+
+    detail_request = _build_request(second_app, method="GET", path="/dashboard/products/good_girl_interno_50ml?created=1")
+    detail_response = routes_dashboard.dashboard_product_detail(detail_request, alias="good_girl_interno_50ml")
+    detail_content = detail_response.body.decode("utf-8")
+
+    assert isinstance(detail_response, _TemplateResponse)
+    assert detail_response.status_code == 200
+    assert "Good Girl" in detail_content
+    assert "Cadastro interno" in detail_content
+    assert "Código em tela cheia" in detail_content
+    assert "Estoque" in detail_content
+    assert "111222333" in detail_content
+    assert "444555666" in detail_content
+
+    shelf_request = _build_request(second_app, method="GET", path="/dashboard/prateleiras/5")
+    shelf_response = routes_dashboard.dashboard_shelf_detail(shelf_request, shelf_number=5)
+    shelf_content = shelf_response.body.decode("utf-8")
+
+    assert "Good Girl" in shelf_content
+    assert "50ml" in shelf_content
+    assert "80ml" in shelf_content
+    assert "Cadastro interno" in shelf_content
+
+
+def test_dashboard_bloqueia_update_para_produto_manual(tmp_path: Path) -> None:
+    """
+    Responsabilidade:
+        Garantir que itens manuais nao sejam tratados como erro de sync.
+
+    Parametros:
+        tmp_path: Diretorio temporario para isolar os arquivos do app.
+
+    Retorno:
+        Nenhum; valida redirect explicativo ao tentar atualizar manualmente.
+
+    Contexto de uso:
+        Protege a UX para perfumes internos e legados, que precisam aparecer
+        no catalogo sem disparar um pipeline que depende do site.
+    """
+
+    app = _build_app_with_temp_storage(tmp_path)
+    app.state.product_store_service.upsert_product(
+        ProductRecord(
+            alias="manual_barcode",
+            brand="Marca Interna",
+            name="Perfume Interno",
+            variant="100ml",
+            last_known_url="",
+            last_known_sku="998877665",
+            source_type="manual",
+            shelf_number=1,
+            stock_qty=3,
+        )
+    )
+    update_request = _build_request(app, method="POST", path="/dashboard/products/manual_barcode/update")
+    update_response = routes_dashboard.dashboard_update_product(update_request, alias="manual_barcode")
+
+    assert isinstance(update_response, RedirectResponse)
+    assert update_response.status_code == 303
+    assert update_response.headers["location"] == "/dashboard/products/manual_barcode?sync_blocked=1"
+
+    detail_request = _build_request(app, method="GET", path="/dashboard/products/manual_barcode?sync_blocked=1")
+    detail_response = routes_dashboard.dashboard_product_detail(detail_request, alias="manual_barcode")
+    detail_content = detail_response.body.decode("utf-8")
+
+    assert "nao depende mais da sincronizacao do site" in detail_content.lower()
 
 
 def test_dashboard_aciona_update_de_produto(tmp_path: Path) -> None:

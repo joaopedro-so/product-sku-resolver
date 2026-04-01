@@ -101,7 +101,15 @@ class MonitorService:
             Método principal chamado por endpoint /monitor/run e scheduler.
         """
 
-        products = self.product_store.list_products()
+        # Decisao tecnica:
+        # Produtos manuais e legados continuam no catalogo operacional, mas nao
+        # dependem mais do site. Por isso o monitor em lote processa apenas os
+        # itens realmente sincronizaveis, evitando falsos erros na tela de sync.
+        products = [
+            product
+            for product in self.product_store.list_products()
+            if product.is_syncable
+        ]
         emitted_events: List[SkuEvent] = []
         success_count = 0
         error_count = 0

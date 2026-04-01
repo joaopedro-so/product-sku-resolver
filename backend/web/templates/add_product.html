@@ -1,6 +1,9 @@
 {% extends "base.html" %}
 
 {% set is_edit_mode = form_mode == 'edit' %}
+{% set current_source_type = submitted_data.get('source_type', 'site') %}
+{% set supports_manual_fields = current_source_type in ['manual', 'legacy'] %}
+{% set current_image_url = submitted_data.get('image_url', '') or (autofill_preview.get('image_url') if autofill_preview else '') %}
 
 {% block title %}{{ 'Editar produto' if is_edit_mode else 'Novo produto' }}{% endblock %}
 
@@ -8,10 +11,10 @@
 <section class="page-section">
   <div class="section-heading">
     <div>
-      <p class="section-kicker">{{ 'Edicao' if is_edit_mode else 'Cadastro' }}</p>
+      <p class="section-kicker">{{ 'Manutenção' if is_edit_mode else 'Cadastro' }}</p>
       <h1 class="section-title">{{ 'Editar produto' if is_edit_mode else 'Adicionar produto' }}</h1>
       <p class="section-text">
-        {{ 'Ajuste alias, identidade, URL e SKU com seguranca.' if is_edit_mode else 'Cole um link, gere um rascunho e revise antes de salvar.' }}
+        {{ 'Ajuste os dados operacionais desta variante sem perder a persistência do catálogo.' if is_edit_mode else 'Escolha entre importar do site ou cadastrar um perfume interno com imagem, código e variantes próprias.' }}
       </p>
     </div>
     <a class="button button--secondary button--small" href="{{ cancel_url }}">Cancelar</a>
@@ -39,8 +42,12 @@
 {% if not is_edit_mode %}
 <section class="page-section" id="autofill">
   <article class="info-card">
-    <p class="section-kicker">Auto-fill</p>
-    <h2 class="section-title">Gerar cadastro pelo link</h2>
+    <p class="section-kicker">Importação assistida</p>
+    <h2 class="section-title">Importar do site</h2>
+    <p class="section-text">
+      Use este caminho quando o perfume ainda existir no site e você quiser reaproveitar URL, imagem e código inicial.
+    </p>
+
     <form class="search-entry-form search-entry-form--stacked" method="post" action="/dashboard/products/auto-fill">
       <input
         type="url"
@@ -63,7 +70,7 @@
       </div>
       <div class="autofill-card__content">
         <strong>{{ autofill_preview.get('title') or 'Produto identificado' }}</strong>
-        <p>SKU: {{ autofill_preview.get('sku') or 'unknown' }}</p>
+        <p>Código sugerido: {{ autofill_preview.get('sku') or 'não informado' }}</p>
         <p>{{ autofill_preview.get('url') }}</p>
       </div>
     </div>
@@ -73,54 +80,329 @@
 {% endif %}
 
 <section class="page-section" id="manual">
-  <form class="editor-card" method="post" action="{{ form_action_url }}">
-    <div class="form-grid">
-      <label class="form-field">
-        <span>Alias</span>
-        <input type="text" name="alias" required value="{{ submitted_data.get('alias', '') }}" placeholder="ex.: one_million_200ml" />
-      </label>
+  <form
+    class="editor-card editor-card--rich"
+    method="post"
+    action="{{ form_action_url }}"
+    enctype="multipart/form-data"
+    data-manual-product-form
+  >
+    <div class="editor-card__section">
+      <div class="section-heading section-heading--tight">
+        <div>
+          <p class="section-kicker">Origem</p>
+          <h2 class="section-title">Tipo de cadastro</h2>
+        </div>
+      </div>
 
-      <label class="form-field">
-        <span>Marca</span>
-        <input type="text" name="brand" required value="{{ submitted_data.get('brand', '') }}" placeholder="ex.: Paco Rabanne" />
-      </label>
+      <div class="source-switch" role="radiogroup" aria-label="Tipo de origem do produto">
+        <label class="source-switch__option {% if current_source_type == 'site' %}source-switch__option--active{% endif %}">
+          <input
+            type="radio"
+            name="source_type"
+            value="site"
+            {% if current_source_type == 'site' %}checked{% endif %}
+            data-source-type-field
+          />
+          <span>Site</span>
+          <small>Sincroniza com a página.</small>
+        </label>
+        <label class="source-switch__option {% if current_source_type == 'manual' %}source-switch__option--active{% endif %}">
+          <input
+            type="radio"
+            name="source_type"
+            value="manual"
+            {% if current_source_type == 'manual' %}checked{% endif %}
+            data-source-type-field
+          />
+          <span>Manual</span>
+          <small>Cadastro interno com código próprio.</small>
+        </label>
+        <label class="source-switch__option {% if current_source_type == 'legacy' %}source-switch__option--active{% endif %}">
+          <input
+            type="radio"
+            name="source_type"
+            value="legacy"
+            {% if current_source_type == 'legacy' %}checked{% endif %}
+            data-source-type-field
+          />
+          <span>Fora do site</span>
+          <small>Item legado mantido no catálogo.</small>
+        </label>
+      </div>
+    </div>
 
-      <label class="form-field">
-        <span>Nome</span>
-        <input type="text" name="name" required value="{{ submitted_data.get('name', '') }}" placeholder="ex.: One Million" />
-      </label>
+    <div class="editor-card__section">
+      <div class="section-heading section-heading--tight">
+        <div>
+          <p class="section-kicker">Identidade</p>
+          <h2 class="section-title">Dados principais</h2>
+        </div>
+      </div>
 
-      <label class="form-field">
-        <span>Variante</span>
-        <input type="text" name="variant" value="{{ submitted_data.get('variant', '') }}" placeholder="ex.: 200ml" />
-      </label>
+      <div class="form-grid form-grid--split">
+        <label class="form-field">
+          <span>Alias base</span>
+          <input type="text" name="alias" required value="{{ submitted_data.get('alias', '') }}" placeholder="ex.: good_girl" />
+        </label>
 
-      <label class="form-field">
-        <span>SKU inicial</span>
-        <input type="text" name="last_known_sku" value="{{ submitted_data.get('last_known_sku', '') }}" placeholder="ex.: 546594103" />
-      </label>
+        <label class="form-field">
+          <span>Marca</span>
+          <input type="text" name="brand" required value="{{ submitted_data.get('brand', '') }}" placeholder="ex.: Carolina Herrera" />
+        </label>
 
-      <label class="form-field">
-        <span>Prateleira</span>
-        <select name="shelf_number">
-          <option value="">Definir automaticamente</option>
-          {% for option in shelf_options %}
-          <option value="{{ option.value }}" {% if submitted_data.get('shelf_number', '') == option.value|string %}selected{% endif %}>
-            {{ option.label }}
-          </option>
-          {% endfor %}
-        </select>
-      </label>
+        <label class="form-field">
+          <span>Nome do produto</span>
+          <input type="text" name="name" required value="{{ submitted_data.get('name', '') }}" placeholder="ex.: Good Girl" />
+        </label>
 
-      <label class="form-field">
-        <span>Ordem na prateleira</span>
-        <input type="number" min="1" name="display_order" value="{{ submitted_data.get('display_order', '') }}" placeholder="ex.: 3" />
-      </label>
+        <label class="form-field">
+          <span>Concentração / tipo</span>
+          <input type="text" name="concentration" value="{{ submitted_data.get('concentration', '') }}" placeholder="ex.: EDP, EDT, Elixir" />
+        </label>
 
-      <label class="form-field form-field--full">
-        <span>URL conhecida</span>
-        <input type="url" name="last_known_url" required value="{{ submitted_data.get('last_known_url', '') }}" placeholder="https://www.exemplo.com/produto" />
-      </label>
+        <label class="form-field">
+          <span>Prateleira</span>
+          <select name="shelf_number">
+            <option value="">Definir automaticamente</option>
+            {% for option in shelf_options %}
+            <option value="{{ option.value }}" {% if submitted_data.get('shelf_number', '') == option.value|string %}selected{% endif %}>
+              {{ option.label }}
+            </option>
+            {% endfor %}
+          </select>
+        </label>
+
+        <label class="form-field">
+          <span>Ordem na prateleira</span>
+          <input type="number" min="1" name="display_order" value="{{ submitted_data.get('display_order', '') }}" placeholder="ex.: 3" />
+        </label>
+
+        <label class="form-field form-field--full">
+          <span>Referência física</span>
+          <input
+            type="text"
+            name="shelf_reference_label"
+            value="{{ submitted_data.get('shelf_reference_label', '') }}"
+            placeholder="ex.: fundo esquerdo, nicho central, vitrine externa"
+          />
+        </label>
+
+        <label class="form-field form-field--full" data-site-field {% if supports_manual_fields %}hidden{% endif %}>
+          <span>URL conhecida</span>
+          <input
+            type="url"
+            name="last_known_url"
+            value="{{ submitted_data.get('last_known_url', '') }}"
+            placeholder="https://www.exemplo.com/produto"
+          />
+        </label>
+      </div>
+    </div>
+
+    <div class="editor-card__section">
+      <div class="section-heading section-heading--tight">
+        <div>
+          <p class="section-kicker">Imagem</p>
+          <h2 class="section-title">Foto do perfume</h2>
+        </div>
+      </div>
+
+      <div class="manual-image-grid">
+        <div class="manual-image-upload">
+          <label class="form-field form-field--full">
+            <span>Enviar imagem</span>
+            <input
+              type="file"
+              name="product_image_file"
+              accept="image/*"
+              capture="environment"
+              data-image-preview-input
+              data-image-preview-target="product"
+            />
+          </label>
+          <input type="hidden" name="image_url" value="{{ submitted_data.get('image_url', '') }}" />
+          <p class="manual-image-upload__hint">Funciona com câmera do celular ou galeria.</p>
+        </div>
+
+        <div class="manual-image-preview" data-image-preview-box>
+          <span class="manual-image-preview__label">Preview</span>
+          <div class="manual-image-preview__frame">
+            {% if current_image_url %}
+            <img src="{{ current_image_url }}" alt="Preview atual do produto" data-image-preview-image="product" />
+            {% else %}
+            <div class="manual-image-preview__empty" data-image-preview-empty="product">Sem imagem selecionada</div>
+            <img src="" alt="" hidden data-image-preview-image="product" />
+            {% endif %}
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="editor-card__section" data-site-single-variant {% if supports_manual_fields %}hidden{% endif %}>
+      <div class="section-heading section-heading--tight">
+        <div>
+          <p class="section-kicker">Variante principal</p>
+          <h2 class="section-title">Dados operacionais</h2>
+        </div>
+      </div>
+
+      <div class="form-grid form-grid--split">
+        <label class="form-field">
+          <span>Variante</span>
+          <input type="text" name="variant" value="{{ submitted_data.get('variant', '') }}" placeholder="ex.: 100ml" />
+        </label>
+
+        <label class="form-field">
+          <span>Código / SKU</span>
+          <input type="text" name="last_known_sku" value="{{ submitted_data.get('last_known_sku', '') }}" placeholder="ex.: 546594103" />
+        </label>
+
+        <label class="form-field">
+          <span>Estoque</span>
+          <input type="number" min="0" name="stock_qty" value="{{ submitted_data.get('stock_qty', '0') }}" placeholder="0" />
+        </label>
+
+        <label class="form-field form-field--full">
+          <span>Observações da variante</span>
+          <input
+            type="text"
+            name="variant_notes"
+            value="{{ submitted_data.get('variant_notes', '') }}"
+            placeholder="ex.: frasco teste, última unidade, sem tampa"
+          />
+        </label>
+      </div>
+    </div>
+
+    <div class="editor-card__section" data-manual-variants-section {% if not supports_manual_fields %}hidden{% endif %}>
+      <div class="section-heading section-heading--tight">
+        <div>
+          <p class="section-kicker">Variantes</p>
+          <h2 class="section-title">Códigos e estoque por volume</h2>
+          <p class="section-text">Cada linha vira uma variante persistida com código próprio, estoque independente e imagem opcional.</p>
+        </div>
+        {% if not is_edit_mode %}
+        <button class="button button--secondary button--small" type="button" data-add-variant-row>Adicionar variante</button>
+        {% endif %}
+      </div>
+
+      <div class="manual-variant-list" data-manual-variant-list>
+        {% for row in manual_variant_rows %}
+        <article class="manual-variant-row" data-manual-variant-row>
+          <div class="manual-variant-row__grid">
+            <label class="form-field">
+              <span>Rótulo</span>
+              <input type="text" name="manual_variant_label" value="{{ row.get('label', '') }}" placeholder="ex.: 50ml" />
+            </label>
+
+            <label class="form-field">
+              <span>Código</span>
+              <input type="text" name="manual_variant_code" value="{{ row.get('code', '') }}" placeholder="ex.: 123456789" />
+            </label>
+
+            <label class="form-field">
+              <span>Estoque</span>
+              <input type="number" min="0" name="manual_variant_stock_qty" value="{{ row.get('stock_qty', '0') }}" placeholder="0" />
+            </label>
+
+            <label class="form-field" {% if is_edit_mode %}hidden{% endif %}>
+              <span>Alias da variante</span>
+              <input
+                type="text"
+                name="manual_variant_alias"
+                value="{{ row.get('alias', '') }}"
+                placeholder="opcional; se vazio o app gera automaticamente"
+              />
+            </label>
+
+            <label class="form-field form-field--full">
+              <span>Observações da variante</span>
+              <input
+                type="text"
+                name="manual_variant_notes"
+                value="{{ row.get('notes', '') }}"
+                placeholder="ex.: caixa avariada, tester, última peça"
+              />
+            </label>
+
+            <label class="form-field form-field--full" {% if is_edit_mode %}hidden{% endif %}>
+              <span>Imagem opcional da variante</span>
+              <input
+                type="file"
+                name="manual_variant_image"
+                accept="image/*"
+                capture="environment"
+              />
+            </label>
+          </div>
+
+          {% if not is_edit_mode %}
+          <button class="button button--ghost button--small" type="button" data-remove-variant-row>Remover</button>
+          {% endif %}
+        </article>
+        {% endfor %}
+      </div>
+
+      {% if not is_edit_mode %}
+      <template data-manual-variant-template>
+        <article class="manual-variant-row" data-manual-variant-row>
+          <div class="manual-variant-row__grid">
+            <label class="form-field">
+              <span>Rótulo</span>
+              <input type="text" name="manual_variant_label" value="" placeholder="ex.: 50ml" />
+            </label>
+
+            <label class="form-field">
+              <span>Código</span>
+              <input type="text" name="manual_variant_code" value="" placeholder="ex.: 123456789" />
+            </label>
+
+            <label class="form-field">
+              <span>Estoque</span>
+              <input type="number" min="0" name="manual_variant_stock_qty" value="0" placeholder="0" />
+            </label>
+
+            <label class="form-field">
+              <span>Alias da variante</span>
+              <input type="text" name="manual_variant_alias" value="" placeholder="opcional; se vazio o app gera automaticamente" />
+            </label>
+
+            <label class="form-field form-field--full">
+              <span>Observações da variante</span>
+              <input type="text" name="manual_variant_notes" value="" placeholder="ex.: caixa avariada, tester, última peça" />
+            </label>
+
+            <label class="form-field form-field--full">
+              <span>Imagem opcional da variante</span>
+              <input type="file" name="manual_variant_image" accept="image/*" capture="environment" />
+            </label>
+          </div>
+          <button class="button button--ghost button--small" type="button" data-remove-variant-row>Remover</button>
+        </article>
+      </template>
+      {% endif %}
+    </div>
+
+    <div class="editor-card__section">
+      <div class="section-heading section-heading--tight">
+        <div>
+          <p class="section-kicker">Observações</p>
+          <h2 class="section-title">Notas do catálogo</h2>
+        </div>
+      </div>
+
+      <div class="form-grid">
+        <label class="form-field form-field--full">
+          <span>Notas gerais</span>
+          <textarea name="notes" rows="4" placeholder="Ex.: frasco antigo, cadastro interno, etiqueta de vitrine.">{{ submitted_data.get('notes', '') }}</textarea>
+        </label>
+
+        <label class="check-field">
+          <input type="checkbox" name="is_active" value="1" {% if submitted_data.get('is_active', '1') != '0' %}checked{% endif %} />
+          <span>Manter variante ativa no catálogo</span>
+        </label>
+      </div>
     </div>
 
     <div class="editor-card__actions">
@@ -135,7 +417,7 @@
   <article class="info-card info-card--danger">
     <p class="section-kicker">Zona de risco</p>
     <h2 class="section-title">Excluir produto</h2>
-    <p class="section-text">Use esta ação apenas quando o item realmente não fizer mais parte do catálogo operacional.</p>
+    <p class="section-text">Use esta ação apenas quando a variante realmente não fizer mais parte do catálogo operacional.</p>
     <form method="post" action="/dashboard/products/{{ submitted_data.get('alias', '') }}/delete" onsubmit="return confirm('Deseja excluir este produto do catálogo?');">
       <button class="button button--danger" type="submit">Excluir produto</button>
     </form>
