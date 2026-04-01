@@ -16,6 +16,7 @@ from starlette.templating import _TemplateResponse
 
 from backend.models.product import ProductRecord
 from backend.models.sku_event import SkuEvent
+from backend.services.internal_catalog_seed_service import resolve_builtin_internal_catalog_seed_file
 from backend.services.manual_product_group_service import ManualProductGroupService
 from backend.services.product_group_service import ProductGroupService
 from backend.services.saved_product_service import SavedProductService
@@ -478,6 +479,114 @@ def test_dashboard_importa_seed_interno_pela_home(tmp_path: Path, monkeypatch: p
     assert stored_product is not None
     assert stored_product.shelf_number == 3
     assert stored_product.last_known_sku == "123456"
+
+
+def test_dashboard_importa_seed_interno_da_prateleira_09(tmp_path: Path, monkeypatch) -> None:
+    """
+    Responsabilidade:
+        Garantir que a Railway possa importar a prateleira 09 sem shell.
+
+    Parametros:
+        tmp_path: Diretorio temporario para isolar o storage do teste.
+        monkeypatch: Fixture usada para apontar o seed interno para um arquivo fake.
+
+    Retorno:
+        Nenhum; valida redirecionamento e persistencia do item importado.
+
+    Contexto de uso:
+        Protege o fluxo administrativo que sobe produtos legacy e do site para
+        a prateleira Ralph Lauren diretamente pelo dashboard.
+    """
+
+    seed_file_path = tmp_path / "seed_catalog_09.json"
+    seed_file_path.write_text(
+        json.dumps(
+            {
+                "products": [
+                    {
+                        "alias": "ralph_lauren_importado_200ml",
+                        "brand": "Ralph Lauren",
+                        "name": "Polo Blue",
+                        "variant": "200ml",
+                        "last_known_url": "https://example.com/polo-blue",
+                        "last_known_sku": "530167019",
+                        "page_family_sku": "500177443",
+                        "parent_reference": "ralph_lauren_polo_blue",
+                        "source_type": "site",
+                        "concentration": "EDT",
+                        "shelf_reference_label": "",
+                        "notes": "",
+                        "image_url": "https://example.com/polo-blue.jpg",
+                        "stock_qty": 0,
+                        "variant_notes": "",
+                        "is_active": True,
+                        "site_link_status": "linked_to_site",
+                        "site_product_id": "500177443",
+                        "site_candidate_id": "",
+                        "site_candidate_url": "",
+                        "site_candidate_code": "",
+                        "site_candidate_variant_id": "",
+                        "match_confidence": None,
+                        "match_signals": [],
+                        "last_matched_at": "",
+                        "site_variant_id": "",
+                        "current_site_code": "530167019",
+                        "current_barcode_value": "530167019",
+                        "shelf_number": 9,
+                        "display_order": 1,
+                    }
+                ]
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        routes_dashboard,
+        "resolve_builtin_internal_catalog_seed_file",
+        lambda seed_name: seed_file_path,
+    )
+
+    app = _build_app_with_temp_storage(tmp_path)
+    request = _build_request(app, method="POST", path="/dashboard/imports/prestige-shelf-09")
+
+    response = routes_dashboard.dashboard_import_prestige_shelf_09(request)
+
+    assert isinstance(response, RedirectResponse)
+    assert response.status_code == 303
+    assert "import_status=success" in response.headers["location"]
+    stored_product = app.state.product_store_service.get_by_alias("ralph_lauren_importado_200ml")
+    assert stored_product is not None
+    assert stored_product.shelf_number == 9
+    assert stored_product.image_url == "https://example.com/polo-blue.jpg"
+
+
+def test_dashboard_home_exibe_atalho_de_importacao_da_prateleira_09(tmp_path: Path) -> None:
+    """
+    Responsabilidade:
+        Garantir que a Home exponha o atalho operacional da prateleira 09.
+
+    Parametros:
+        tmp_path: Diretorio temporario usado para isolar o app de teste.
+
+    Retorno:
+        Nenhum; valida a presenca do botao na tela inicial.
+
+    Contexto de uso:
+        Protege o caminho mais simples na Railway para subir os produtos que
+        foram curados localmente e precisam entrar no volume persistente.
+    """
+
+    app = _build_app_with_temp_storage(tmp_path)
+    request = _build_request(app, method="GET", path="/dashboard")
+
+    response = routes_dashboard.dashboard_home(request)
+
+    assert isinstance(response, _TemplateResponse)
+    content = response.body.decode("utf-8")
+    assert "Importar prateleira 09" in content
+    assert "/dashboard/imports/prestige-shelf-09" in content
 
 
 def test_dashboard_abre_detalhe_da_prateleira_com_produtos_alocados(tmp_path: Path) -> None:

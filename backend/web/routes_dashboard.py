@@ -25,6 +25,10 @@ from backend.services.curated_renner_import_service import (
     CuratedRennerImportService,
     resolve_builtin_curated_seed_file,
 )
+from backend.services.internal_catalog_seed_service import (
+    InternalCatalogSeedService,
+    resolve_builtin_internal_catalog_seed_file,
+)
 from backend.services.matcher import normalize_text
 from backend.services.shelf_banner_service import ShelfBannerService
 from backend.services.product_draft_service import ProductDraftService
@@ -2050,7 +2054,12 @@ def _build_shelves_context(request: Request) -> Dict[str, Any]:
             "page_title": "Prateleiras",
             "shelves": shelf_cards,
             "import_feedback": import_feedback,
-            "prestige_shelf_import_action_url": "/dashboard/imports/prestige-shelf-03",
+            "internal_import_actions": [
+                {
+                    "label": "Importar prateleira 09",
+                    "href": "/dashboard/imports/prestige-shelf-09",
+                }
+            ],
         },
     )
 
@@ -2122,6 +2131,36 @@ def _run_builtin_curated_seed_import(request: Request, seed_name: str) -> tuple[
     )
     entries = import_service.load_entries_from_file(seed_file_path)
     results = import_service.import_entries(entries)
+    failed_results = [result for result in results if not result.success]
+    if failed_results:
+        return False, failed_results[0].message, len(results)
+
+    return True, "Importação concluída com sucesso.", len(results)
+
+
+def _run_builtin_catalog_seed_import(request: Request, seed_name: str) -> tuple[bool, str, int]:
+    """
+    Responsabilidade:
+        Executar um seed interno de catalogo sem depender de validacao remota.
+
+    Parametros:
+        request: Requisicao atual para obter o storage compartilhado.
+        seed_name: Nome logico do seed interno que deve ser aplicado.
+
+    Retorno:
+        Tupla com sucesso, mensagem amigavel e quantidade processada.
+
+    Contexto de uso:
+        Permite subir na Railway itens legacy ou fora do site que ja foram
+        curados localmente e devem existir no catalogo operacional.
+    """
+
+    seed_file_path = resolve_builtin_internal_catalog_seed_file(seed_name)
+    import_service = InternalCatalogSeedService(
+        product_store=_get_store_service(request),
+    )
+    products = import_service.load_products_from_file(seed_file_path)
+    results = import_service.import_products(products)
     failed_results = [result for result in results if not result.success]
     if failed_results:
         return False, failed_results[0].message, len(results)
@@ -2793,6 +2832,43 @@ def dashboard_import_prestige_shelf_03(request: Request) -> RedirectResponse:
     )
     query_params = {
         "seed": "prestige-shelf-03",
+        "import_count": str(processed_count),
+    }
+    if import_succeeded:
+        query_params["import_status"] = "success"
+    else:
+        query_params["import_status"] = "error"
+        query_params["import_message"] = import_message
+
+    return RedirectResponse(
+        url=f"/dashboard?{urlencode(query_params)}",
+        status_code=status.HTTP_303_SEE_OTHER,
+    )
+
+
+@router.post("/imports/prestige-shelf-09")
+def dashboard_import_prestige_shelf_09(request: Request) -> RedirectResponse:
+    """
+    Responsabilidade:
+        Importar no ambiente atual o seed interno da prateleira 09.
+
+    Parametros:
+        request: Requisicao HTTP atual com acesso aos servicos compartilhados.
+
+    Retorno:
+        RedirectResponse para a Home com feedback de sucesso ou falha.
+
+    Contexto de uso:
+        Facilita a carga da prateleira Ralph Lauren na Railway, inclusive para
+        produtos legacy que nao dependem mais de pagina ativa no site.
+    """
+
+    import_succeeded, import_message, processed_count = _run_builtin_catalog_seed_import(
+        request=request,
+        seed_name="prestige_shelf_09_catalog",
+    )
+    query_params = {
+        "seed": "prestige-shelf-09",
         "import_count": str(processed_count),
     }
     if import_succeeded:
