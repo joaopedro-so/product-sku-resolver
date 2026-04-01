@@ -64,9 +64,18 @@
       {% endif %}
     >
       <div class="shelf-card__banner shelf-card__banner--{{ shelf.banner_variant }}">
+        {% if shelf.banner_image_url %}
+        <img
+          class="shelf-card__banner-image"
+          src="{{ shelf.banner_image_url }}"
+          alt="Identidade visual da prateleira {{ '%02d'|format(shelf.shelf_number) }} — {{ shelf.shelf_title }}"
+          loading="lazy"
+        />
+        {% else %}
         <strong class="shelf-card__wordmark">{{ shelf.banner_wordmark }}</strong>
         {% if shelf.banner_sublabel %}
         <span class="shelf-card__subwordmark">{{ shelf.banner_sublabel }}</span>
+        {% endif %}
         {% endif %}
       </div>
       <div class="shelf-card__body">

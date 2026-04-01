@@ -1346,30 +1346,35 @@ def _build_shelf_card_visual_metadata(shelf_number: int, shelf_title: str) -> Di
             "banner_sublabel": "",
             "body_label": "",
             "banner_variant": "arabes",
+            "banner_image_file": "arabes.png",
         },
         2: {
             "banner_wordmark": "AZZARO",
             "banner_sublabel": "",
             "body_label": "",
             "banner_variant": "azzaro",
+            "banner_image_file": "azzaro.png",
         },
         3: {
             "banner_wordmark": "CALVIN KLEIN",
             "banner_sublabel": "",
             "body_label": "",
             "banner_variant": "calvin-klein",
+            "banner_image_file": "calvinklein.png",
         },
         4: {
             "banner_wordmark": "paco rabanne",
             "banner_sublabel": "",
             "body_label": "",
             "banner_variant": "paco-rabanne",
+            "banner_image_file": "pacorabanne.png",
         },
         5: {
             "banner_wordmark": "CAROLINA HERRERA",
             "banner_sublabel": "FEMININO",
             "body_label": "Feminino",
             "banner_variant": "carolina-herrera",
+            "banner_image_file": "chfeminino.png",
             "legacy_title": "Carolina Herrera A",
         },
         6: {
@@ -1377,6 +1382,7 @@ def _build_shelf_card_visual_metadata(shelf_number: int, shelf_title: str) -> Di
             "banner_sublabel": "MASCULINO",
             "body_label": "Masculino",
             "banner_variant": "carolina-herrera",
+            "banner_image_file": "chmasculino.png",
             "legacy_title": "Carolina Herrera B",
         },
         7: {
@@ -1384,18 +1390,21 @@ def _build_shelf_card_visual_metadata(shelf_number: int, shelf_title: str) -> Di
             "banner_sublabel": "",
             "body_label": "",
             "banner_variant": "lancome",
+            "banner_image_file": "lancome.png",
         },
         8: {
             "banner_wordmark": "GIORGIO ARMANI",
             "banner_sublabel": "",
             "body_label": "",
             "banner_variant": "giorgio-armani",
+            "banner_image_file": "giorgioarmani.png",
         },
         9: {
             "banner_wordmark": "RALPH LAUREN",
             "banner_sublabel": "",
             "body_label": "",
             "banner_variant": "ralph-lauren",
+            "banner_image_file": "ralphlauren.png",
         },
     }
 
@@ -1406,9 +1415,39 @@ def _build_shelf_card_visual_metadata(shelf_number: int, shelf_title: str) -> Di
             "banner_sublabel": "",
             "body_label": "",
             "banner_variant": "default",
+            "banner_image_file": "",
             "legacy_title": "",
         },
     )
+
+
+def _resolve_shelf_banner_image_url(banner_image_file: str) -> str:
+    """
+    Responsabilidade:
+        Resolver a URL publica do banner ilustrado da prateleira quando o
+        arquivo existir no diretório estático do app.
+
+    Parâmetros:
+        banner_image_file: Nome do arquivo PNG configurado para a prateleira.
+
+    Retorno:
+        URL pública do banner quando houver arquivo válido; caso contrário,
+        string vazia para manter o fallback tipográfico atual.
+
+    Contexto de uso:
+        Mantém a decisão de caminho estático fora do template e permite
+        evoluir a origem dos banners sem espalhar regras de arquivo pela UI.
+    """
+
+    normalized_file_name = str(banner_image_file or "").strip()
+    if not normalized_file_name:
+        return ""
+
+    static_banner_file = Path("backend/web/static/shelf-banners") / normalized_file_name
+    if not static_banner_file.is_file():
+        return ""
+
+    return f"/dashboard/static/shelf-banners/{normalized_file_name}"
 
 
 def _build_shelves_context(request: Request) -> Dict[str, Any]:
@@ -1441,6 +1480,7 @@ def _build_shelves_context(request: Request) -> Dict[str, Any]:
                 "brand_group": shelf.brand_group,
                 "product_count": len(shelf_products),
                 "href": f"/dashboard/prateleiras/{shelf.shelf_number}",
+                "banner_image_url": _resolve_shelf_banner_image_url(visual_metadata.get("banner_image_file", "")),
                 **visual_metadata,
             }
         )
