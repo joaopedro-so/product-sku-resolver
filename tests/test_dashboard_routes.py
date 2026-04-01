@@ -397,6 +397,7 @@ def test_dashboard_home_carrega_lista_de_produtos(tmp_path: Path) -> None:
     assert "Prateleira 09 — Ralph Lauren" in content
     assert "Buscar produto, marca ou SKU" in content
     assert "Importar prateleira 03" in content
+    assert "/dashboard/static/shelf-banners/shelf-04-paco-rabanne.png" in content
 
 
 def test_dashboard_importa_seed_interno_pela_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -505,6 +506,7 @@ def test_dashboard_abre_detalhe_da_prateleira_com_produtos_alocados(tmp_path: Pa
     assert "Produto X" in content
     assert "Código" in content
     assert "Abrir" in content
+    assert "/dashboard/static/shelf-banners/shelf-04-paco-rabanne.png" in content
 
 
 def test_dashboard_prateleira_agrupa_variantes_em_um_unico_card(tmp_path: Path) -> None:
