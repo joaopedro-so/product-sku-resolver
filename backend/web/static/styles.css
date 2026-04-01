@@ -1230,7 +1230,7 @@ form {
   padding: 0;
   border-color: rgba(27, 27, 29, 0.12);
   background:
-    linear-gradient(180deg, rgba(17, 17, 17, 0.97) 0%, rgba(26, 26, 28, 0.97) 18%, rgba(252, 251, 249, 1) 18%, rgba(252, 251, 249, 1) 100%);
+    linear-gradient(180deg, rgba(17, 17, 17, 0.97) 0%, rgba(26, 26, 28, 0.97) 4.9rem, rgba(252, 251, 249, 1) 4.9rem, rgba(252, 251, 249, 1) 100%);
 }
 
 .barcode-panel--inline {
@@ -1249,9 +1249,21 @@ form {
   padding: 1rem 1rem 0;
 }
 
+.section-heading--barcode {
+  margin-bottom: 0.2rem;
+}
+
 .barcode-panel .section-kicker,
 .barcode-panel .section-title {
   color: #fcfbf9;
+}
+
+.barcode-panel__lead {
+  margin: 0.26rem 0 0;
+  color: rgba(252, 251, 249, 0.82);
+  font-size: 0.94rem;
+  font-weight: 600;
+  line-height: 1.35;
 }
 
 .barcode-panel .section-text {
@@ -1277,6 +1289,31 @@ form {
 .barcode-panel__sku {
   margin: 0.9rem auto 1rem;
   font-size: 0.95rem;
+}
+
+/* A grade do detalhe mantém os botões alinhados sem esmagar o texto em telas estreitas. */
+.detail-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.65rem;
+  margin-top: 1rem;
+}
+
+.detail-actions > * {
+  min-width: 0;
+}
+
+.detail-actions .button,
+.detail-actions form {
+  width: 100%;
+}
+
+.detail-actions form {
+  display: block;
+}
+
+.detail-actions .button {
+  justify-content: center;
 }
 
 .detail-block-grid {
@@ -1755,9 +1792,13 @@ form {
   .detail-hero,
   .filter-sheet,
   .alert-box,
-  .barcode-panel,
   .event-card {
     padding: 0.9rem;
+  }
+
+  /* O painel do barcode tem composição própria e não deve herdar padding genérico no mobile. */
+  .barcode-panel {
+    padding: 0;
   }
 
   .search-entry-card__topline,
@@ -1864,6 +1905,24 @@ form {
   .detail-actions,
   .detail-inline-actions {
     gap: 0.5rem;
+  }
+
+  .barcode-panel .section-heading {
+    padding: 0.92rem 0.92rem 0;
+  }
+
+  .barcode-panel__lead {
+    font-size: 0.88rem;
+  }
+
+  .barcode-panel__image {
+    width: calc(100% - 1.6rem);
+    margin-top: 0.95rem;
+    padding: 0.95rem;
+  }
+
+  .barcode-panel__sku {
+    margin-bottom: 0.92rem;
   }
 
   .fullscreen-barcode__header h1 {

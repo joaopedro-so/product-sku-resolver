@@ -110,12 +110,12 @@
         </div>
 
         <article class="barcode-panel barcode-panel--inline">
-          <div class="section-heading section-heading--tight">
+          {# Cabeçalho reduzido para o bloco do código não perder espaço útil no mobile. #}
+          <div class="section-heading section-heading--tight section-heading--barcode">
             <div>
               <p class="section-kicker">Código de barras</p>
-              <h2 class="section-title">Pronto para leitura</h2>
+              <p class="barcode-panel__lead">Pronto para leitura imediata</p>
             </div>
-            <a class="button button--secondary button--small" href="/dashboard/products/{{ product.alias }}/barcode" data-variant-barcode-link>Código em tela cheia</a>
           </div>
 
           {% if barcode_data_uri %}
@@ -132,6 +132,7 @@
           <strong class="barcode-panel__sku" title="{{ product.variant_code }}" data-variant-code-label>{{ product.variant_code }}</strong>
         </article>
 
+        {# Mantemos as ações em grade simples para evitar botões espremidos e desconexos. #}
         <div class="detail-actions">
           <a class="button button--secondary" href="/dashboard/products/{{ product.alias }}/barcode" data-variant-barcode-link>Código em tela cheia</a>
           <form method="post" action="/dashboard/products/{{ product.alias }}/update" data-variant-update-form data-variant-sync-action {% if not product.is_syncable %}hidden{% endif %}>
