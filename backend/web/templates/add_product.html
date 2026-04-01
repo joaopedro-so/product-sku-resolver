@@ -37,7 +37,7 @@
 {% endif %}
 
 {% if not is_edit_mode %}
-<section class="page-section">
+<section class="page-section" id="autofill">
   <article class="info-card">
     <p class="section-kicker">Auto-fill</p>
     <h2 class="section-title">Gerar cadastro pelo link</h2>
@@ -72,7 +72,7 @@
 </section>
 {% endif %}
 
-<section class="page-section">
+<section class="page-section" id="manual">
   <form class="editor-card" method="post" action="{{ form_action_url }}">
     <div class="form-grid">
       <label class="form-field">

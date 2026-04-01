@@ -29,7 +29,6 @@
               <img class="brand__wordmark" src="/dashboard/static/brand/prestigio-394-lockup.svg" alt="Perfumaria Prestígio 394" />
             </span>
           </a>
-          <a class="button button--ghost button--small app-header__cta" href="/dashboard/products/new">Novo item</a>
         </div>
       </header>
       {% endif %}
@@ -39,21 +38,77 @@
       </main>
 
       {% if not hide_app_chrome %}
+      <div class="fab-create" data-fab-root>
+        <div class="fab-create__menu" id="fab-create-menu" data-fab-menu aria-label="Ações de criação rápidas">
+          <a class="fab-create__action" href="/dashboard/products/new#autofill">
+            <span class="fab-create__action-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" focusable="false">
+                <path d="M6 5.75h9.25L19 9.5V18a2 2 0 0 1-2 2H6.75a2 2 0 0 1-2-2V7.75a2 2 0 0 1 2-2Z" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7"/>
+                <path d="M15.25 5.75V9.5H19" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7"/>
+                <path d="M8.5 12.25h7M8.5 15.25h5.25" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.7"/>
+              </svg>
+            </span>
+            <span>Importar do site</span>
+          </a>
+          <a class="fab-create__action" href="/dashboard/products/new#manual">
+            <span class="fab-create__action-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" focusable="false">
+                <path d="M4.75 18.25 9 17.25l8.25-8.25a1.77 1.77 0 0 0 0-2.5l-.75-.75a1.77 1.77 0 0 0-2.5 0L5.75 14l-1 4.25Z" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7"/>
+                <path d="m12.75 7 4.25 4.25" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7"/>
+              </svg>
+            </span>
+            <span>Cadastrar manualmente</span>
+          </a>
+        </div>
+        <button
+          class="fab-create__button"
+          type="button"
+          aria-label="Criar novo item"
+          aria-expanded="false"
+          aria-controls="fab-create-menu"
+          data-fab-trigger
+        >
+          <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+            <path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="2"/>
+          </svg>
+        </button>
+      </div>
+
       <nav class="bottom-nav" aria-label="Navegação principal">
         <a class="bottom-nav__item {% if active_tab == 'home' %}bottom-nav__item--active{% endif %}" href="/dashboard">
-          <small>394</small>
+          <span class="bottom-nav__icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" focusable="false">
+              <path d="M4.75 10.25 12 4.5l7.25 5.75V19a1.75 1.75 0 0 1-1.75 1.75h-11A1.75 1.75 0 0 1 4.75 19v-8.75Z" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8"/>
+              <path d="M9.25 20.75v-5.5h5.5v5.5" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8"/>
+            </svg>
+          </span>
           <span>Início</span>
         </a>
         <a class="bottom-nav__item {% if active_tab == 'search' %}bottom-nav__item--active{% endif %}" href="/dashboard/search">
-          <small>Catálogo</small>
+          <span class="bottom-nav__icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" focusable="false">
+              <circle cx="11" cy="11" r="5.75" fill="none" stroke="currentColor" stroke-width="1.8"/>
+              <path d="m16 16 3.75 3.75" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.8"/>
+            </svg>
+          </span>
           <span>Buscar</span>
         </a>
         <a class="bottom-nav__item {% if active_tab == 'updates' %}bottom-nav__item--active{% endif %}" href="/dashboard/updates">
-          <small>Sync</small>
-          <span>Atualizações</span>
+          <span class="bottom-nav__icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" focusable="false">
+              <path d="M18.25 8.5V4.75H14.5" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8"/>
+              <path d="M5.75 15.5v3.75H9.5" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8"/>
+              <path d="M18 10a6.75 6.75 0 0 0-11.38-2.97L5.75 7.9M6 14a6.75 6.75 0 0 0 11.38 2.97l.87-.87" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8"/>
+            </svg>
+          </span>
+          <span>Sync</span>
         </a>
         <a class="bottom-nav__item {% if active_tab == 'saved' %}bottom-nav__item--active{% endif %}" href="/dashboard/saved">
-          <small>Atalhos</small>
+          <span class="bottom-nav__icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" focusable="false">
+              <path d="M7.25 4.75h9.5A1.75 1.75 0 0 1 18.5 6.5v13.25L12 16l-6.5 3.75V6.5a1.75 1.75 0 0 1 1.75-1.75Z" fill="none" stroke="currentColor" stroke-linejoin="round" stroke-width="1.8"/>
+            </svg>
+          </span>
           <span>Salvos</span>
           {% if saved_count %}
           <strong>{{ saved_count }}</strong>
