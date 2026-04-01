@@ -1161,6 +1161,62 @@ def test_dashboard_abre_formulario_de_edicao(tmp_path: Path) -> None:
     assert "Salvar alteracoes" in content
 
 
+def test_dashboard_abre_formulario_da_variante_manual_correta(tmp_path: Path) -> None:
+    """
+    Responsabilidade:
+        Garantir que a edição de uma variante manual carregue o alias correto.
+
+    Parametros:
+        tmp_path: Diretório temporário usado para isolar o storage do teste.
+
+    Retorno:
+        Nenhum; valida o HTML devolvido pela rota de edição manual.
+
+    Contexto de uso:
+        Protege o fluxo em que o operador abre a segunda variante do mesmo
+        perfume e precisa enxergar exatamente os dados dessa variante.
+    """
+
+    app = _build_app_with_temp_storage(tmp_path)
+    app.state.product_store_service.upsert_product(
+        ProductRecord(
+            alias="good_girl_interno_50ml",
+            brand="Carolina Herrera",
+            name="Good Girl",
+            variant="50ml",
+            last_known_url="",
+            last_known_sku="111222333",
+            source_type="manual",
+            site_link_status="manual_unlinked",
+            parent_reference="good_girl_interno",
+        )
+    )
+    app.state.product_store_service.upsert_product(
+        ProductRecord(
+            alias="good_girl_interno_80ml",
+            brand="Carolina Herrera",
+            name="Good Girl",
+            variant="80ml",
+            last_known_url="",
+            last_known_sku="444555666",
+            source_type="manual",
+            site_link_status="manual_unlinked",
+            parent_reference="good_girl_interno",
+        )
+    )
+    request = _build_request(app, method="GET", path="/dashboard/products/good_girl_interno_80ml/edit")
+
+    response = routes_dashboard.dashboard_edit_product_form(request, alias="good_girl_interno_80ml")
+
+    assert isinstance(response, _TemplateResponse)
+    assert response.status_code == 200
+    content = response.body.decode("utf-8")
+    assert "good_girl_interno_80ml" in content
+    assert "444555666" in content
+    assert 'value="80ml"' in content
+    assert "good_girl_interno_50ml" not in content
+
+
 def test_dashboard_salva_produto_em_saved(tmp_path: Path) -> None:
     """
     Responsabilidade:
@@ -1349,6 +1405,93 @@ def test_dashboard_salva_edicao_de_produto_com_prateleira_manual(tmp_path: Path)
     shelf_response = routes_dashboard.dashboard_shelf_detail(shelf_request, shelf_number=9)
     shelf_content = shelf_response.body.decode("utf-8")
     assert "Produto X" in shelf_content
+
+
+def test_dashboard_edita_variante_manual_usando_a_linha_visivel_do_formulario(tmp_path: Path) -> None:
+    """
+    Responsabilidade:
+        Garantir que a edição manual respeite a variante exibida ao operador.
+
+    Parametros:
+        tmp_path: Diretório temporário usado para isolar a base de teste.
+
+    Retorno:
+        Nenhum; valida persistência correta da variante secundária.
+
+    Contexto de uso:
+        Protege o bug relatado em que a segunda variante era salva como cópia
+        da principal porque o backend lia campos ocultos em vez da linha visível.
+    """
+
+    app = _build_app_with_temp_storage(tmp_path)
+    app.state.product_store_service.upsert_product(
+        ProductRecord(
+            alias="good_girl_interno_50ml",
+            brand="Carolina Herrera",
+            name="Good Girl",
+            variant="50ml",
+            last_known_url="",
+            last_known_sku="111222333",
+            source_type="manual",
+            site_link_status="manual_unlinked",
+            parent_reference="good_girl_interno",
+        )
+    )
+    app.state.product_store_service.upsert_product(
+        ProductRecord(
+            alias="good_girl_interno_80ml",
+            brand="Carolina Herrera",
+            name="Good Girl",
+            variant="80ml",
+            last_known_url="",
+            last_known_sku="444555666",
+            source_type="manual",
+            site_link_status="manual_unlinked",
+            parent_reference="good_girl_interno",
+        )
+    )
+
+    payload = urlencode(
+        [
+            ("source_type", "manual"),
+            ("alias", "good_girl_interno_80ml"),
+            ("brand", "Carolina Herrera"),
+            ("name", "Good Girl"),
+            ("concentration", "EDP"),
+            ("variant", "50ml"),
+            ("last_known_sku", "111222333"),
+            ("stock_qty", "2"),
+            ("variant_notes", "Linha oculta antiga."),
+            ("manual_variant_label", "80ml"),
+            ("manual_variant_code", "888999000"),
+            ("manual_variant_stock_qty", "4"),
+            ("manual_variant_notes", "Variante correta editada."),
+            ("manual_variant_alias", "good_girl_interno_80ml"),
+        ],
+        doseq=True,
+    ).encode("utf-8")
+    request = _build_request(
+        app,
+        method="POST",
+        path="/dashboard/products/good_girl_interno_80ml/edit",
+        body=payload,
+        content_type="application/x-www-form-urlencoded",
+    )
+
+    response = asyncio.run(routes_dashboard.dashboard_edit_product(request, alias="good_girl_interno_80ml"))
+    updated_variant = app.state.product_store_service.get_by_alias("good_girl_interno_80ml")
+    untouched_variant = app.state.product_store_service.get_by_alias("good_girl_interno_50ml")
+
+    assert isinstance(response, RedirectResponse)
+    assert response.status_code == 303
+    assert response.headers["location"] == "/dashboard/products/good_girl_interno_80ml"
+    assert updated_variant is not None
+    assert untouched_variant is not None
+    assert updated_variant.variant == "80ml"
+    assert updated_variant.last_known_sku == "888999000"
+    assert updated_variant.stock_qty == 4
+    assert updated_variant.variant_notes == "Variante correta editada."
+    assert untouched_variant.last_known_sku == "111222333"
 
 
 def test_dashboard_preenche_produto_automaticamente_por_url(tmp_path: Path) -> None:

@@ -26,6 +26,8 @@
         <img src="{{ product_preview.image_url }}" alt="Imagem do produto {{ parent_product.parent_name }}" data-variant-image />
         {% elif visual_snapshot and visual_snapshot.image_url %}
         <img src="{{ visual_snapshot.image_url }}" alt="Imagem do produto {{ parent_product.parent_name }}" data-variant-image />
+        {% elif product.image_url %}
+        <img src="{{ product.image_url }}" alt="Imagem do produto {{ parent_product.parent_name }}" data-variant-image />
         {% else %}
         <div class="detail-hero__placeholder">Imagem do produto indisponível</div>
         {% endif %}

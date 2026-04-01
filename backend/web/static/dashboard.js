@@ -260,11 +260,47 @@ function syncSourceTypeFields(formRoot) {
   });
 
   formRoot.querySelectorAll("[data-site-field], [data-site-single-variant]").forEach((element) => {
-    element.hidden = supportsManualFields;
+    const shouldStayVisible = !supportsManualFields;
+    element.hidden = !shouldStayVisible;
+    toggleSectionFieldAvailability(element, shouldStayVisible);
   });
 
   formRoot.querySelectorAll("[data-manual-variants-section]").forEach((element) => {
-    element.hidden = !supportsManualFields;
+    const shouldStayVisible = supportsManualFields;
+    element.hidden = !shouldStayVisible;
+    toggleSectionFieldAvailability(element, shouldStayVisible);
+  });
+}
+
+function toggleSectionFieldAvailability(sectionElement, isEnabled) {
+  /*
+    Responsabilidade:
+      Habilitar apenas os campos do bloco atualmente ativo no formulário.
+
+    Parametros:
+      sectionElement: Bloco visual que contém inputs relacionados.
+      isEnabled: Indica se os campos internos devem participar do submit.
+
+    Retorno:
+      Nenhum.
+
+    Contexto de uso:
+      O formulário reutiliza campos de site e manual na mesma página. Ao
+      desabilitar o bloco oculto, evitamos que valores escondidos disputem
+      com a linha visível da variante e gerem salvamentos inconsistentes.
+  */
+
+  if (!sectionElement) {
+    return;
+  }
+
+  sectionElement.querySelectorAll("input, select, textarea, button").forEach((field) => {
+    if (field.hasAttribute("data-keep-enabled")) {
+      field.disabled = false;
+      return;
+    }
+
+    field.disabled = !isEnabled;
   });
 }
 

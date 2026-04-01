@@ -871,6 +871,97 @@ def _extract_manual_variant_submissions(form_data: Any) -> List[Dict[str, Any]]:
     return variant_rows
 
 
+def _normalize_single_manual_variant_for_edit(
+    submitted_data: Dict[str, str],
+    manual_variants: List[Dict[str, Any]],
+    fallback_alias: str,
+) -> tuple[Dict[str, str], List[Dict[str, Any]]]:
+    """
+    Responsabilidade:
+        Tornar a linha visível de variante manual a fonte da verdade na edição.
+
+    Parametros:
+        submitted_data: Payload principal extraído do formulário HTML.
+        manual_variants: Linhas repetidas enviadas pela seção de variantes.
+        fallback_alias: Alias atual da variante em edição usado como segurança.
+
+    Retorno:
+        Tupla com o payload principal ajustado e a lista normalizada de variantes.
+
+    Contexto de uso:
+        A tela de edição manual reaproveita o mesmo formulário do cadastro,
+        então ainda existem campos "simples" escondidos no HTML. Sem esta
+        normalização, esses campos ocultos podem sobrescrever a variante
+        realmente editada, fazendo a segunda variante virar cópia da primeira.
+    """
+
+    normalized_source_type = str(submitted_data.get("source_type", "site")).strip().lower()
+    if normalized_source_type not in {"manual", "legacy"}:
+        return submitted_data, manual_variants
+
+    if not manual_variants:
+        fallback_row = {
+            "alias": submitted_data.get("alias", fallback_alias),
+            "label": submitted_data.get("variant", ""),
+            "code": submitted_data.get("last_known_sku", ""),
+            "stock_qty": submitted_data.get("stock_qty", "0"),
+            "notes": submitted_data.get("variant_notes", ""),
+            "image_file": None,
+        }
+        return submitted_data, [fallback_row]
+
+    primary_variant_row = manual_variants[0]
+    normalized_variant_row = {
+        "alias": str(primary_variant_row.get("alias") or submitted_data.get("alias") or fallback_alias).strip(),
+        "label": str(primary_variant_row.get("label", "")).strip(),
+        "code": str(primary_variant_row.get("code", "")).strip(),
+        "stock_qty": _normalize_optional_numeric_text(primary_variant_row.get("stock_qty")) or "0",
+        "notes": str(primary_variant_row.get("notes", "")).strip(),
+        "image_file": primary_variant_row.get("image_file"),
+    }
+
+    normalized_submission = {
+        **submitted_data,
+        "alias": normalized_variant_row["alias"] or fallback_alias,
+        "variant": normalized_variant_row["label"],
+        "last_known_sku": normalized_variant_row["code"] or submitted_data.get("last_known_sku", ""),
+        "stock_qty": normalized_variant_row["stock_qty"],
+        "variant_notes": normalized_variant_row["notes"],
+    }
+    return normalized_submission, [normalized_variant_row]
+
+
+def _build_single_manual_variant_row(
+    submitted_data: Dict[str, str],
+    fallback_alias: str,
+) -> List[Dict[str, str]]:
+    """
+    Responsabilidade:
+        Montar a linha única de variante usada no formulário de edição manual.
+
+    Parametros:
+        submitted_data: Dados já normalizados que devem repopular o formulário.
+        fallback_alias: Alias atual preservado quando o payload ainda estiver vazio.
+
+    Retorno:
+        Lista com uma única linha no formato esperado pelo template.
+
+    Contexto de uso:
+        Centraliza a reconstrução do formulário em cenários de erro de edição,
+        evitando divergência entre o que o operador vê e o que o backend salva.
+    """
+
+    return [
+        {
+            "alias": submitted_data.get("alias", fallback_alias),
+            "label": submitted_data.get("variant", ""),
+            "code": submitted_data.get("last_known_sku", ""),
+            "stock_qty": submitted_data.get("stock_qty", "0"),
+            "notes": submitted_data.get("variant_notes", ""),
+        }
+    ]
+
+
 def _extract_product_form_submission(form_data: Any) -> Dict[str, str]:
     """
     Responsabilidade:
@@ -1455,7 +1546,7 @@ def _build_product_card(
         "variant_summary": " • ".join(variant_summary_parts) if variant_summary_parts else "Sem variante",
         "sku": product.last_known_sku,
         "url": product.last_known_url,
-        "image_url": preview.image_url if preview else None,
+        "image_url": preview.image_url if preview and preview.image_url else product.image_url or None,
         "preview_title": preview.title if preview else None,
         "activity": activity,
         "is_saved": is_saved,
@@ -1694,7 +1785,7 @@ def _build_group_variant_payload(
         "label": variant_label,
         "variant_code": variant_product.variant_code,
         "parent_page_sku": grouped_product.parent_page_sku,
-        "image_url": preview.image_url if preview else None,
+        "image_url": preview.image_url if preview and preview.image_url else variant_product.image_url or None,
         "detail_href": f"/dashboard/products/{variant_product.alias}",
         "barcode_href": f"/dashboard/products/{variant_product.alias}/barcode",
         "update_href": f"/dashboard/products/{variant_product.alias}/update",
@@ -3214,21 +3305,19 @@ async def dashboard_edit_product(request: Request, alias: str) -> Any:
 
     form_data = await request.form()
     submitted_data = _extract_product_form_submission(form_data)
+    manual_variants = _extract_manual_variant_submissions(form_data)
+    submitted_data, manual_variants = _normalize_single_manual_variant_for_edit(
+        submitted_data=submitted_data,
+        manual_variants=manual_variants,
+        fallback_alias=alias,
+    )
     product_image_file = _normalize_uploaded_file(form_data.get("product_image_file"))
 
-    validation_error = _validate_product_submission(submitted_data, [])
+    validation_error = _validate_product_submission(submitted_data, manual_variants)
     if validation_error:
         context = _build_new_product_form_context(
             submitted_data=submitted_data,
-            manual_variant_rows=[
-                {
-                    "alias": submitted_data.get("alias", alias),
-                    "label": submitted_data.get("variant", ""),
-                    "code": submitted_data.get("last_known_sku", ""),
-                    "stock_qty": submitted_data.get("stock_qty", "0"),
-                    "notes": submitted_data.get("variant_notes", ""),
-                }
-            ],
+            manual_variant_rows=_build_single_manual_variant_row(submitted_data, alias),
             error_message=validation_error,
             form_mode="edit",
             form_action_url=f"/dashboard/products/{alias}/edit",
@@ -3254,15 +3343,7 @@ async def dashboard_edit_product(request: Request, alias: str) -> Any:
     if alias_error:
         context = _build_new_product_form_context(
             submitted_data=submitted_data,
-            manual_variant_rows=[
-                {
-                    "alias": submitted_data.get("alias", alias),
-                    "label": submitted_data.get("variant", ""),
-                    "code": submitted_data.get("last_known_sku", ""),
-                    "stock_qty": submitted_data.get("stock_qty", "0"),
-                    "notes": submitted_data.get("variant_notes", ""),
-                }
-            ],
+            manual_variant_rows=_build_single_manual_variant_row(submitted_data, alias),
             error_message=alias_error,
             form_mode="edit",
             form_action_url=f"/dashboard/products/{alias}/edit",
@@ -3299,15 +3380,7 @@ async def dashboard_edit_product(request: Request, alias: str) -> Any:
     except (RuntimeError, ValueError) as error:
         context = _build_new_product_form_context(
             submitted_data=submitted_data,
-            manual_variant_rows=[
-                {
-                    "alias": submitted_data.get("alias", alias),
-                    "label": submitted_data.get("variant", ""),
-                    "code": submitted_data.get("last_known_sku", ""),
-                    "stock_qty": submitted_data.get("stock_qty", "0"),
-                    "notes": submitted_data.get("variant_notes", ""),
-                }
-            ],
+            manual_variant_rows=_build_single_manual_variant_row(submitted_data, alias),
             error_message=f"Nao foi possivel salvar as alteracoes: {error}",
             form_mode="edit",
             form_action_url=f"/dashboard/products/{alias}/edit",
