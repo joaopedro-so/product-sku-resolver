@@ -26,16 +26,6 @@
       <button class="button" type="submit">Buscar</button>
     </form>
 
-    {% if internal_import_actions %}
-    <div class="detail-inline-actions">
-      {% for action in internal_import_actions %}
-      <form method="post" action="{{ action.href }}">
-        <button class="button button--ghost button--small" type="submit">{{ action.label }}</button>
-      </form>
-      {% endfor %}
-    </div>
-    {% endif %}
-
   </div>
 </section>
 

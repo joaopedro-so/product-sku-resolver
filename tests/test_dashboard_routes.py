@@ -565,20 +565,20 @@ def test_dashboard_importa_seed_interno_da_prateleira_09(tmp_path: Path, monkeyp
     assert stored_product.image_url == "https://example.com/polo-blue.jpg"
 
 
-def test_dashboard_home_exibe_atalho_de_importacao_da_prateleira_09(tmp_path: Path) -> None:
+def test_dashboard_home_nao_exibe_atalho_manual_de_importacao_da_prateleira_09(tmp_path: Path) -> None:
     """
     Responsabilidade:
-        Garantir que a Home exponha o atalho operacional da prateleira 09.
+        Garantir que a Home nao exponha mais o atalho manual de importacao.
 
     Parametros:
         tmp_path: Diretorio temporario usado para isolar o app de teste.
 
     Retorno:
-        Nenhum; valida a presenca do botao na tela inicial.
+        Nenhum; valida a ausencia do botao na tela inicial.
 
     Contexto de uso:
-        Protege o caminho mais simples na Railway para subir os produtos que
-        foram curados localmente e precisam entrar no volume persistente.
+        A importacao foi mantida como rota interna, mas a Home nao deve ficar
+        poluida com um CTA operacional depois que a carga ja foi realizada.
     """
 
     app = _build_app_with_temp_storage(tmp_path)
@@ -588,8 +588,8 @@ def test_dashboard_home_exibe_atalho_de_importacao_da_prateleira_09(tmp_path: Pa
 
     assert isinstance(response, _TemplateResponse)
     content = response.body.decode("utf-8")
-    assert "Importar prateleira 09" in content
-    assert "/dashboard/imports/prestige-shelf-09" in content
+    assert "Importar prateleira 09" not in content
+    assert "/dashboard/imports/prestige-shelf-09" not in content
 
 
 def test_dashboard_abre_detalhe_da_prateleira_com_produtos_alocados(tmp_path: Path) -> None:

@@ -2460,12 +2460,6 @@ def _build_shelves_context(request: Request) -> Dict[str, Any]:
             "page_title": "Prateleiras",
             "shelves": shelf_cards,
             "import_feedback": import_feedback,
-            "internal_import_actions": [
-                {
-                    "label": "Importar prateleira 09",
-                    "href": "/dashboard/imports/prestige-shelf-09",
-                }
-            ],
         },
     )
 
