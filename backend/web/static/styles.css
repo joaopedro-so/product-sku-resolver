@@ -1118,15 +1118,28 @@ form {
   font-size: 0.78rem;
   font-weight: 700;
   letter-spacing: 0.03em;
-  line-height: 1;
+  line-height: 1.1;
   white-space: nowrap;
   transition: border-color 160ms ease, background 160ms ease, transform 160ms ease;
 }
 
-.variant-chip [data-variant-option-label] {
+.variant-chip::after {
+  content: attr(data-variant-label);
   display: inline-block;
   color: inherit;
-  line-height: 1;
+  line-height: 1.1;
+}
+
+.variant-chip [data-variant-option-label] {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 .variant-chip--active,
