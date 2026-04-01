@@ -346,49 +346,6 @@ form {
   margin-top: 0.72rem;
 }
 
-.home-quick-actions {
-  position: relative;
-  z-index: 1;
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.7rem;
-  margin-top: 0.82rem;
-}
-
-.quick-action-form {
-  display: block;
-}
-
-.quick-action-button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 100%;
-  min-height: 2.7rem;
-  padding: 0.72rem 0.9rem;
-  border: 1px solid rgba(27, 27, 29, 0.1);
-  border-radius: 0.95rem;
-  background: rgba(255, 255, 255, 0.66);
-  color: var(--color-panel);
-  font-size: 0.84rem;
-  font-weight: 800;
-  text-align: center;
-  box-shadow: var(--shadow-inset);
-  cursor: pointer;
-  transition: transform 160ms ease, border-color 160ms ease, background 160ms ease;
-}
-
-.quick-action-button:hover,
-.quick-action-button:focus-visible {
-  transform: translateY(-1px);
-  border-color: rgba(215, 38, 56, 0.18);
-  background: rgba(255, 255, 255, 0.9);
-}
-
-.quick-action-button--secondary {
-  background: rgba(243, 238, 232, 0.92);
-}
-
 .search-entry-form input,
 .form-field input,
 .form-field select,
@@ -1929,10 +1886,6 @@ form {
     min-height: 2rem;
     padding: 0.42rem 0.62rem;
     font-size: 0.75rem;
-  }
-
-  .home-quick-actions {
-    grid-template-columns: minmax(0, 1fr);
   }
 
   .form-grid--split,
