@@ -3,6 +3,7 @@
 {% set is_edit_mode = form_mode == 'edit' %}
 {% set current_source_type = submitted_data.get('source_type', 'site') %}
 {% set supports_manual_fields = current_source_type in ['manual', 'legacy'] %}
+{% set supports_site_variant_batch = not is_edit_mode %}
 {% set current_image_url = submitted_data.get('image_url', '') or (autofill_preview.get('image_url') if autofill_preview else '') %}
 
 {% block title %}{{ 'Editar produto' if is_edit_mode else 'Novo produto' }}{% endblock %}
@@ -86,6 +87,7 @@
     action="{{ form_action_url }}"
     enctype="multipart/form-data"
     data-manual-product-form
+    data-allows-site-variants="{{ 'true' if supports_site_variant_batch else 'false' }}"
   >
     <div class="editor-card__section">
       <div class="section-heading section-heading--tight">
@@ -275,12 +277,18 @@
       </div>
     </div>
 
-    <div class="editor-card__section" data-manual-variants-section {% if not supports_manual_fields %}hidden{% endif %}>
+    <div
+      class="editor-card__section"
+      data-manual-variants-section
+      {% if not (supports_manual_fields or supports_site_variant_batch) %}hidden{% endif %}
+    >
       <div class="section-heading section-heading--tight">
         <div>
           <p class="section-kicker">Variantes</p>
-          <h2 class="section-title">Códigos e estoque por volume</h2>
-          <p class="section-text">Cada linha vira uma variante persistida com código próprio, estoque independente e imagem opcional.</p>
+          <h2 class="section-title">{{ 'Códigos e estoque por volume' if supports_manual_fields else 'Variantes adicionais do mesmo produto' }}</h2>
+          <p class="section-text">
+            {{ 'Cada linha vira uma variante persistida com código próprio, estoque independente e imagem opcional.' if supports_manual_fields else 'Use esta área para incluir outros volumes do mesmo perfume usando a mesma página importada do site.' }}
+          </p>
         </div>
         {% if not is_edit_mode %}
         <button class="button button--secondary button--small" type="button" data-add-variant-row>Adicionar variante</button>

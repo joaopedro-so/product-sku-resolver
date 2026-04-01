@@ -272,6 +272,8 @@ function syncSourceTypeFields(formRoot) {
   const selectedField = formRoot.querySelector("[data-source-type-field]:checked");
   const selectedSourceType = selectedField?.value || "site";
   const supportsManualFields = selectedSourceType === "manual" || selectedSourceType === "legacy";
+  const allowsSiteVariants = formRoot.dataset.allowsSiteVariants === "true";
+  const supportsVariantBatch = supportsManualFields || (selectedSourceType === "site" && allowsSiteVariants);
 
   formRoot.querySelectorAll("[data-source-type-field]").forEach((field) => {
     field.closest(".source-switch__option")?.classList.toggle("source-switch__option--active", field.checked);
@@ -284,7 +286,7 @@ function syncSourceTypeFields(formRoot) {
   });
 
   formRoot.querySelectorAll("[data-manual-variants-section]").forEach((element) => {
-    const shouldStayVisible = supportsManualFields;
+    const shouldStayVisible = supportsVariantBatch;
     element.hidden = !shouldStayVisible;
     toggleSectionFieldAvailability(element, shouldStayVisible);
   });

@@ -30,7 +30,7 @@ from backend.services.internal_catalog_seed_service import (
     InternalCatalogSeedService,
     resolve_builtin_internal_catalog_seed_file,
 )
-from backend.services.matcher import normalize_text
+from backend.services.matcher import normalize_text, normalize_variant
 from backend.services.shelf_banner_service import ShelfBannerService
 from backend.services.product_draft_service import ProductDraftService
 from backend.services.product_group_service import GroupedParentProduct, ProductGroupService
@@ -1147,20 +1147,23 @@ def _validate_product_submission(
     if source_type == "site" and not str(submitted_data.get("last_known_url", "")).strip():
         return "Informe a URL conhecida do produto."
 
+    if manual_variants:
+        for variant_index, variant_row in enumerate(manual_variants, start=1):
+            if not variant_row.get("label"):
+                return f"Informe o rótulo da variante {variant_index}."
+            if not variant_row.get("code"):
+                return f"Informe o código da variante {variant_index}."
+            raw_variant_stock = str(variant_row.get("stock_qty", "")).strip()
+            if raw_variant_stock:
+                try:
+                    if int(raw_variant_stock) < 0:
+                        return f"O estoque da variante {variant_index} não pode ser negativo."
+                except ValueError:
+                    return f"O estoque da variante {variant_index} precisa ser um número inteiro."
+
     if source_type in {"manual", "legacy"}:
         if manual_variants:
-            for variant_index, variant_row in enumerate(manual_variants, start=1):
-                if not variant_row.get("label"):
-                    return f"Informe o rótulo da variante {variant_index}."
-                if not variant_row.get("code"):
-                    return f"Informe o código da variante {variant_index}."
-                raw_variant_stock = str(variant_row.get("stock_qty", "")).strip()
-                if raw_variant_stock:
-                    try:
-                        if int(raw_variant_stock) < 0:
-                            return f"O estoque da variante {variant_index} não pode ser negativo."
-                    except ValueError:
-                        return f"O estoque da variante {variant_index} precisa ser um número inteiro."
+            pass
         elif not str(submitted_data.get("last_known_sku", "")).strip():
             return "Informe ao menos um código para o cadastro manual."
 
@@ -1198,6 +1201,40 @@ def _validate_product_submission(
             return "O estoque da variante precisa ser um número inteiro."
 
     return None
+
+
+def _is_duplicate_site_variant_row(
+    submitted_data: Dict[str, str],
+    variant_row: Dict[str, Any],
+) -> bool:
+    """
+    Responsabilidade:
+        Detectar quando uma linha adicional repete a variante principal do site.
+
+    Parametros:
+        submitted_data: Payload principal do formulário com a variante base.
+        variant_row: Linha extra informada na seção de variantes.
+
+    Retorno:
+        `True` quando a linha representa a mesma combinação de variante/código
+        já presente no bloco principal do produto importado; caso contrário,
+        `False`.
+
+    Contexto de uso:
+        O auto-preenchimento do site já populariza a variante principal. Ao
+        abrir o fluxo de múltiplas variantes no mesmo cadastro, evitamos criar
+        uma cópia redundante da primeira linha.
+    """
+
+    normalized_primary_label = normalize_variant(submitted_data.get("variant", ""))
+    normalized_primary_code = str(submitted_data.get("last_known_sku", "")).strip()
+    normalized_row_label = normalize_variant(str(variant_row.get("label", "")))
+    normalized_row_code = str(variant_row.get("code", "")).strip()
+
+    if not normalized_row_label and not normalized_row_code:
+        return False
+
+    return normalized_row_label == normalized_primary_label and normalized_row_code == normalized_primary_code
 
 
 def _build_product_record_from_submission(submitted_data: Dict[str, str]) -> ProductRecord:
@@ -1380,6 +1417,54 @@ def _build_product_records_from_submission(
             variant_products.append(_build_product_record_from_submission(variant_submission))
 
         return variant_products
+
+    if source_type == "site" and manual_variants:
+        # Decisao tecnica:
+        # No cadastro importado do site, mantemos os campos principais como a
+        # variante base sincronizavel e tratamos as linhas adicionais como
+        # extensoes do mesmo perfume pai. Isso permite cadastrar 100ml/200ml
+        # de uma vez sem obrigar o operador a repetir todo o fluxo.
+        site_variant_products: List[ProductRecord] = [
+            _build_product_record_from_submission(
+                {
+                    **submitted_data,
+                    "image_url": product_level_image_url,
+                    "parent_reference": parent_reference,
+                }
+            )
+        ]
+
+        for row_index, variant_row in enumerate(manual_variants):
+            if _is_duplicate_site_variant_row(submitted_data, variant_row):
+                continue
+
+            variant_image_url = product_level_image_url
+            variant_image_file = variant_row.get("image_file")
+            if variant_image_file is not None:
+                variant_image_url = uploaded_image_service.save_uploaded_file(
+                    variant_image_file,
+                    product_alias=submitted_data.get("alias", ""),
+                    variant_label=str(variant_row.get("label", "")),
+                )
+
+            variant_submission = {
+                **submitted_data,
+                "alias": variant_row.get("alias") or _build_manual_variant_alias(
+                    base_alias=submitted_data.get("alias", ""),
+                    variant_label=str(variant_row.get("label", "")),
+                    row_index=row_index + 1,
+                ),
+                "variant": str(variant_row.get("label", "")).strip(),
+                "last_known_sku": str(variant_row.get("code", "")).strip(),
+                "stock_qty": _normalize_optional_numeric_text(variant_row.get("stock_qty")) or "0",
+                "variant_notes": str(variant_row.get("notes", "")).strip(),
+                "image_url": variant_image_url,
+                "last_known_url": submitted_data.get("last_known_url", ""),
+                "parent_reference": parent_reference,
+            }
+            site_variant_products.append(_build_product_record_from_submission(variant_submission))
+
+        return site_variant_products
 
     single_variant_submission = {
         **submitted_data,

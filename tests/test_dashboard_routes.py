@@ -948,6 +948,70 @@ def test_dashboard_search_renderiza_lista_operacional(tmp_path: Path) -> None:
     assert "SKU" in content
 
 
+def test_dashboard_cria_lote_de_variantes_no_cadastro_importado_do_site(tmp_path: Path) -> None:
+    """
+    Responsabilidade:
+        Garantir que o cadastro importado do site aceite variantes extras no
+        mesmo submit sem perder a variante principal sincronizavel.
+
+    Parametros:
+        tmp_path: Diretorio temporario usado para isolar o storage do teste.
+
+    Retorno:
+        Nenhum; valida persistencia do lote de variantes do mesmo perfume pai.
+
+    Contexto de uso:
+        Protege o fluxo operacional em que o operador importa uma pagina da
+        Renner e, no mesmo cadastro, adiciona volumes adicionais do produto.
+    """
+
+    app = _build_app_with_temp_storage(tmp_path)
+    payload = urlencode(
+        [
+            ("source_type", "site"),
+            ("alias", "power_of_seduction"),
+            ("brand", "Antonio Banderas"),
+            ("name", "Power of Seduction"),
+            ("variant", "100ml"),
+            ("last_known_url", "https://example.com/power-of-seduction"),
+            ("last_known_sku", "546583640"),
+            ("stock_qty", "0"),
+            ("manual_variant_label", "100ml"),
+            ("manual_variant_code", "546583640"),
+            ("manual_variant_stock_qty", "0"),
+            ("manual_variant_notes", ""),
+            ("manual_variant_alias", ""),
+            ("manual_variant_label", "200ml"),
+            ("manual_variant_code", "549040085"),
+            ("manual_variant_stock_qty", "1"),
+            ("manual_variant_notes", "frasco maior"),
+            ("manual_variant_alias", ""),
+        ]
+    ).encode("utf-8")
+    request = _build_request(
+        app,
+        method="POST",
+        path="/dashboard/products",
+        body=payload,
+        content_type="application/x-www-form-urlencoded",
+    )
+
+    response = asyncio.run(routes_dashboard.dashboard_create_product(request))
+    primary_variant = app.state.product_store_service.get_by_alias("power_of_seduction")
+    additional_variant = app.state.product_store_service.get_by_alias("power_of_seduction_200ml")
+
+    assert isinstance(response, RedirectResponse)
+    assert response.status_code == 303
+    assert primary_variant is not None
+    assert additional_variant is not None
+    assert primary_variant.variant == "100ml"
+    assert primary_variant.last_known_sku == "546583640"
+    assert additional_variant.variant == "200ml"
+    assert additional_variant.last_known_sku == "549040085"
+    assert additional_variant.last_known_url == "https://example.com/power-of-seduction"
+    assert primary_variant.parent_reference == additional_variant.parent_reference
+
+
 def test_dashboard_detalhe_abre_produto_existente(tmp_path: Path) -> None:
     """
     Responsabilidade:
