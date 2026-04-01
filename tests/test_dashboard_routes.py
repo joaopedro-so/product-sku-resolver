@@ -396,7 +396,8 @@ def test_dashboard_home_carrega_lista_de_produtos(tmp_path: Path) -> None:
     assert "Prateleira 08 — Giorgio Armani" in content
     assert "Prateleira 09 — Ralph Lauren" in content
     assert "Buscar produto, marca ou SKU" in content
-    assert "Importar prateleira 03" in content
+    assert "Importar do site" in content
+    assert "Cadastrar manualmente" in content
     assert "/dashboard/static/shelf-banners/shelf-04-paco-rabanne.png" in content
 
 
