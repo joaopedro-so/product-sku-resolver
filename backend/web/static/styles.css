@@ -1288,6 +1288,10 @@ form {
 
 .barcode-panel__sku {
   margin: 0.9rem auto 1rem;
+  display: flex;
+  justify-content: center;
+  width: max-content;
+  max-width: calc(100% - 2rem);
   font-size: 0.95rem;
 }
 
@@ -1317,6 +1321,34 @@ form {
 }
 
 .detail-actions .button {
+  justify-content: center;
+}
+
+/*
+  Os atalhos internos do card de informacoes usam grade responsiva para evitar
+  larguras aleatorias entre links e formularios em mobile.
+*/
+.detail-inline-actions {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(8.6rem, 1fr));
+  gap: 0.65rem;
+  margin-top: 1rem;
+}
+
+.detail-inline-actions > * {
+  min-width: 0;
+}
+
+.detail-inline-actions .button,
+.detail-inline-actions form {
+  width: 100%;
+}
+
+.detail-inline-actions form {
+  display: block;
+}
+
+.detail-inline-actions .button {
   justify-content: center;
 }
 
@@ -1530,6 +1562,23 @@ form {
   background: rgba(252, 250, 247, 0.94);
   backdrop-filter: blur(10px);
   box-shadow: var(--shadow-float);
+}
+
+.sticky-action-bar > * {
+  min-width: 0;
+}
+
+.sticky-action-bar .button,
+.sticky-action-bar form {
+  width: 100%;
+}
+
+.sticky-action-bar form {
+  display: block;
+}
+
+.sticky-action-bar .button {
+  justify-content: center;
 }
 
 .sticky-action-bar .button--ghost {
@@ -1911,6 +1960,10 @@ form {
     gap: 0.5rem;
   }
 
+  .detail-inline-actions {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
   .barcode-panel .section-heading {
     padding: 0.92rem 0.92rem 0;
   }
@@ -1977,6 +2030,10 @@ form {
   .detail-inline-actions {
     display: grid;
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .sticky-action-bar {
+    padding: 0.78rem;
   }
 
   .bottom-nav {
