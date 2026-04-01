@@ -101,8 +101,9 @@
             data-variant-source-type="{{ variant.source_type }}"
             data-variant-stock-qty="{{ variant.stock_qty }}"
             data-variant-is-syncable="{{ '1' if variant.is_syncable else '0' }}"
+            aria-label="Selecionar variante {{ variant.label }}"
           >
-            {{ variant.label }}
+            <span data-variant-option-label>{{ variant.label }}</span>
           </button>
           {% endfor %}
         </div>
