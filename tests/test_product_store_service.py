@@ -552,3 +552,91 @@ def test_upsert_atualiza_registro_ja_vinculado_sem_recriar_alias_do_site(tmp_pat
     assert refreshed_product.shelf_number == 3
     assert store.get_by_alias("site_alias_novo_ck_one_100ml") is None
     assert len(store.list_products()) == 1
+
+
+def test_confirm_site_candidate_promove_item_manual_para_vinculado(tmp_path: Path) -> None:
+    """
+    Responsabilidade:
+        Garantir que a confirmacao manual retome o sync usando o candidato salvo.
+
+    Parametros:
+        tmp_path: Diretorio temporario fornecido pelo pytest.
+
+    Retorno:
+        Nenhum; valida promocao do estado `candidate_found` para `linked_to_site`.
+
+    Contexto de uso:
+        Protege a acao manual do dashboard quando o operador reconhece a
+        correspondencia sugerida pelo reconciliador.
+    """
+
+    store = ProductStoreService(tmp_path / "products.json")
+    store.upsert_product(
+        ProductRecord(
+            alias="ck_one_interno_100ml",
+            brand="Calvin Klein",
+            name="CK One Eau de Toilette",
+            variant="100ml",
+            last_known_url="",
+            last_known_sku="manual-100",
+            source_type="manual",
+            site_link_status="candidate_found",
+            site_candidate_id="111",
+            site_candidate_url="https://www.lojasrenner.com.br/p/ck-one/-/A-111-br.lr?sku=999",
+            site_candidate_code="999",
+            site_candidate_variant_id="variant-999",
+            shelf_number=3,
+        )
+    )
+
+    confirmed_product = store.confirm_site_candidate("ck_one_interno_100ml")
+
+    assert confirmed_product.site_link_status == "linked_to_site"
+    assert confirmed_product.site_product_id == "111"
+    assert confirmed_product.last_known_sku == "999"
+    assert confirmed_product.current_barcode_value == "999"
+    assert confirmed_product.site_variant_id == "variant-999"
+    assert confirmed_product.site_candidate_id == ""
+    assert confirmed_product.shelf_number == 3
+
+
+def test_ignore_site_candidate_limpa_alerta_sem_apagar_cadastro_manual(tmp_path: Path) -> None:
+    """
+    Responsabilidade:
+        Garantir que ignorar o candidato devolva o item ao estado manual solto.
+
+    Parametros:
+        tmp_path: Diretorio temporario fornecido pelo pytest.
+
+    Retorno:
+        Nenhum; valida limpeza dos dados temporarios do candidato.
+
+    Contexto de uso:
+        Protege o fluxo em que a sugestao do site nao corresponde ao item real
+        da loja e o operador decide manter apenas o cadastro interno.
+    """
+
+    store = ProductStoreService(tmp_path / "products.json")
+    store.upsert_product(
+        ProductRecord(
+            alias="the_icon_interno_100ml",
+            brand="Antonio Banderas",
+            name="The Icon Eau de Toilette",
+            variant="100ml",
+            last_known_url="",
+            last_known_sku="manual-100",
+            source_type="manual",
+            site_link_status="candidate_found",
+            site_candidate_id="222",
+            site_candidate_url="https://www.lojasrenner.com.br/p/the-icon/-/A-222-br.lr?sku=333",
+            site_candidate_code="333",
+        )
+    )
+
+    ignored_product = store.ignore_site_candidate("the_icon_interno_100ml")
+
+    assert ignored_product.site_link_status == "manual_unlinked"
+    assert ignored_product.site_candidate_id == ""
+    assert ignored_product.site_candidate_url == ""
+    assert ignored_product.site_candidate_code == ""
+    assert ignored_product.last_known_sku == "manual-100"

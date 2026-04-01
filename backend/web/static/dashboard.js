@@ -48,6 +48,14 @@ function applyVariantSelection(variantRoot, variantOption) {
   const selectedBarcodeDataUri = variantOption.dataset.variantBarcodeDataUri || "";
   const selectedSourceLabel = variantOption.dataset.variantSourceValue || "";
   const selectedSourceType = variantOption.dataset.variantSourceType || "";
+  const selectedSiteLinkStatusLabel = variantOption.dataset.variantSiteLinkStatusValue || "";
+  const selectedHasSiteCandidate = variantOption.dataset.variantHasSiteCandidate === "1";
+  const selectedCandidateConfirmHref = variantOption.dataset.variantCandidateConfirmHref || "";
+  const selectedCandidateIgnoreHref = variantOption.dataset.variantCandidateIgnoreHref || "";
+  const selectedCandidateCode = variantOption.dataset.variantCandidateCode || "";
+  const selectedCandidateProductId = variantOption.dataset.variantCandidateProductId || "";
+  const selectedCandidateConfidence = variantOption.dataset.variantCandidateConfidence || "";
+  const selectedCandidateSignals = variantOption.dataset.variantCandidateSignals || "";
   const selectedStockQty = variantOption.dataset.variantStockQty || "0";
   const selectedIsSyncable = variantOption.dataset.variantIsSyncable === "1";
 
@@ -130,6 +138,10 @@ function applyVariantSelection(variantRoot, variantOption) {
     element.classList.add("status-badge--neutral");
   });
 
+  variantRoot.querySelectorAll("[data-variant-site-link-status-label]").forEach((element) => {
+    element.textContent = selectedSiteLinkStatusLabel || "Sem vínculo";
+  });
+
   variantRoot.querySelectorAll("[data-variant-timestamp-label]").forEach((element) => {
     element.textContent = selectedTimestamp;
   });
@@ -146,12 +158,60 @@ function applyVariantSelection(variantRoot, variantOption) {
     element.setAttribute("data-copy-text", selectedVariantCode);
   });
 
+  variantRoot.querySelectorAll("[data-variant-confirm-link-form]").forEach((element) => {
+    if (selectedCandidateConfirmHref) {
+      element.setAttribute("action", selectedCandidateConfirmHref);
+    }
+  });
+
+  variantRoot.querySelectorAll("[data-variant-ignore-link-form]").forEach((element) => {
+    if (selectedCandidateIgnoreHref) {
+      element.setAttribute("action", selectedCandidateIgnoreHref);
+    }
+  });
+
   variantRoot.querySelectorAll("[data-variant-sync-action]").forEach((element) => {
     element.hidden = !selectedIsSyncable;
   });
 
   variantRoot.querySelectorAll("[data-variant-product-link-wrapper]").forEach((element) => {
     element.hidden = !selectedProductUrl;
+  });
+
+  variantRoot.querySelectorAll("[data-variant-candidate-panel]").forEach((element) => {
+    element.hidden = !selectedHasSiteCandidate;
+  });
+
+  variantRoot.querySelectorAll("[data-variant-candidate-code]").forEach((element) => {
+    element.textContent = selectedCandidateCode;
+  });
+
+  variantRoot.querySelectorAll("[data-variant-candidate-product-id]").forEach((element) => {
+    element.textContent = selectedCandidateProductId;
+  });
+
+  variantRoot.querySelectorAll("[data-variant-candidate-confidence]").forEach((element) => {
+    element.textContent = selectedCandidateConfidence;
+  });
+
+  variantRoot.querySelectorAll("[data-variant-candidate-signals]").forEach((element) => {
+    element.textContent = selectedCandidateSignals;
+  });
+
+  variantRoot.querySelectorAll("[data-variant-candidate-code-row]").forEach((element) => {
+    element.hidden = !selectedCandidateCode;
+  });
+
+  variantRoot.querySelectorAll("[data-variant-candidate-product-id-row]").forEach((element) => {
+    element.hidden = !selectedCandidateProductId;
+  });
+
+  variantRoot.querySelectorAll("[data-variant-candidate-confidence-row]").forEach((element) => {
+    element.hidden = !selectedCandidateConfidence;
+  });
+
+  variantRoot.querySelectorAll("[data-variant-candidate-signals-row]").forEach((element) => {
+    element.hidden = !selectedCandidateSignals;
   });
 
   const variantImage = variantRoot.querySelector("[data-variant-image]");

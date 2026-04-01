@@ -81,6 +81,14 @@
               data-variant-barcode-data-uri="{{ variant.barcode_data_uri or '' }}"
               data-variant-source-value="{{ variant.source_label }}"
               data-variant-source-type="{{ variant.source_type }}"
+              data-variant-site-link-status-value="{{ variant.site_link_status_label }}"
+              data-variant-has-site-candidate="{{ '1' if variant.has_site_candidate else '0' }}"
+              data-variant-candidate-confirm-href="{{ variant.candidate_confirm_href }}"
+              data-variant-candidate-ignore-href="{{ variant.candidate_ignore_href }}"
+              data-variant-candidate-code="{{ variant.candidate_code }}"
+              data-variant-candidate-product-id="{{ variant.candidate_product_id }}"
+              data-variant-candidate-confidence="{{ variant.candidate_confidence_label }}"
+              data-variant-candidate-signals="{{ variant.candidate_signals_text }}"
               data-variant-stock-qty="{{ variant.stock_qty }}"
               data-variant-is-syncable="{{ '1' if variant.is_syncable else '0' }}"
             >
@@ -142,6 +150,42 @@
 
   <section class="page-section">
     <div class="detail-block-grid">
+      <article class="info-card" data-variant-candidate-panel {% if not selected_variant or not selected_variant.has_site_candidate %}hidden{% endif %}>
+        <p class="section-kicker">Vínculo com o site</p>
+        <h2 class="section-title">Possível correspondência encontrada</h2>
+        <p class="empty-inline">Esse item manual pode ser o mesmo produto que voltou ao site.</p>
+        <dl class="detail-meta-grid">
+          <div>
+            <dt>Status</dt>
+            <dd data-variant-site-link-status-label>{{ selected_variant.site_link_status_label if selected_variant else product.site_link_status_label }}</dd>
+          </div>
+          <div data-variant-candidate-product-id-row {% if not selected_variant or not selected_variant.candidate_product_id %}hidden{% endif %}>
+            <dt>Produto do site</dt>
+            <dd data-variant-candidate-product-id>{{ selected_variant.candidate_product_id if selected_variant else product.site_candidate_id }}</dd>
+          </div>
+          <div data-variant-candidate-code-row {% if not selected_variant or not selected_variant.candidate_code %}hidden{% endif %}>
+            <dt>Código encontrado</dt>
+            <dd data-variant-candidate-code>{{ selected_variant.candidate_code if selected_variant else product.site_candidate_code }}</dd>
+          </div>
+          <div data-variant-candidate-confidence-row {% if not selected_variant or not selected_variant.candidate_confidence_label %}hidden{% endif %}>
+            <dt>Confiança</dt>
+            <dd data-variant-candidate-confidence>{{ selected_variant.candidate_confidence_label if selected_variant else '' }}</dd>
+          </div>
+          <div data-variant-candidate-signals-row {% if not selected_variant or not selected_variant.candidate_signals_text %}hidden{% endif %}>
+            <dt>Sinais</dt>
+            <dd data-variant-candidate-signals>{{ selected_variant.candidate_signals_text if selected_variant else '' }}</dd>
+          </div>
+        </dl>
+
+        <div class="detail-inline-actions">
+          <form method="post" action="{{ selected_variant.candidate_confirm_href if selected_variant else '' }}" data-variant-confirm-link-form>
+            <button class="button button--small" type="submit">Vincular item</button>
+          </form>
+          <form method="post" action="{{ selected_variant.candidate_ignore_href if selected_variant else '' }}" data-variant-ignore-link-form>
+            <button class="button button--secondary button--small" type="submit">Ignorar</button>
+          </form>
+        </div>
+      </article>
       <article class="info-card">
         <p class="section-kicker">Informações</p>
         <dl class="detail-meta-grid">

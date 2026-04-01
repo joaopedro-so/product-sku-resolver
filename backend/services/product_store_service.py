@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import logging
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Optional
 
@@ -450,11 +451,113 @@ class ProductStoreService:
             match_signals=existing_product.match_signals,
             last_matched_at=existing_product.last_matched_at,
             site_variant_id=existing_product.site_variant_id,
+            site_candidate_url="",
+            site_candidate_code="",
+            site_candidate_variant_id="",
             current_site_code=new_sku.strip(),
             current_barcode_value=new_sku.strip(),
         )
 
         return self.upsert_product(updated_product)
+
+    def confirm_site_candidate(self, product_alias: str) -> ProductRecord:
+        """
+        Responsabilidade:
+            Confirmar manualmente um candidato do site para um item interno.
+
+        Parametros:
+            product_alias: Alias do produto que possui uma correspondencia pendente.
+
+        Retorno:
+            ProductRecord persistido ja marcado como vinculado ao site.
+
+        Contexto de uso:
+            Usado pelo dashboard quando o operador reconhece que o item manual
+            realmente voltou ao site e quer retomar a sincronizacao normal.
+        """
+
+        products = self._read_all()
+        current_product = self._find_product_by_alias(products, product_alias)
+        if current_product is None:
+            raise KeyError(f"Produto com alias '{product_alias}' nao encontrado")
+
+        if not current_product.has_site_candidate:
+            raise ValueError("O produto informado nao possui candidato de vinculo pendente")
+
+        updated_product = self._build_product_from_payload(
+            base_product=current_product,
+            payload_updates={
+                "last_known_url": current_product.site_candidate_url or current_product.last_known_url,
+                "last_known_sku": current_product.site_candidate_code or current_product.last_known_sku,
+                "page_family_sku": current_product.page_family_sku or current_product.site_candidate_id,
+                "site_link_status": "linked_to_site",
+                "site_product_id": current_product.site_candidate_id or current_product.site_product_id,
+                "site_candidate_id": "",
+                "site_candidate_url": "",
+                "site_candidate_code": "",
+                "site_candidate_variant_id": "",
+                "last_matched_at": _build_site_link_timestamp(),
+                "site_variant_id": current_product.site_candidate_variant_id or current_product.site_variant_id,
+                "current_site_code": current_product.site_candidate_code or current_product.current_site_code or current_product.last_known_sku,
+                "current_barcode_value": current_product.site_candidate_code or current_product.current_barcode_value or current_product.last_known_sku,
+            },
+        )
+
+        self._write_all(
+            self._replace_product_by_alias(
+                products=products,
+                target_alias=current_product.alias,
+                replacement_product=updated_product,
+            )
+        )
+        return self._confirm_persisted_product(updated_product.alias)
+
+    def ignore_site_candidate(self, product_alias: str) -> ProductRecord:
+        """
+        Responsabilidade:
+            Limpar uma sugestao de vinculo que o operador decidiu ignorar.
+
+        Parametros:
+            product_alias: Alias do produto com candidato salvo no catalogo.
+
+        Retorno:
+            ProductRecord persistido ja sem estado de candidato pendente.
+
+        Contexto de uso:
+            Permite descartar correspondencias medias sem perder o cadastro
+            manual existente nem deixar a interface presa em alerta eterno.
+        """
+
+        products = self._read_all()
+        current_product = self._find_product_by_alias(products, product_alias)
+        if current_product is None:
+            raise KeyError(f"Produto com alias '{product_alias}' nao encontrado")
+
+        if not current_product.has_site_candidate:
+            raise ValueError("O produto informado nao possui candidato de vinculo pendente")
+
+        updated_product = self._build_product_from_payload(
+            base_product=current_product,
+            payload_updates={
+                "site_link_status": "manual_unlinked",
+                "site_candidate_id": "",
+                "site_candidate_url": "",
+                "site_candidate_code": "",
+                "site_candidate_variant_id": "",
+                "match_confidence": None,
+                "match_signals": [],
+                "last_matched_at": "",
+            },
+        )
+
+        self._write_all(
+            self._replace_product_by_alias(
+                products=products,
+                target_alias=current_product.alias,
+                replacement_product=updated_product,
+            )
+        )
+        return self._confirm_persisted_product(updated_product.alias)
 
     def _apply_reconciliation_decision(
         self,
@@ -610,6 +713,9 @@ class ProductStoreService:
                 "site_link_status": "linked_to_site",
                 "site_product_id": incoming_site_product.site_product_id or incoming_site_product.page_family_sku,
                 "site_candidate_id": "",
+                "site_candidate_url": "",
+                "site_candidate_code": "",
+                "site_candidate_variant_id": "",
                 "site_variant_id": incoming_site_product.site_variant_id,
                 "current_site_code": incoming_site_product.last_known_sku,
                 "current_barcode_value": incoming_site_product.variant_code,
@@ -651,6 +757,9 @@ class ProductStoreService:
                 "site_link_status": normalized_site_link_status,
                 "site_product_id": current_product.site_product_id,
                 "site_candidate_id": current_product.site_candidate_id,
+                "site_candidate_url": current_product.site_candidate_url,
+                "site_candidate_code": current_product.site_candidate_code,
+                "site_candidate_variant_id": current_product.site_candidate_variant_id,
                 "match_confidence": current_product.match_confidence,
                 "match_signals": current_product.match_signals or [],
                 "last_matched_at": current_product.last_matched_at,
@@ -750,3 +859,22 @@ class ProductStoreService:
         payload = base_product.to_dict()
         payload.update(payload_updates)
         return ProductRecord.from_dict(payload)
+
+
+def _build_site_link_timestamp() -> str:
+    """
+    Responsabilidade:
+        Gerar timestamp ISO8601 para auditoria de confirmacao manual.
+
+    Parametros:
+        Nenhum.
+
+    Retorno:
+        Texto ISO8601 em UTC com o instante atual.
+
+    Contexto de uso:
+        Mantem o historico de reconciliacao consistente entre auto-link e
+        vinculacao manual confirmada pelo operador.
+    """
+
+    return datetime.now(timezone.utc).isoformat()

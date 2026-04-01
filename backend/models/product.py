@@ -65,6 +65,9 @@ class ProductRecord:
     site_link_status: str = "linked_to_site"
     site_product_id: str = ""
     site_candidate_id: str = ""
+    site_candidate_url: str = ""
+    site_candidate_code: str = ""
+    site_candidate_variant_id: str = ""
     match_confidence: float | None = None
     match_signals: List[str] | None = None
     last_matched_at: str = ""
@@ -146,6 +149,9 @@ class ProductRecord:
             site_link_status=normalized_site_link_status,
             site_product_id=normalized_site_product_id,
             site_candidate_id=str(source.get("site_candidate_id", "")).strip(),
+            site_candidate_url=str(source.get("site_candidate_url", "")).strip(),
+            site_candidate_code=str(source.get("site_candidate_code", "")).strip(),
+            site_candidate_variant_id=str(source.get("site_candidate_variant_id", "")).strip(),
             match_confidence=_optional_to_float(source.get("match_confidence")),
             match_signals=_normalize_string_list(source.get("match_signals")),
             last_matched_at=str(source.get("last_matched_at", "")).strip(),
@@ -190,6 +196,9 @@ class ProductRecord:
             "site_link_status": self.site_link_status,
             "site_product_id": self.site_product_id,
             "site_candidate_id": self.site_candidate_id,
+            "site_candidate_url": self.site_candidate_url,
+            "site_candidate_code": self.site_candidate_code,
+            "site_candidate_variant_id": self.site_candidate_variant_id,
             "match_confidence": self.match_confidence,
             "match_signals": self.match_signals or [],
             "last_matched_at": self.last_matched_at,
@@ -239,6 +248,10 @@ class ProductRecord:
             o operador interpretar flags técnicas diretamente no template.
         """
 
+        if self.site_link_status == "candidate_found":
+            return "Possível correspondência"
+        if self.site_link_status == "linked_to_site" and self.source_type in {"manual", "legacy"}:
+            return "Vinculado ao site"
         if self.source_type == "manual":
             return "Manual"
         if self.source_type == "legacy":

@@ -1571,3 +1571,142 @@ def test_dashboard_detalhe_respeita_agrupamento_manual_sem_mesclar_produtos_dist
     assert "/dashboard/products/the_icon_edt_50ml/barcode" in content
     assert "/dashboard/products/the_icon_edt_100ml/barcode" in content
     assert 'data-variant-alias="the_icon_edp_100ml"' not in content
+
+
+def test_dashboard_detalhe_exibe_bloco_de_candidato_quando_o_item_pode_voltar_ao_site(tmp_path: Path) -> None:
+    """
+    Responsabilidade:
+        Garantir que a PDP mostre a revisao manual de vinculo quando houver candidato.
+
+    Parametros:
+        tmp_path: Diretorio temporario para isolamento do storage.
+
+    Retorno:
+        Nenhum; valida o bloco de confirmacao manual no detalhe do produto.
+
+    Contexto de uso:
+        Protege a nova UX de reconciliacao, onde o operador decide se um item
+        manual realmente corresponde ao produto que voltou ao site.
+    """
+
+    app = _build_app_with_temp_storage(tmp_path)
+    app.state.product_store_service.upsert_product(
+        ProductRecord(
+            alias="ck_one_interno_100ml",
+            brand="Calvin Klein",
+            name="CK One Eau de Toilette",
+            variant="100ml",
+            last_known_url="",
+            last_known_sku="manual-100",
+            source_type="manual",
+            site_link_status="candidate_found",
+            site_candidate_id="111",
+            site_candidate_url="https://www.lojasrenner.com.br/p/ck-one/-/A-111-br.lr?sku=999",
+            site_candidate_code="999",
+            match_confidence=0.88,
+            match_signals=["Marca compatível", "Variante compatível"],
+            shelf_number=3,
+        )
+    )
+    request = _build_request(app, method="GET", path="/dashboard/products/ck_one_interno_100ml")
+
+    response = routes_dashboard.dashboard_product_detail(request, alias="ck_one_interno_100ml")
+
+    assert isinstance(response, _TemplateResponse)
+    assert response.status_code == 200
+    content = response.body.decode("utf-8")
+    assert "Possível correspondência encontrada" in content
+    assert "Vincular item" in content
+    assert "Ignorar" in content
+    assert "999" in content
+    assert "111" in content
+
+
+def test_dashboard_confirma_candidato_e_retoma_sync_no_mesmo_alias(tmp_path: Path) -> None:
+    """
+    Responsabilidade:
+        Garantir que a rota web confirme o candidato e preserve o alias interno.
+
+    Parametros:
+        tmp_path: Diretorio temporario para isolamento do storage.
+
+    Retorno:
+        Nenhum; valida redirect e estado final persistido.
+
+    Contexto de uso:
+        Cobre a acao administrativa usada na PDP para religar um item manual ao site.
+    """
+
+    app = _build_app_with_temp_storage(tmp_path)
+    app.state.product_store_service.upsert_product(
+        ProductRecord(
+            alias="ck_one_interno_100ml",
+            brand="Calvin Klein",
+            name="CK One Eau de Toilette",
+            variant="100ml",
+            last_known_url="",
+            last_known_sku="manual-100",
+            source_type="manual",
+            site_link_status="candidate_found",
+            site_candidate_id="111",
+            site_candidate_url="https://www.lojasrenner.com.br/p/ck-one/-/A-111-br.lr?sku=999",
+            site_candidate_code="999",
+            shelf_number=3,
+        )
+    )
+    request = _build_request(app, method="POST", path="/dashboard/products/ck_one_interno_100ml/confirm-site-link")
+
+    response = routes_dashboard.dashboard_confirm_site_link(request, alias="ck_one_interno_100ml")
+    updated_product = app.state.product_store_service.get_by_alias("ck_one_interno_100ml")
+
+    assert isinstance(response, RedirectResponse)
+    assert response.status_code == 303
+    assert response.headers["location"] == "/dashboard/products/ck_one_interno_100ml?site_linked=1"
+    assert updated_product is not None
+    assert updated_product.site_link_status == "linked_to_site"
+    assert updated_product.last_known_sku == "999"
+    assert updated_product.shelf_number == 3
+
+
+def test_dashboard_permita_ignorar_candidato_sem_remover_produto_manual(tmp_path: Path) -> None:
+    """
+    Responsabilidade:
+        Garantir que a rota web descarte o candidato e mantenha o item manual.
+
+    Parametros:
+        tmp_path: Diretorio temporario para isolamento do storage.
+
+    Retorno:
+        Nenhum; valida redirect e limpeza do estado de candidato.
+
+    Contexto de uso:
+        Cobre a acao usada quando a sugestao do site nao representa o perfume real.
+    """
+
+    app = _build_app_with_temp_storage(tmp_path)
+    app.state.product_store_service.upsert_product(
+        ProductRecord(
+            alias="the_icon_interno_100ml",
+            brand="Antonio Banderas",
+            name="The Icon Eau de Toilette",
+            variant="100ml",
+            last_known_url="",
+            last_known_sku="manual-100",
+            source_type="manual",
+            site_link_status="candidate_found",
+            site_candidate_id="222",
+            site_candidate_url="https://www.lojasrenner.com.br/p/the-icon/-/A-222-br.lr?sku=333",
+            site_candidate_code="333",
+        )
+    )
+    request = _build_request(app, method="POST", path="/dashboard/products/the_icon_interno_100ml/ignore-site-candidate")
+
+    response = routes_dashboard.dashboard_ignore_site_candidate(request, alias="the_icon_interno_100ml")
+    updated_product = app.state.product_store_service.get_by_alias("the_icon_interno_100ml")
+
+    assert isinstance(response, RedirectResponse)
+    assert response.status_code == 303
+    assert response.headers["location"] == "/dashboard/products/the_icon_interno_100ml?site_candidate_ignored=1"
+    assert updated_product is not None
+    assert updated_product.site_link_status == "manual_unlinked"
+    assert updated_product.last_known_sku == "manual-100"

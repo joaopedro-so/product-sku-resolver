@@ -1708,6 +1708,15 @@ def _build_group_variant_payload(
         "barcode_data_uri": barcode_data_uri,
         "source_type": variant_product.source_type,
         "source_label": variant_product.source_label,
+        "site_link_status": variant_product.site_link_status,
+        "site_link_status_label": variant_product.site_link_status_label,
+        "has_site_candidate": variant_product.has_site_candidate,
+        "candidate_confirm_href": f"/dashboard/products/{variant_product.alias}/confirm-site-link",
+        "candidate_ignore_href": f"/dashboard/products/{variant_product.alias}/ignore-site-candidate",
+        "candidate_code": variant_product.site_candidate_code,
+        "candidate_product_id": variant_product.site_candidate_id,
+        "candidate_confidence_label": f"{round((variant_product.match_confidence or 0) * 100)}%" if variant_product.match_confidence is not None else "",
+        "candidate_signals_text": " • ".join(variant_product.match_signals or []),
         "stock_qty": variant_product.stock_qty,
         "concentration": variant_product.concentration,
         "variant_notes": variant_product.variant_notes,
@@ -2202,6 +2211,12 @@ def _resolve_product_detail_success_message(request: Request) -> Optional[str]:
 
     if request.query_params.get("sync_blocked", "") == "1":
         return "Este item nao depende mais da sincronizacao do site."
+
+    if request.query_params.get("site_linked", "") == "1":
+        return "Item vinculado ao site com sucesso. A sincronizacao automatica foi retomada."
+
+    if request.query_params.get("site_candidate_ignored", "") == "1":
+        return "A sugestao de vinculo foi ignorada e o cadastro interno foi mantido."
 
     return None
 
@@ -3312,6 +3327,106 @@ async def dashboard_edit_product(request: Request, alias: str) -> Any:
 
     return RedirectResponse(
         url=f"/dashboard/products/{updated_product.alias}",
+        status_code=status.HTTP_303_SEE_OTHER,
+    )
+
+
+@router.post("/products/{alias}/confirm-site-link")
+def dashboard_confirm_site_link(request: Request, alias: str) -> Any:
+    """
+    Responsabilidade:
+        Confirmar manualmente a correspondencia de um item interno com o site.
+
+    Parametros:
+        request: Requisicao HTTP atual.
+        alias: Alias da variante que possui candidato salvo para vinculacao.
+
+    Retorno:
+        RedirectResponse para o detalhe atualizado ou TemplateResponse em erro.
+
+    Contexto de uso:
+        Fluxo manual de reconciliacao quando o operador reconhece que um item
+        manual realmente voltou ao site e deve retomar a sincronizacao.
+    """
+
+    store_service = _get_store_service(request)
+    existing_product = store_service.get_by_alias(alias)
+    if existing_product is None:
+        return templates.TemplateResponse(
+            request,
+            "product_detail.html",
+            _with_app_shell(
+                request=request,
+                active_tab="search",
+                context={
+                    "request": request,
+                    "page_title": "Produto nao encontrado",
+                    "error_message": "O produto informado nao foi encontrado no catalogo.",
+                },
+            ),
+            status_code=404,
+        )
+
+    try:
+        updated_product = store_service.confirm_site_candidate(alias)
+    except ValueError:
+        return RedirectResponse(
+            url=f"/dashboard/products/{alias}",
+            status_code=status.HTTP_303_SEE_OTHER,
+        )
+
+    return RedirectResponse(
+        url=f"/dashboard/products/{updated_product.alias}?site_linked=1",
+        status_code=status.HTTP_303_SEE_OTHER,
+    )
+
+
+@router.post("/products/{alias}/ignore-site-candidate")
+def dashboard_ignore_site_candidate(request: Request, alias: str) -> Any:
+    """
+    Responsabilidade:
+        Ignorar uma sugestao de correspondencia entre cadastro interno e site.
+
+    Parametros:
+        request: Requisicao HTTP atual.
+        alias: Alias da variante que possui candidato salvo.
+
+    Retorno:
+        RedirectResponse para o detalhe atualizado ou TemplateResponse em erro.
+
+    Contexto de uso:
+        Permite que o operador descarte candidatos ambivalentes sem perder o
+        item manual nem transformar a tela em alerta permanente.
+    """
+
+    store_service = _get_store_service(request)
+    existing_product = store_service.get_by_alias(alias)
+    if existing_product is None:
+        return templates.TemplateResponse(
+            request,
+            "product_detail.html",
+            _with_app_shell(
+                request=request,
+                active_tab="search",
+                context={
+                    "request": request,
+                    "page_title": "Produto nao encontrado",
+                    "error_message": "O produto informado nao foi encontrado no catalogo.",
+                },
+            ),
+            status_code=404,
+        )
+
+    try:
+        updated_product = store_service.ignore_site_candidate(alias)
+    except ValueError:
+        return RedirectResponse(
+            url=f"/dashboard/products/{alias}",
+            status_code=status.HTTP_303_SEE_OTHER,
+        )
+
+    return RedirectResponse(
+        url=f"/dashboard/products/{updated_product.alias}?site_candidate_ignored=1",
         status_code=status.HTTP_303_SEE_OTHER,
     )
 
