@@ -1,10 +1,19 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title desc">
-  <title id="title">Ícone Perfumaria Prestígio 394</title>
-  <desc id="desc">Favicon minimalista com a letra P em placa escura.</desc>
-  <rect width="64" height="64" rx="16" fill="#111111" />
-  <rect x="7" y="7" width="50" height="50" rx="12" fill="#151517" stroke="rgba(255,255,255,0.08)" />
-  <rect x="15" y="15" width="34" height="34" rx="9" fill="#FCFBF9" />
-  <rect x="18" y="18" width="28" height="2.5" rx="1.25" fill="#B89A6A" />
-  <path d="M25 25h10c5.4 0 9 3.4 9 8.4 0 5.6-3.8 9.1-9.8 9.1h-3.9V49H25V25Zm5.3 4.8v7.4h3.3c2.8 0 4.5-1.4 4.5-3.8 0-2.5-1.7-3.6-4.7-3.6h-3.1Z" fill="#111111" />
-  <rect x="25" y="47.5" width="13" height="2.8" rx="1.4" fill="#D72638" />
+  <title id="title">Ícone Prestígio 394</title>
+  <desc id="desc">Favicon com placa preta, moldura dourada e monograma P.</desc>
+  <defs>
+    <linearGradient id="goldMini" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FFF7D4" />
+      <stop offset="50%" stop-color="#E8D8A6" />
+      <stop offset="100%" stop-color="#CDB679" />
+    </linearGradient>
+  </defs>
+
+  <rect width="64" height="64" rx="15" fill="#0B0D12" />
+  <path d="M20 51V23c0-6.7 4.6-11 12-11s12 4.3 12 11v28" fill="none" stroke="url(#goldMini)" stroke-width="2.2" />
+  <path d="M26 20h7.5c7.6 0 12.8 4.6 12.8 10.8 0 6.1-4.8 10.8-12.4 12.5L26 45V20Z" fill="url(#goldMini)" />
+  <path d="M26 47V20h3.2v27H26Z" fill="url(#goldMini)" />
+  <path d="M32 38c4.6-1.1 8.9-2.8 12.1-4.9" fill="none" stroke="url(#goldMini)" stroke-linecap="round" stroke-width="1.8" />
+  <path d="M21 51h12" fill="none" stroke="url(#goldMini)" stroke-width="2" />
+  <path d="M36 51h12" fill="none" stroke="#EB1C27" stroke-width="2" />
 </svg>
