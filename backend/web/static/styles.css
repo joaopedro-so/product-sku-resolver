@@ -10,18 +10,18 @@
   color-scheme: light;
   --font-sans: "Manrope", "Segoe UI", sans-serif;
   --font-display: "Manrope", "Segoe UI", sans-serif;
-  --color-bg: #f7f3ef;
-  --color-bg-soft: #fcfbf9;
-  --color-surface: #fffdfa;
-  --color-surface-2: #f2ece5;
-  --color-panel: #1b1b1d;
-  --color-panel-soft: #252528;
-  --color-panel-muted: #313136;
+  --color-bg: #f6f1ec;
+  --color-bg-soft: #fcfaf7;
+  --color-surface: #fcfaf7;
+  --color-surface-2: #f3eee8;
+  --color-panel: #161616;
+  --color-panel-soft: #26221e;
+  --color-panel-muted: #38322d;
   --color-text: #141314;
   --color-text-soft: #635f5a;
   --color-text-muted: #8e8a86;
-  --color-border: rgba(27, 27, 29, 0.1);
-  --color-border-strong: rgba(27, 27, 29, 0.18);
+  --color-border: rgba(39, 31, 24, 0.1);
+  --color-border-strong: rgba(39, 31, 24, 0.16);
   --color-accent: #d72638;
   --color-accent-strong: #ab1628;
   --color-accent-soft: rgba(215, 38, 56, 0.08);
@@ -32,8 +32,8 @@
   --color-warning-soft: #fff5e3;
   --color-error: #a22835;
   --color-error-soft: #fff1f2;
-  --shadow-panel: 0 22px 70px -34px rgba(17, 17, 17, 0.32);
-  --shadow-float: 0 30px 60px -38px rgba(17, 17, 17, 0.42);
+  --shadow-panel: 0 22px 46px -34px rgba(32, 23, 17, 0.22);
+  --shadow-float: 0 26px 50px -36px rgba(32, 23, 17, 0.26);
   --shadow-inset: inset 0 1px 0 rgba(255, 255, 255, 0.7);
   --radius-xs: 0.55rem;
   --radius-sm: 0.8rem;
@@ -66,9 +66,9 @@ body {
   font-family: var(--font-sans);
   color: var(--color-text);
   background:
-    radial-gradient(circle at top center, rgba(184, 154, 106, 0.14), transparent 24rem),
-    radial-gradient(circle at top right, rgba(215, 38, 56, 0.08), transparent 18rem),
-    linear-gradient(180deg, #fdfaf6 0%, var(--color-bg) 44%, #f0ebe5 100%);
+    radial-gradient(circle at top center, rgba(184, 154, 106, 0.08), transparent 25rem),
+    radial-gradient(circle at top right, rgba(215, 38, 56, 0.04), transparent 18rem),
+    linear-gradient(180deg, #faf7f3 0%, var(--color-bg) 46%, #eee7df 100%);
 }
 
 a {
@@ -100,10 +100,10 @@ form {
   position: sticky;
   top: 0;
   z-index: 40;
-  border-bottom: 1px solid rgba(27, 27, 29, 0.08);
-  background: rgba(252, 251, 249, 0.94);
+  border-bottom: 1px solid rgba(39, 31, 24, 0.08);
+  background: rgba(252, 250, 247, 0.94);
   backdrop-filter: blur(10px);
-  box-shadow: 0 12px 26px -24px rgba(17, 17, 17, 0.22);
+  box-shadow: 0 10px 20px -22px rgba(32, 23, 17, 0.18);
 }
 
 .app-header__row,
@@ -205,7 +205,7 @@ form {
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.96) 0%, rgba(247, 243, 239, 0.92) 100%);
+    linear-gradient(180deg, rgba(252, 250, 247, 0.98) 0%, rgba(243, 238, 232, 0.94) 100%);
   box-shadow: var(--shadow-panel);
 }
 
@@ -224,7 +224,7 @@ form {
   position: absolute;
   inset: 0;
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.55) 0%, transparent 28%);
+    linear-gradient(180deg, rgba(255, 255, 255, 0.45) 0%, transparent 26%);
   pointer-events: none;
 }
 
@@ -243,8 +243,8 @@ form {
 
 .search-entry-card--hero {
   background:
-    radial-gradient(circle at top right, rgba(215, 38, 56, 0.11), transparent 11rem),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(244, 238, 231, 0.96) 100%);
+    radial-gradient(circle at top right, rgba(215, 38, 56, 0.07), transparent 11rem),
+    linear-gradient(180deg, rgba(252, 250, 247, 0.98) 0%, rgba(243, 238, 232, 0.96) 100%);
 }
 
 .search-entry-card__topline,
@@ -386,7 +386,7 @@ form {
 }
 
 .quick-action-button--secondary {
-  background: rgba(17, 17, 17, 0.05);
+  background: rgba(243, 238, 232, 0.92);
 }
 
 .search-entry-form input,
@@ -452,16 +452,16 @@ form {
 }
 
 .button--secondary {
-  background:
-    linear-gradient(180deg, rgba(27, 27, 29, 0.98) 0%, rgba(17, 17, 17, 0.98) 100%);
-  color: #fcfbf9;
-  box-shadow: 0 16px 28px -26px rgba(17, 17, 17, 0.86);
+  border: 1px solid rgba(39, 31, 24, 0.12);
+  background: linear-gradient(180deg, rgba(252, 250, 247, 0.98) 0%, rgba(243, 238, 232, 0.98) 100%);
+  color: var(--color-panel);
+  box-shadow: 0 14px 28px -26px rgba(32, 23, 17, 0.18);
 }
 
 .button--ghost {
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(255, 255, 255, 0.03);
-  color: #fcfbf9;
+  border: 1px solid rgba(39, 31, 24, 0.1);
+  background: rgba(252, 250, 247, 0.74);
+  color: var(--color-panel);
   box-shadow: none;
 }
 
@@ -472,8 +472,8 @@ form {
 .detail-hero .button--ghost,
 .product-card .button--ghost,
 .shelf-product-card .button--ghost {
-  border-color: rgba(27, 27, 29, 0.12);
-  background: rgba(17, 17, 17, 0.04);
+  border-color: rgba(39, 31, 24, 0.1);
+  background: rgba(243, 238, 232, 0.74);
   color: var(--color-panel);
 }
 
@@ -1146,7 +1146,7 @@ form {
   padding: 0.44rem 0.7rem;
   border: 1px solid rgba(27, 27, 29, 0.12);
   border-radius: 0.74rem;
-  background: rgba(252, 251, 249, 0.92);
+  background: rgba(252, 250, 247, 0.96);
   color: var(--color-panel);
   font-size: 0.78rem;
   font-weight: 700;
@@ -1158,7 +1158,7 @@ form {
 .variant-chip--active,
 .filter-chip--active {
   border-color: rgba(215, 38, 56, 0.26);
-  background: linear-gradient(180deg, rgba(215, 38, 56, 0.12) 0%, rgba(252, 251, 249, 0.98) 100%);
+  background: linear-gradient(180deg, rgba(215, 38, 56, 0.12) 0%, rgba(252, 250, 247, 0.98) 100%);
   color: var(--color-accent-strong);
   box-shadow: 0 10px 20px -18px rgba(215, 38, 56, 0.62);
 }
@@ -1203,9 +1203,9 @@ form {
 
 .detail-summary > div {
   padding: 0.8rem;
-  border: 1px solid rgba(27, 27, 29, 0.1);
+  border: 1px solid rgba(39, 31, 24, 0.1);
   border-radius: 0.95rem;
-  background: rgba(255, 255, 255, 0.55);
+  background: rgba(252, 250, 247, 0.82);
 }
 
 .detail-summary__label {
@@ -1228,9 +1228,9 @@ form {
 .barcode-panel {
   margin-top: 1rem;
   padding: 0;
-  border-color: rgba(27, 27, 29, 0.12);
+  border-color: rgba(39, 31, 24, 0.1);
   background:
-    linear-gradient(180deg, rgba(17, 17, 17, 0.97) 0%, rgba(26, 26, 28, 0.97) 4.9rem, rgba(252, 251, 249, 1) 4.9rem, rgba(252, 251, 249, 1) 100%);
+    linear-gradient(180deg, rgba(243, 238, 232, 0.92) 0%, rgba(252, 250, 247, 0.98) 4.8rem, rgba(252, 250, 247, 1) 4.8rem, rgba(252, 250, 247, 1) 100%);
 }
 
 .barcode-panel--inline {
@@ -1255,19 +1255,19 @@ form {
 
 .barcode-panel .section-kicker,
 .barcode-panel .section-title {
-  color: #fcfbf9;
+  color: var(--color-panel);
 }
 
 .barcode-panel__lead {
   margin: 0.26rem 0 0;
-  color: rgba(252, 251, 249, 0.82);
+  color: var(--color-text-soft);
   font-size: 0.94rem;
   font-weight: 600;
   line-height: 1.35;
 }
 
 .barcode-panel .section-text {
-  color: rgba(252, 251, 249, 0.72);
+  color: var(--color-text-soft);
 }
 
 .barcode-panel__image {
@@ -1525,17 +1525,17 @@ form {
   gap: 0.55rem;
   padding: 0.85rem;
   margin-top: 1rem;
-  border: 1px solid rgba(27, 27, 29, 0.08);
+  border: 1px solid rgba(39, 31, 24, 0.08);
   border-radius: 1.15rem;
-  background:
-    linear-gradient(180deg, rgba(17, 17, 17, 0.95) 0%, rgba(27, 27, 29, 0.95) 100%);
+  background: rgba(252, 250, 247, 0.94);
+  backdrop-filter: blur(10px);
   box-shadow: var(--shadow-float);
 }
 
 .sticky-action-bar .button--ghost {
-  border-color: rgba(255, 255, 255, 0.08);
-  color: #fcfbf9;
-  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(39, 31, 24, 0.1);
+  color: var(--color-panel);
+  background: rgba(243, 238, 232, 0.76);
 }
 
 .fullscreen-barcode {
@@ -1599,9 +1599,10 @@ form {
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 0.28rem;
   padding: 0.5rem 0.45rem calc(0.5rem + env(safe-area-inset-bottom, 0px));
-  background:
-    linear-gradient(180deg, rgba(17, 17, 17, 0.86) 0%, rgba(17, 17, 17, 0.95) 100%);
-  box-shadow: 0 -18px 36px -34px rgba(0, 0, 0, 0.68);
+  border-top: 1px solid rgba(39, 31, 24, 0.08);
+  background: rgba(252, 250, 247, 0.96);
+  backdrop-filter: blur(12px);
+  box-shadow: 0 -18px 36px -36px rgba(32, 23, 17, 0.2);
 }
 
 .bottom-nav__item {
@@ -1613,7 +1614,7 @@ form {
   min-width: 0;
   padding: 0.48rem 0.2rem 0.42rem;
   border-radius: 1rem;
-  color: rgba(252, 251, 249, 0.72);
+  color: var(--color-text-muted);
   background: transparent;
   transition: background 160ms ease, color 160ms ease, transform 160ms ease;
 }
@@ -1657,13 +1658,12 @@ form {
 }
 
 .bottom-nav__item--active {
-  color: #ffffff;
-  background:
-    linear-gradient(180deg, rgba(215, 38, 56, 0.16) 0%, rgba(255, 255, 255, 0.04) 100%);
+  color: var(--color-accent-strong);
+  background: rgba(215, 38, 56, 0.1);
 }
 
 .bottom-nav__item--active .bottom-nav__icon {
-  color: #ffffff;
+  color: var(--color-accent-strong);
 }
 
 .header-create {
