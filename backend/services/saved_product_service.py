@@ -248,3 +248,49 @@ class SavedProductService:
 
         self.save_alias(normalized_alias)
         return True
+
+    def replace_alias(self, old_alias: str, new_alias: str) -> List[str]:
+        """
+        Responsabilidade:
+            Migrar um alias salvo para outro quando o produto e renomeado.
+
+        Parametros:
+            old_alias: Alias antigo que deve deixar de existir na lista.
+            new_alias: Novo alias que passa a representar o mesmo item.
+
+        Retorno:
+            Lista atualizada de aliases salvos apos a migracao.
+
+        Contexto de uso:
+            Utilizada pelo fluxo de edicao do dashboard para evitar que um
+            produto perca o estado de salvo quando o operador altera o alias.
+        """
+
+        normalized_old_alias = old_alias.strip()
+        normalized_new_alias = new_alias.strip()
+        saved_aliases = self._read_all()
+
+        if not normalized_old_alias or not normalized_new_alias:
+            return saved_aliases
+
+        if normalized_old_alias == normalized_new_alias:
+            return saved_aliases
+
+        migrated_aliases: List[str] = []
+        has_inserted_new_alias = False
+
+        for current_alias in saved_aliases:
+            if current_alias in {normalized_old_alias, normalized_new_alias}:
+                # Decisao tecnica:
+                # Se o alias antigo ja estava salvo, trocamos pelo novo sem
+                # duplicar a entrada caso o alias novo ja tenha aparecido por
+                # outro fluxo operacional ou por tentativa anterior de migracao.
+                if not has_inserted_new_alias:
+                    migrated_aliases.append(normalized_new_alias)
+                    has_inserted_new_alias = True
+                continue
+
+            migrated_aliases.append(current_alias)
+
+        self._write_all(migrated_aliases)
+        return migrated_aliases

@@ -315,6 +315,46 @@ def _get_uploaded_image_service(request: Request) -> UploadedImageService:
     return initialized_service
 
 
+def _migrate_auxiliary_alias_references(
+    request: Request,
+    previous_alias: str,
+    updated_alias: str,
+) -> None:
+    """
+    Responsabilidade:
+        Migrar referencias auxiliares quando um produto muda de alias.
+
+    Parametros:
+        request: Requisicao HTTP atual com acesso aos services compartilhados.
+        previous_alias: Alias antigo antes da edicao.
+        updated_alias: Novo alias persistido para o mesmo produto.
+
+    Retorno:
+        Nenhum.
+
+    Contexto de uso:
+        Mantem salvos e historico conectados ao item correto depois que o
+        operador renomeia um produto no dashboard.
+    """
+
+    normalized_previous_alias = str(previous_alias).strip()
+    normalized_updated_alias = str(updated_alias).strip()
+    if not normalized_previous_alias or not normalized_updated_alias:
+        return
+
+    if normalized_previous_alias == normalized_updated_alias:
+        return
+
+    _get_saved_service(request).replace_alias(
+        old_alias=normalized_previous_alias,
+        new_alias=normalized_updated_alias,
+    )
+    _get_history_store(request).replace_alias(
+        old_alias=normalized_previous_alias,
+        new_alias=normalized_updated_alias,
+    )
+
+
 def _get_shelf_service(request: Request) -> ShelfService:
     """
     Responsabilidade:
@@ -1730,6 +1770,7 @@ def _build_group_variant_payload(
     barcode_module_width_px: int,
     barcode_height_px: int,
     include_barcode_data_uri: bool = True,
+    saved_aliases: Optional[set[str]] = None,
 ) -> Dict[str, Any]:
     """
     Responsabilidade:
@@ -1743,6 +1784,7 @@ def _build_group_variant_payload(
         barcode_module_width_px: Largura do modulo usada ao montar o SVG.
         barcode_height_px: Altura das barras usada no SVG.
         include_barcode_data_uri: Define se o payload precisa incluir o SVG.
+        saved_aliases: Conjunto opcional com os aliases salvos pelo operador.
 
     Retorno:
         Dicionario serializavel com links, SKU, status e barcode da variante.
@@ -1780,6 +1822,8 @@ def _build_group_variant_payload(
             bar_height_px=barcode_height_px,
         )
 
+    is_saved = variant_product.alias in (saved_aliases or set())
+
     return {
         "alias": variant_product.alias,
         "label": variant_label,
@@ -1792,6 +1836,8 @@ def _build_group_variant_payload(
         "edit_href": f"/dashboard/products/{variant_product.alias}/edit",
         "delete_href": f"/dashboard/products/{variant_product.alias}/delete",
         "save_href": f"/dashboard/products/{variant_product.alias}/toggle-saved",
+        "is_saved": is_saved,
+        "save_button_label": "Remover dos salvos" if is_saved else "Salvar",
         "last_known_url": variant_product.last_known_url,
         "status_label": activity["status_label"],
         "status_tone": activity["status_tone"],
@@ -2129,6 +2175,7 @@ def _build_shelf_detail_context(request: Request, shelf_number: int) -> Dict[str
     )
 
     shelf_product_cards = []
+    saved_aliases = _get_saved_service(request).get_saved_aliases_set()
     for grouped_product in grouped_products:
         if selected_brand and grouped_product.brand != selected_brand:
             continue
@@ -2158,6 +2205,7 @@ def _build_shelf_detail_context(request: Request, shelf_number: int) -> Dict[str
                     barcode_module_width_px=2,
                     barcode_height_px=72,
                     include_barcode_data_uri=False,
+                    saved_aliases=saved_aliases,
                 )
             )
 
@@ -2621,6 +2669,7 @@ def _build_product_detail_context(request: Request, alias: str) -> Dict[str, Any
         latest_history_event_by_alias[grouped_variant.alias] = variant_history_events[0] if variant_history_events else None
 
     variant_options = []
+    saved_aliases = _get_saved_service(request).get_saved_aliases_set()
     for grouped_variant in grouped_product.variants:
         variant_options.append(
             _build_group_variant_payload(
@@ -2635,6 +2684,7 @@ def _build_product_detail_context(request: Request, alias: str) -> Dict[str, Any
                 barcode_module_width_px=3,
                 barcode_height_px=124,
                 include_barcode_data_uri=True,
+                saved_aliases=saved_aliases,
             )
         )
 
@@ -3376,6 +3426,11 @@ async def dashboard_edit_product(request: Request, alias: str) -> Any:
         updated_product = _get_store_service(request).replace_product(
             current_alias=alias,
             updated_product=_build_product_record_from_submission(submitted_data),
+        )
+        _migrate_auxiliary_alias_references(
+            request=request,
+            previous_alias=alias,
+            updated_alias=updated_product.alias,
         )
     except (RuntimeError, ValueError) as error:
         context = _build_new_product_form_context(

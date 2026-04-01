@@ -40,6 +40,8 @@ function applyVariantSelection(variantRoot, variantOption) {
   const selectedEditHref = variantOption.dataset.variantEditHref || "";
   const selectedDeleteHref = variantOption.dataset.variantDeleteHref || "";
   const selectedSaveHref = variantOption.dataset.variantSaveHref || "";
+  const selectedIsSaved = variantOption.dataset.variantIsSaved === "1";
+  const selectedSaveLabel = variantOption.dataset.variantSaveLabel || (selectedIsSaved ? "Remover dos salvos" : "Salvar");
   const selectedProductUrl = variantOption.dataset.variantProductUrl || "";
   const selectedImageUrl = variantOption.dataset.variantImageUrl || "";
   const selectedStatusLabel = variantOption.dataset.variantStatusValue || "";
@@ -98,6 +100,11 @@ function applyVariantSelection(variantRoot, variantOption) {
     if (selectedSaveHref) {
       element.setAttribute("action", selectedSaveHref);
     }
+  });
+
+  variantRoot.querySelectorAll("[data-variant-save-button]").forEach((element) => {
+    element.textContent = selectedSaveLabel;
+    element.setAttribute("aria-pressed", selectedIsSaved ? "true" : "false");
   });
 
   variantRoot.querySelectorAll("[data-variant-product-link]").forEach((element) => {

@@ -75,6 +75,8 @@
               data-variant-edit-href="{{ variant.edit_href }}"
               data-variant-delete-href="{{ variant.delete_href }}"
               data-variant-save-href="{{ variant.save_href }}"
+              data-variant-is-saved="{{ '1' if variant.is_saved else '0' }}"
+              data-variant-save-label="{{ variant.save_button_label }}"
               data-variant-product-url="{{ variant.last_known_url }}"
               data-variant-image-url="{{ variant.image_url or '' }}"
               data-variant-status-value="{{ variant.status_label }}"
@@ -245,7 +247,7 @@
           <a class="button button--secondary button--small" href="/dashboard/products/{{ product.alias }}/edit" data-variant-edit-link>Editar cadastro</a>
           <form method="post" action="/dashboard/products/{{ product.alias }}/toggle-saved" data-variant-save-form>
             <input type="hidden" name="next" value="{{ request.url }}" />
-            <button class="button button--ghost button--small" type="submit">{{ 'Remover dos salvos' if is_saved else 'Salvar' }}</button>
+            <button class="button button--ghost button--small" type="submit" data-variant-save-button aria-pressed="{{ 'true' if is_saved else 'false' }}">{{ 'Remover dos salvos' if is_saved else 'Salvar' }}</button>
           </form>
           <form method="post" action="/dashboard/products/{{ product.alias }}/delete" data-variant-delete-form onsubmit="return confirm('Deseja excluir esta variante do catálogo?');">
             <button class="button button--danger button--small" type="submit">Excluir variante</button>

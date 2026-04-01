@@ -17,6 +17,7 @@ from api.routes_products import (
     update_product,
 )
 from api.schemas import ProductCreate
+from backend.models.product import ProductRecord
 from backend.models.sku_event import SkuEvent
 from backend.services.runtime_context import RuntimeServices
 from history.history_store import HistoryStore
@@ -293,3 +294,50 @@ def test_update_all_and_history_routes(tmp_path: Path) -> None:
 
     assert len(all_history) >= 1
     assert len(alias_history) >= 1
+
+
+def test_update_all_ignora_itens_nao_sincronizaveis(tmp_path: Path) -> None:
+    """
+    Responsabilidade:
+        Garantir que o endpoint em lote nao trate itens manuais como falha de sync.
+
+    Parametros:
+        tmp_path: Diretorio temporario para isolamento dos storages do teste.
+
+    Retorno:
+        Nenhum.
+
+    Contexto de uso:
+        Protege a consistencia entre a API e o monitor, que ja ignora itens
+        sem dependencia do site para manter o codigo atual.
+    """
+
+    request = _build_request(tmp_path)
+    product_store = request.app.state.services.product_store
+    product_store.upsert_product(
+        ProductRecord(
+            alias="site_item",
+            brand="Marca",
+            name="Produto de site",
+            variant="100ml",
+            last_known_url="https://old.exemplo/site-item",
+            last_known_sku="SKU-SITE",
+            source_type="site",
+        )
+    )
+    product_store.upsert_product(
+        ProductRecord(
+            alias="manual_item",
+            brand="Marca Interna",
+            name="Produto Manual",
+            variant="100ml",
+            last_known_url="",
+            last_known_sku="SKU-MANUAL",
+            source_type="manual",
+            site_link_status="manual_unlinked",
+        )
+    )
+
+    batch_results = update_all_products(request)
+
+    assert [result.alias for result in batch_results] == ["site_item"]

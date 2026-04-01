@@ -15,6 +15,7 @@ from starlette.responses import RedirectResponse
 from starlette.templating import _TemplateResponse
 
 from backend.models.product import ProductRecord
+from backend.models.sku_event import SkuEvent
 from backend.services.manual_product_group_service import ManualProductGroupService
 from backend.services.product_group_service import ProductGroupService
 from backend.services.saved_product_service import SavedProductService
@@ -786,6 +787,62 @@ def test_dashboard_detalhe_abre_produto_existente(tmp_path: Path) -> None:
     assert "Código em tela cheia" in content
 
 
+def test_dashboard_detalhe_expone_estado_de_salvo_por_variante_no_html(tmp_path: Path) -> None:
+    """
+    Responsabilidade:
+        Garantir que a PDP exponha o estado salvo correto para cada variante.
+
+    Parametros:
+        tmp_path: Diretorio temporario para isolar storage e favoritos do teste.
+
+    Retorno:
+        Nenhum.
+
+    Contexto de uso:
+        Protege a troca de variante no frontend, que depende desses atributos
+        para atualizar o texto do botao de salvar sem ficar stale.
+    """
+
+    app = _build_app_with_temp_storage(tmp_path)
+    app.state.product_store_service.upsert_product(
+        ProductRecord(
+            alias="good_girl_50ml",
+            brand="Carolina Herrera",
+            name="Good Girl",
+            variant="50ml",
+            last_known_url="https://example.com/good-girl-50",
+            last_known_sku="111222333",
+            parent_reference="good_girl",
+            shelf_number=5,
+        )
+    )
+    app.state.product_store_service.upsert_product(
+        ProductRecord(
+            alias="good_girl_80ml",
+            brand="Carolina Herrera",
+            name="Good Girl",
+            variant="80ml",
+            last_known_url="https://example.com/good-girl-80",
+            last_known_sku="444555666",
+            parent_reference="good_girl",
+            shelf_number=5,
+        )
+    )
+    app.state.saved_product_service.save_alias("good_girl_80ml")
+
+    request = _build_request(app, method="GET", path="/dashboard/products/good_girl_50ml")
+
+    response = routes_dashboard.dashboard_product_detail(request, alias="good_girl_50ml")
+
+    assert isinstance(response, _TemplateResponse)
+    assert response.status_code == 200
+    content = response.body.decode("utf-8")
+    assert 'data-variant-is-saved="0"' in content
+    assert 'data-variant-is-saved="1"' in content
+    assert 'data-variant-save-label="Salvar"' in content
+    assert "Remover dos salvos" in content
+
+
 def test_dashboard_barcode_fullscreen_exibe_modo_operacional(tmp_path: Path) -> None:
     """
     Responsabilidade:
@@ -1492,6 +1549,84 @@ def test_dashboard_edita_variante_manual_usando_a_linha_visivel_do_formulario(tm
     assert updated_variant.stock_qty == 4
     assert updated_variant.variant_notes == "Variante correta editada."
     assert untouched_variant.last_known_sku == "111222333"
+
+
+def test_dashboard_edita_alias_e_migra_salvos_e_historico(tmp_path: Path) -> None:
+    """
+    Responsabilidade:
+        Garantir que renomear um produto nao deixe salvos e historico orfaos.
+
+    Parametros:
+        tmp_path: Diretorio temporario usado para isolar os arquivos do teste.
+
+    Retorno:
+        Nenhum.
+
+    Contexto de uso:
+        Protege o fluxo de manutencao em que o operador ajusta o alias e ainda
+        espera encontrar o item nos salvos e no historico curto do detalhe.
+    """
+
+    app = _build_app_with_temp_storage(tmp_path)
+    app.state.product_store_service.upsert_product(
+        ProductRecord(
+            alias="produto_antigo",
+            brand="Marca",
+            name="Produto",
+            variant="100ml",
+            last_known_url="https://example.com/produto",
+            last_known_sku="123456789",
+        )
+    )
+    app.state.saved_product_service.save_alias("produto_antigo")
+    app.state.history_store_service.save_event(
+        SkuEvent.create(
+            alias="produto_antigo",
+            event_type="sku_changed",
+            old_sku="111",
+            new_sku="123456789",
+            old_url="https://example.com/old",
+            new_url="https://example.com/produto",
+            match_score=0.95,
+        )
+    )
+
+    payload = urlencode(
+        {
+            "source_type": "site",
+            "alias": "produto_novo",
+            "brand": "Marca",
+            "name": "Produto",
+            "concentration": "",
+            "variant": "100ml",
+            "last_known_url": "https://example.com/produto",
+            "last_known_sku": "123456789",
+            "stock_qty": "0",
+            "variant_notes": "",
+            "image_url": "",
+            "notes": "",
+            "shelf_reference_label": "",
+            "shelf_number": "",
+            "display_order": "",
+        }
+    ).encode("utf-8")
+    request = _build_request(
+        app,
+        method="POST",
+        path="/dashboard/products/produto_antigo/edit",
+        body=payload,
+        content_type="application/x-www-form-urlencoded",
+    )
+
+    response = asyncio.run(routes_dashboard.dashboard_edit_product(request, alias="produto_antigo"))
+
+    assert isinstance(response, RedirectResponse)
+    assert response.status_code == 303
+    assert response.headers["location"] == "/dashboard/products/produto_novo"
+    assert app.state.saved_product_service.is_saved("produto_antigo") is False
+    assert app.state.saved_product_service.is_saved("produto_novo") is True
+    assert len(app.state.history_store_service.list_events_by_alias("produto_antigo")) == 0
+    assert len(app.state.history_store_service.list_events_by_alias("produto_novo")) == 1
 
 
 def test_dashboard_preenche_produto_automaticamente_por_url(tmp_path: Path) -> None:

@@ -210,4 +210,11 @@ def resolve_uploaded_images_directory() -> Path:
     if configured_directory:
         return Path(configured_directory)
 
+    configured_storage_file = os.getenv("PRODUCT_STORAGE_FILE", "").strip()
+    if configured_storage_file:
+        # Decisao tecnica:
+        # Quando os dados principais ja estao em um volume persistente, os
+        # uploads devem acompanhar essa mesma base para nao sumirem apos deploy.
+        return Path(configured_storage_file).expanduser().resolve().parent / "uploads"
+
     return resolve_default_data_file("uploads")

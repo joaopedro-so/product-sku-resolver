@@ -180,3 +180,56 @@ class HistoryStore:
 
         normalized_alias = alias.strip()
         return [event for event in self._read_all() if event.alias == normalized_alias]
+
+    def replace_alias(self, old_alias: str, new_alias: str) -> List[SkuEvent]:
+        """
+        Responsabilidade:
+            Migrar o alias referenciado pelos eventos historicos de um produto.
+
+        Parametros:
+            old_alias: Alias anterior registrado nos eventos.
+            new_alias: Novo alias que passa a identificar o mesmo item.
+
+        Retorno:
+            Lista completa de eventos apos a migracao do alias.
+
+        Contexto de uso:
+            Chamada pela edicao do dashboard quando o alias muda, para manter o
+            historico curto e a auditoria ligados ao produto correto.
+        """
+
+        normalized_old_alias = old_alias.strip()
+        normalized_new_alias = new_alias.strip()
+        events = self._read_all()
+
+        if not normalized_old_alias or not normalized_new_alias:
+            return events
+
+        if normalized_old_alias == normalized_new_alias:
+            return events
+
+        updated_events: List[SkuEvent] = []
+        for current_event in events:
+            if current_event.alias == normalized_old_alias:
+                # Decisao tecnica:
+                # Criamos um novo evento equivalente com o alias atualizado
+                # para deixar explicito que apenas a identidade textual mudou,
+                # preservando os demais dados de auditoria.
+                updated_events.append(
+                    SkuEvent(
+                        timestamp=current_event.timestamp,
+                        alias=normalized_new_alias,
+                        event_type=current_event.event_type,
+                        old_sku=current_event.old_sku,
+                        new_sku=current_event.new_sku,
+                        old_url=current_event.old_url,
+                        new_url=current_event.new_url,
+                        match_score=current_event.match_score,
+                    )
+                )
+                continue
+
+            updated_events.append(current_event)
+
+        self._write_all(updated_events)
+        return updated_events

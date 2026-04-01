@@ -253,6 +253,13 @@ def update_all_products(request: Request) -> list[UpdateResult]:
 
     update_results: list[UpdateResult] = []
     for product in all_products:
+        if not product.is_syncable:
+            # Decisao tecnica:
+            # A API em lote precisa seguir a mesma regra operacional do monitor:
+            # itens manuais/legacy nao devem aparecer como falha de sync quando
+            # nao dependem mais do site para manter o codigo atual.
+            continue
+
         resolver_result = services.resolver.resolve_sku_for_alias(product.alias)
         update_results.append(_to_update_result(product.alias, resolver_result))
 
