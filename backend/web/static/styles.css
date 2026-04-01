@@ -559,16 +559,21 @@ form {
   display: grid;
   justify-items: center;
   gap: 0.25rem;
+  min-height: 5.4rem;
   padding: 1rem 0.95rem 0.92rem;
   background:
     radial-gradient(circle at top center, rgba(184, 154, 106, 0.12), transparent 7rem),
     linear-gradient(180deg, #1d1d20 0%, #111111 100%);
   color: #ffffff;
   text-align: center;
+  isolation: isolate;
+  overflow: hidden;
 }
 
 .shelf-card__banner::after {
   content: "";
+  position: relative;
+  z-index: 2;
   width: 3rem;
   height: 1px;
   margin-top: 0.18rem;
@@ -584,20 +589,32 @@ form {
 }
 
 .shelf-card__wordmark {
+  position: relative;
+  z-index: 2;
   font-size: 1rem;
   font-weight: 800;
   letter-spacing: 0.14em;
   line-height: 1.12;
   text-transform: uppercase;
+  text-shadow: 0 1px 10px rgba(0, 0, 0, 0.35);
 }
 
 .shelf-card__banner-image {
-  display: block;
-  width: min(100%, 24rem);
-  height: auto;
-  max-height: 3rem;
-  object-fit: contain;
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
   object-position: center;
+}
+
+.shelf-card__banner-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background:
+    linear-gradient(180deg, rgba(12, 12, 13, 0.22) 0%, rgba(12, 12, 13, 0.36) 100%),
+    linear-gradient(90deg, rgba(12, 12, 13, 0.14) 0%, rgba(12, 12, 13, 0.06) 50%, rgba(12, 12, 13, 0.14) 100%);
 }
 
 .shelf-card__banner--paco-rabanne .shelf-card__wordmark {
@@ -607,11 +624,64 @@ form {
 }
 
 .shelf-card__subwordmark {
+  position: relative;
+  z-index: 2;
   color: rgba(255, 255, 255, 0.76);
   font-size: 0.68rem;
   font-weight: 700;
   letter-spacing: 0.22em;
   text-transform: uppercase;
+}
+
+.shelf-hero-banner {
+  position: relative;
+  min-height: 8.6rem;
+  margin: -0.1rem -0.1rem 0.95rem;
+  border-radius: 1rem;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at top center, rgba(184, 154, 106, 0.12), transparent 8rem),
+    linear-gradient(180deg, #1d1d20 0%, #111111 100%);
+  isolation: isolate;
+}
+
+.shelf-hero-banner__image {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+}
+
+.shelf-hero-banner__overlay {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(180deg, rgba(12, 12, 13, 0.18) 0%, rgba(12, 12, 13, 0.46) 100%),
+    linear-gradient(90deg, rgba(12, 12, 13, 0.18) 0%, rgba(12, 12, 13, 0.05) 50%, rgba(12, 12, 13, 0.18) 100%);
+}
+
+.shelf-hero-banner__content {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  gap: 0.32rem;
+  align-content: end;
+  min-height: 8.6rem;
+  padding: 1rem;
+}
+
+.shelf-hero-banner .section-kicker,
+.shelf-hero-banner .page-title,
+.shelf-hero-banner .section-text {
+  color: #ffffff;
+  text-shadow: 0 1px 10px rgba(0, 0, 0, 0.35);
+}
+
+.shelf-hero-banner .section-text {
+  max-width: 26rem;
+  color: rgba(255, 255, 255, 0.82);
 }
 
 .shelf-card__body {
@@ -1395,11 +1465,17 @@ form {
   }
 
   .shelf-card__banner {
+    min-height: 4.8rem;
     padding: 0.86rem 0.8rem 0.8rem;
   }
 
-  .shelf-card__banner-image {
-    max-height: 2.5rem;
+  .shelf-hero-banner {
+    min-height: 7.2rem;
+  }
+
+  .shelf-hero-banner__content {
+    min-height: 7.2rem;
+    padding: 0.86rem;
   }
 
   .product-card__subtitle,
@@ -1507,8 +1583,17 @@ form {
     font-size: 0.68rem;
   }
 
-  .shelf-card__banner-image {
-    max-height: 2.2rem;
+  .shelf-card__banner {
+    min-height: 4.4rem;
+  }
+
+  .shelf-hero-banner {
+    min-height: 6.6rem;
+  }
+
+  .shelf-hero-banner__content {
+    min-height: 6.6rem;
+    padding: 0.78rem;
   }
 }
 

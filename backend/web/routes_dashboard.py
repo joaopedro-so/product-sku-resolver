@@ -26,6 +26,7 @@ from backend.services.curated_renner_import_service import (
     resolve_builtin_curated_seed_file,
 )
 from backend.services.matcher import normalize_text
+from backend.services.shelf_banner_service import ShelfBannerService
 from backend.services.product_draft_service import ProductDraftService
 from backend.services.product_group_service import GroupedParentProduct, ProductGroupService
 from backend.services.product_preview_service import ProductPreview, ProductPreviewService
@@ -308,6 +309,31 @@ def _get_shelf_service(request: Request) -> ShelfService:
     initialized_shelf_service = ShelfService()
     request.app.state.shelf_service = initialized_shelf_service
     return initialized_shelf_service
+
+
+def _get_shelf_banner_service(request: Request) -> ShelfBannerService:
+    """
+    Responsabilidade:
+        Recuperar ou inicializar o catálogo visual dos banners de prateleira.
+
+    Parâmetros:
+        request: Requisição HTTP atual com acesso ao `app.state`.
+
+    Retorno:
+        ShelfBannerService compartilhado pela interface web.
+
+    Contexto de uso:
+        Mantém cards e headers de prateleira sincronizados com a mesma fonte
+        de verdade para textos, assets e fallbacks visuais.
+    """
+
+    cached_service = getattr(request.app.state, "shelf_banner_service", None)
+    if isinstance(cached_service, ShelfBannerService):
+        return cached_service
+
+    initialized_service = ShelfBannerService(static_directory=Path("backend/web/static"))
+    request.app.state.shelf_banner_service = initialized_service
+    return initialized_service
 
 
 def _get_product_group_service(request: Request) -> ProductGroupService:
@@ -1323,12 +1349,13 @@ def _build_shelf_brand_filters(
     return filter_chips
 
 
-def _build_shelf_card_visual_metadata(shelf_number: int, shelf_title: str) -> Dict[str, str]:
+def _build_shelf_card_visual_metadata(request: Request, shelf_number: int, shelf_title: str) -> Dict[str, str]:
     """
     Responsabilidade:
         Definir textos e variantes visuais das prateleiras da perfumaria.
 
     Parametros:
+        request: Requisição atual para acesso ao catálogo visual centralizado.
         shelf_number: Numero fixo da prateleira fisica.
         shelf_title: Titulo operacional persistido para a prateleira.
 
@@ -1340,95 +1367,28 @@ def _build_shelf_card_visual_metadata(shelf_number: int, shelf_title: str) -> Di
         prateleira operacional e a apresentacao inspirada nos expositores reais.
     """
 
-    shelf_visual_map: Dict[int, Dict[str, str]] = {
-        1: {
-            "banner_wordmark": "PERFUMES ÁRABES",
-            "banner_sublabel": "",
-            "body_label": "",
-            "banner_variant": "arabes",
-            "banner_image_file": "arabes.png",
-        },
-        2: {
-            "banner_wordmark": "AZZARO",
-            "banner_sublabel": "",
-            "body_label": "",
-            "banner_variant": "azzaro",
-            "banner_image_file": "azzaro.png",
-        },
-        3: {
-            "banner_wordmark": "CALVIN KLEIN",
-            "banner_sublabel": "",
-            "body_label": "",
-            "banner_variant": "calvin-klein",
-            "banner_image_file": "calvinklein.png",
-        },
-        4: {
-            "banner_wordmark": "paco rabanne",
-            "banner_sublabel": "",
-            "body_label": "",
-            "banner_variant": "paco-rabanne",
-            "banner_image_file": "pacorabanne.png",
-        },
-        5: {
-            "banner_wordmark": "CAROLINA HERRERA",
-            "banner_sublabel": "FEMININO",
-            "body_label": "Feminino",
-            "banner_variant": "carolina-herrera",
-            "banner_image_file": "chfeminino.png",
-            "legacy_title": "Carolina Herrera A",
-        },
-        6: {
-            "banner_wordmark": "CAROLINA HERRERA",
-            "banner_sublabel": "MASCULINO",
-            "body_label": "Masculino",
-            "banner_variant": "carolina-herrera",
-            "banner_image_file": "chmasculino.png",
-            "legacy_title": "Carolina Herrera B",
-        },
-        7: {
-            "banner_wordmark": "LANCÔME",
-            "banner_sublabel": "",
-            "body_label": "",
-            "banner_variant": "lancome",
-            "banner_image_file": "lancome.png",
-        },
-        8: {
-            "banner_wordmark": "GIORGIO ARMANI",
-            "banner_sublabel": "",
-            "body_label": "",
-            "banner_variant": "giorgio-armani",
-            "banner_image_file": "giorgioarmani.png",
-        },
-        9: {
-            "banner_wordmark": "RALPH LAUREN",
-            "banner_sublabel": "",
-            "body_label": "",
-            "banner_variant": "ralph-lauren",
-            "banner_image_file": "ralphlauren.png",
-        },
+    visual = _get_shelf_banner_service(request).get_visual(shelf_number=shelf_number, shelf_title=shelf_title)
+    return {
+        "banner_wordmark": visual.banner_wordmark,
+        "banner_sublabel": visual.banner_sublabel,
+        "body_label": visual.body_label,
+        "banner_variant": visual.banner_key,
+        "banner_image_file": visual.banner_image_file,
+        "legacy_title": visual.legacy_title,
     }
 
-    return shelf_visual_map.get(
-        shelf_number,
-        {
-            "banner_wordmark": shelf_title.upper(),
-            "banner_sublabel": "",
-            "body_label": "",
-            "banner_variant": "default",
-            "banner_image_file": "",
-            "legacy_title": "",
-        },
-    )
 
-
-def _resolve_shelf_banner_image_url(banner_image_file: str) -> str:
+def _resolve_shelf_banner_image_url(request: Request, banner_image_file: str, shelf_number: int, shelf_title: str) -> str:
     """
     Responsabilidade:
         Resolver a URL publica do banner ilustrado da prateleira quando o
         arquivo existir no diretório estático do app.
 
     Parâmetros:
+        request: Requisição atual para acesso ao catálogo visual.
         banner_image_file: Nome do arquivo PNG configurado para a prateleira.
+        shelf_number: Número da prateleira consultada.
+        shelf_title: Título visível da prateleira.
 
     Retorno:
         URL pública do banner quando houver arquivo válido; caso contrário,
@@ -1439,15 +1399,9 @@ def _resolve_shelf_banner_image_url(banner_image_file: str) -> str:
         evoluir a origem dos banners sem espalhar regras de arquivo pela UI.
     """
 
-    normalized_file_name = str(banner_image_file or "").strip()
-    if not normalized_file_name:
-        return ""
-
-    static_banner_file = Path("backend/web/static/shelf-banners") / normalized_file_name
-    if not static_banner_file.is_file():
-        return ""
-
-    return f"/dashboard/static/shelf-banners/{normalized_file_name}"
+    del banner_image_file
+    visual = _get_shelf_banner_service(request).get_visual(shelf_number=shelf_number, shelf_title=shelf_title)
+    return _get_shelf_banner_service(request).build_public_image_url(visual)
 
 
 def _build_shelves_context(request: Request) -> Dict[str, Any]:
@@ -1471,7 +1425,7 @@ def _build_shelves_context(request: Request) -> Dict[str, Any]:
     shelf_cards = []
     for shelf in shelf_service.list_shelves():
         shelf_products = shelf_service.list_products_for_shelf(products, shelf.shelf_number)
-        visual_metadata = _build_shelf_card_visual_metadata(shelf.shelf_number, shelf.shelf_title)
+        visual_metadata = _build_shelf_card_visual_metadata(request, shelf.shelf_number, shelf.shelf_title)
         shelf_cards.append(
             {
                 "shelf_number": shelf.shelf_number,
@@ -1480,7 +1434,12 @@ def _build_shelves_context(request: Request) -> Dict[str, Any]:
                 "brand_group": shelf.brand_group,
                 "product_count": len(shelf_products),
                 "href": f"/dashboard/prateleiras/{shelf.shelf_number}",
-                "banner_image_url": _resolve_shelf_banner_image_url(visual_metadata.get("banner_image_file", "")),
+                "banner_image_url": _resolve_shelf_banner_image_url(
+                    request=request,
+                    banner_image_file=visual_metadata.get("banner_image_file", ""),
+                    shelf_number=shelf.shelf_number,
+                    shelf_title=shelf.shelf_title,
+                ),
                 **visual_metadata,
             }
         )
@@ -1605,6 +1564,7 @@ def _build_shelf_detail_context(request: Request, shelf_number: int) -> Dict[str
 
     products = _get_store_service(request).list_products()
     shelf_products = shelf_service.list_products_for_shelf(products, shelf_number)
+    shelf_visual = _build_shelf_card_visual_metadata(request, shelf_definition.shelf_number, shelf_definition.shelf_title)
     grouped_products = _get_product_group_service(request).group_products(shelf_products)
     latest_events = _build_latest_event_map(_get_history_store(request).list_events())
     preview_map = _build_preview_map(request, shelf_products, fetch_limit=max(12, len(shelf_products)))
@@ -1680,6 +1640,13 @@ def _build_shelf_detail_context(request: Request, shelf_number: int) -> Dict[str
             "page_title": f"Prateleira {shelf_definition.shelf_number:02d}",
             "shelf": shelf_definition,
             "reference_label": shelf_definition.shelf_title,
+            "shelf_visual": shelf_visual,
+            "banner_image_url": _resolve_shelf_banner_image_url(
+                request=request,
+                banner_image_file=shelf_visual.get("banner_image_file", ""),
+                shelf_number=shelf_definition.shelf_number,
+                shelf_title=shelf_definition.shelf_title,
+            ),
             "products": shelf_product_cards,
             "query_text": raw_query_text,
             "brand_filters": brand_filters,

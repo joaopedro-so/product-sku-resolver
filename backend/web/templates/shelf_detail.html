@@ -14,12 +14,24 @@
 {% else %}
 <section class="page-section">
   <div class="search-entry-card search-entry-card--location">
-    <div class="search-entry-card__topline">
-      <p class="section-kicker">Localização física</p>
-      <span class="hero-pill">Módulo em operação</span>
+    <div class="shelf-hero-banner shelf-hero-banner--{{ shelf_visual.banner_variant }}">
+      {% if banner_image_url %}
+      <img
+        class="shelf-hero-banner__image"
+        src="{{ banner_image_url }}"
+        alt=""
+        loading="eager"
+        aria-hidden="true"
+      />
+      {% endif %}
+      <div class="shelf-hero-banner__overlay"></div>
+      <div class="shelf-hero-banner__content">
+        <p class="section-kicker">Localização física</p>
+        <h1 class="page-title">Prateleira {{ "%02d"|format(shelf.shelf_number) }}</h1>
+        <p class="section-text">Referência: {{ reference_label }}</p>
+      </div>
     </div>
-    <h1 class="page-title">Prateleira {{ "%02d"|format(shelf.shelf_number) }}</h1>
-    <p class="section-text">Referência: {{ reference_label }}</p>
+
     <form class="search-entry-form search-entry-form--compact" method="get" action="/dashboard/prateleiras/{{ shelf.shelf_number }}">
       <input
         type="search"
