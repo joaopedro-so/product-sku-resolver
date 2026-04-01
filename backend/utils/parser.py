@@ -477,11 +477,15 @@ def parse_page_data(
     )
 
     extracted_description = extract_product_description(html_content)
+    # Decisao tecnica:
+    # Em paginas da Renner o `og:title` pode continuar apontando para a
+    # variante padrao, enquanto o `<title>` reflete o SKU realmente selecionado
+    # na URL. Por isso priorizamos o titulo da pagina antes do nome agregado.
     extracted_variant = (
         _extract_meta_content(html_content, "product:variant")
+        or _extract_variant_from_text(extracted_title or "")
         or _extract_variant_from_text(extracted_name or "")
         or _extract_variant_from_text(extracted_description or "")
-        or _extract_variant_from_text(extracted_title or "")
     )
 
     extracted_sku = extract_sku_basic(

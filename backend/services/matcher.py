@@ -153,6 +153,88 @@ def _build_observed_identity_text(observed_page_data: PageData) -> str:
     return " ".join(populated_parts).strip()
 
 
+def _build_brand_aliases(raw_brand: str) -> List[str]:
+    """
+    Responsabilidade:
+        Derivar aliases simples da marca para matching mais tolerante.
+
+    Parâmetros:
+        raw_brand: Marca original cadastrada no produto esperado.
+
+    Retorno:
+        Lista normalizada de aliases úteis, incluindo sigla quando aplicável.
+
+    Contexto de uso:
+        Algumas páginas mostram a marca por extenso enquanto o nome do perfume
+        no cadastro usa uma sigla curta, como "CK". Esse helper reduz falso
+        negativo sem depender de mapeamentos manuais espalhados.
+    """
+
+    normalized_brand = normalize_text(raw_brand)
+    if not normalized_brand:
+        return []
+
+    aliases = {normalized_brand}
+    brand_parts = [part for part in normalized_brand.split() if part]
+    if len(brand_parts) >= 2:
+        initials = "".join(part[0] for part in brand_parts if part)
+        if len(initials) >= 2:
+            aliases.add(initials)
+
+    return sorted(aliases, key=len, reverse=True)
+
+
+def _strip_brand_aliases(raw_text: str, brand_aliases: List[str]) -> str:
+    """
+    Responsabilidade:
+        Remover aliases de marca do texto para comparar o núcleo do nome.
+
+    Parâmetros:
+        raw_text: Texto normalizado que pode conter a marca embutida.
+        brand_aliases: Aliases derivados da marca esperada.
+
+    Retorno:
+        Texto sem os aliases da marca, com espaços recompactados.
+
+    Contexto de uso:
+        Perfumes como "CK Her" podem aparecer no site como
+        "Calvin Klein Her". Ao remover a marca dos dois lados, o matcher
+        compara apenas a parte realmente distintiva do nome.
+    """
+
+    cleaned_text = raw_text
+    for alias in brand_aliases:
+        if not alias:
+            continue
+        cleaned_text = re.sub(rf"\b{re.escape(alias)}\b", " ", cleaned_text)
+
+    return re.sub(r"\s+", " ", cleaned_text).strip()
+
+
+def _is_informative_core_name(raw_text: str) -> bool:
+    """
+    Responsabilidade:
+        Validar se o núcleo do nome ainda carrega informação útil.
+
+    Parâmetros:
+        raw_text: Texto já sem a marca, pronto para análise.
+
+    Retorno:
+        True quando houver conteúdo minimamente confiável; senão False.
+
+    Contexto de uso:
+        Evita aceitar como match textos vazios ou restos muito curtos depois de
+        remover a marca do nome do perfume.
+    """
+
+    normalized_text = normalize_text(raw_text)
+    if len(normalized_text) < 3:
+        return False
+
+    informative_tokens = [token for token in normalized_text.split() if len(token) >= 3]
+    return bool(informative_tokens)
+
+
 def match_product_with_page(
     expected_product: ProductRecord,
     observed_page_data: PageData,
@@ -185,6 +267,15 @@ def match_product_with_page(
     normalized_observed_name = normalize_text(observed_page_data.name)
     normalized_observed_variant = normalize_variant(observed_page_data.variant)
     normalized_observed_identity_text = _build_observed_identity_text(observed_page_data)
+    brand_aliases = _build_brand_aliases(expected_product.brand)
+    normalized_expected_name_core = _strip_brand_aliases(
+        normalized_expected_name,
+        brand_aliases,
+    )
+    normalized_observed_name_core = _strip_brand_aliases(
+        normalized_observed_identity_text,
+        brand_aliases,
+    )
 
     # Decisão técnica:
     # Alguns varejistas expõem marca e nome em campos diferentes do HTML
@@ -203,6 +294,12 @@ def match_product_with_page(
     ) or _contains_or_equals(
         normalized_expected_name,
         normalized_observed_identity_text,
+    ) or (
+        _is_informative_core_name(normalized_expected_name_core)
+        and _contains_or_equals(
+            normalized_expected_name_core,
+            normalized_observed_name_core,
+        )
     )
     variant_matched = _contains_or_equals(normalized_expected_variant, normalized_observed_variant)
 

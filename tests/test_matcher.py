@@ -225,3 +225,45 @@ def test_match_uses_title_and_name_as_fallback_identity_signals() -> None:
     assert result.brand_matched is True
     assert result.name_matched is True
     assert result.variant_matched is True
+
+
+def test_match_accepts_brand_alias_inside_expected_name_core() -> None:
+    """
+    Responsabilidade:
+        Garantir matching quando a marca abreviada faz parte do nome esperado.
+
+    Parâmetros:
+        Nenhum.
+
+    Retorno:
+        Nenhum.
+
+    Contexto de uso:
+        Reproduz casos como "CK Her", em que o site usa "Calvin Klein Her"
+        e o cadastro operacional mantém a versão abreviada.
+    """
+
+    expected_product = ProductRecord(
+        alias="calvin_klein_ck_her_50ml",
+        brand="Calvin Klein",
+        name="CK Her",
+        variant="50ml",
+        last_known_url="https://loja.exemplo/produto",
+        last_known_sku="unknown",
+    )
+
+    observed_page = PageData(
+        url="https://loja.exemplo/produto?sku=519032834",
+        title="Perfume Calvin Klein Her Feminino Eau de Toilette 50ml",
+        brand=None,
+        name="Perfume Calvin Klein Her Feminino Eau de Toilette 50ml - Lojas Renner",
+        variant="50ml",
+        sku="519032834",
+    )
+
+    result = match_product_with_page(expected_product, observed_page)
+
+    assert result.matched is True
+    assert result.brand_matched is True
+    assert result.name_matched is True
+    assert result.variant_matched is True

@@ -137,6 +137,36 @@ def test_parse_page_data_extracts_core_fields() -> None:
     assert page_data.image_url == "https://cdn.loja.exemplo/produto.jpg"
 
 
+def test_parse_page_data_prefers_title_variant_when_og_title_is_stale() -> None:
+    """
+    Responsabilidade:
+        Garantir que a variante siga o `<title>` quando o `og:title` estiver
+        preso na variante padrão da página.
+
+    Parâmetros:
+        Nenhum.
+
+    Retorno:
+        Nenhum.
+
+    Contexto de uso:
+        Reproduz comportamento real da Renner em páginas com query `sku`.
+    """
+
+    html = """
+    <html>
+      <head>
+        <title>Perfume CK One Unissex Eau de Toilette 200ml</title>
+        <meta property="og:title" content="Ck One: um perfume para ela e para ele 50ml - Lojas Renner" />
+      </head>
+    </html>
+    """
+
+    page_data = parse_page_data("https://loja.exemplo/produto?sku=519045328", html)
+
+    assert page_data.variant == "200ml"
+
+
 def test_extract_product_image_url_normalizes_protocol_relative_path() -> None:
     """
     Responsabilidade:
