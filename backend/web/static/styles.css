@@ -47,7 +47,8 @@
   --space-lg: 1.3rem;
   --space-xl: 1.7rem;
   --max-content: 66rem;
-  --bottom-nav-height: 4.9rem;
+  --bottom-nav-height: 5.4rem;
+  --bottom-nav-safe-space: calc(var(--bottom-nav-height) + env(safe-area-inset-bottom, 0px) + 2.2rem);
 }
 
 *,
@@ -63,6 +64,7 @@ html {
 body {
   margin: 0;
   min-height: 100vh;
+  min-height: 100dvh;
   font-family: var(--font-sans);
   color: var(--color-text);
   background:
@@ -94,6 +96,7 @@ form {
 
 .mobile-shell {
   min-height: 100vh;
+  min-height: 100dvh;
 }
 
 .app-header {
@@ -144,7 +147,14 @@ form {
 }
 
 .app-main {
-  padding: 0.9rem 0 calc(var(--bottom-nav-height) + 1.15rem);
+  /*
+    Decisao tecnica:
+    A navegacao inferior e fixa e, em celulares Android, ainda concorre com a
+    barra do sistema. Reservamos uma folga maior no final da pagina para que o
+    ultimo card nunca fique escondido atras desse conjunto.
+  */
+  padding: 0.9rem 0 var(--bottom-nav-safe-space);
+  scroll-padding-bottom: var(--bottom-nav-safe-space);
 }
 
 .page-section + .page-section {
