@@ -85,7 +85,22 @@
           {% if shelf.body_label %}
           <p class="shelf-card__body-label">{{ shelf.body_label }}</p>
           {% endif %}
-          <p class="section-text">{{ shelf.product_count }} produto(s)</p>
+          <div
+            class="shelf-card__count"
+            aria-label="{{ 'Sem itens' if shelf.product_count == 0 else shelf.product_count ~ ' itens na prateleira' }}"
+          >
+            <span class="shelf-card__count-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" focusable="false">
+                <path d="M9.25 4.75h5.5c1.8 0 3.25 1.45 3.25 3.25v9.25A2.75 2.75 0 0 1 15.25 20h-6.5A2.75 2.75 0 0 1 6 17.25V8c0-1.8 1.45-3.25 3.25-3.25Z" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6"/>
+                <path d="M10.25 4.75V3.9A1.9 1.9 0 0 1 12.15 2h-.3a1.9 1.9 0 0 1 1.9 1.9v.85" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6"/>
+                <path d="M9.5 10.75c.9-.55 1.67-.83 2.5-.83s1.6.28 2.5.83" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.6"/>
+              </svg>
+            </span>
+            <strong class="shelf-card__count-value">{{ shelf.product_count }}</strong>
+            {% if shelf.product_count == 0 %}
+            <span class="shelf-card__count-label">Sem itens</span>
+            {% endif %}
+          </div>
         </div>
         <a class="button button--secondary" href="{{ shelf.href }}">Acessar</a>
       </div>

@@ -854,6 +854,44 @@ form {
   font-weight: 700;
 }
 
+.shelf-card__count {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.42rem;
+  min-width: 0;
+  margin-top: 0.14rem;
+  color: var(--color-panel);
+}
+
+.shelf-card__count-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.35rem;
+  height: 1.35rem;
+  color: rgba(27, 27, 29, 0.48);
+}
+
+.shelf-card__count-icon svg {
+  width: 1.1rem;
+  height: 1.1rem;
+}
+
+.shelf-card__count-value {
+  font-size: 1rem;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  line-height: 1;
+}
+
+.shelf-card__count-label {
+  color: var(--color-text-muted);
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
 .product-card,
 .shelf-product-card {
   display: grid;
