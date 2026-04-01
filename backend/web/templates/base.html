@@ -4,9 +4,9 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>{% block title %}{{ page_title or 'Perfumaria Prestígio 394' }}{% endblock %}</title>
-    <meta name="theme-color" content="#111111" />
+    <meta name="theme-color" content="#fcfbf9" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link rel="icon" href="/dashboard/static/brand/favicon.ico" sizes="any" />
@@ -22,13 +22,33 @@
       {% if not hide_app_chrome %}
       <header class="app-header">
         <div class="app-header__row">
-          <a class="brand" href="/dashboard" aria-label="Perfumaria Prestígio 394">
-            <img class="brand__symbol" src="/dashboard/static/brand/prestigio-394-mark.svg" alt="Símbolo Perfumaria Prestígio 394" />
-            <span class="brand__copy">
-              <span class="brand__eyebrow">Perfumaria</span>
-              <img class="brand__wordmark" src="/dashboard/static/brand/prestigio-394-lockup.svg" alt="Perfumaria Prestígio 394" />
-            </span>
+          <a class="brand brand--minimal" href="/dashboard" aria-label="Prestígio 394">
+            <img class="brand__symbol" src="/dashboard/static/brand/prestigio-394-mark.svg" alt="Símbolo Prestígio 394" />
+            <span class="brand__name">Prestígio 394</span>
           </a>
+
+          <div class="header-create" data-create-root>
+            <div class="header-create__menu" id="header-create-menu" aria-label="Ações de criação rápidas">
+              <a class="header-create__action" href="/dashboard/products/new#autofill">
+                <span class="header-create__action-label">Importar do site</span>
+              </a>
+              <a class="header-create__action" href="/dashboard/products/new#manual">
+                <span class="header-create__action-label">Cadastrar manualmente</span>
+              </a>
+            </div>
+            <button
+              class="header-create__button"
+              type="button"
+              aria-label="Criar novo item"
+              aria-expanded="false"
+              aria-controls="header-create-menu"
+              data-create-trigger
+            >
+              <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+                <path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="2"/>
+              </svg>
+            </button>
+          </div>
         </div>
       </header>
       {% endif %}
@@ -38,42 +58,6 @@
       </main>
 
       {% if not hide_app_chrome %}
-      <div class="fab-create" data-fab-root>
-        <div class="fab-create__menu" id="fab-create-menu" data-fab-menu aria-label="Ações de criação rápidas">
-          <a class="fab-create__action" href="/dashboard/products/new#autofill">
-            <span class="fab-create__action-icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24" focusable="false">
-                <path d="M6 5.75h9.25L19 9.5V18a2 2 0 0 1-2 2H6.75a2 2 0 0 1-2-2V7.75a2 2 0 0 1 2-2Z" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7"/>
-                <path d="M15.25 5.75V9.5H19" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7"/>
-                <path d="M8.5 12.25h7M8.5 15.25h5.25" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.7"/>
-              </svg>
-            </span>
-            <span>Importar do site</span>
-          </a>
-          <a class="fab-create__action" href="/dashboard/products/new#manual">
-            <span class="fab-create__action-icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24" focusable="false">
-                <path d="M4.75 18.25 9 17.25l8.25-8.25a1.77 1.77 0 0 0 0-2.5l-.75-.75a1.77 1.77 0 0 0-2.5 0L5.75 14l-1 4.25Z" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7"/>
-                <path d="m12.75 7 4.25 4.25" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7"/>
-              </svg>
-            </span>
-            <span>Cadastrar manualmente</span>
-          </a>
-        </div>
-        <button
-          class="fab-create__button"
-          type="button"
-          aria-label="Criar novo item"
-          aria-expanded="false"
-          aria-controls="fab-create-menu"
-          data-fab-trigger
-        >
-          <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
-            <path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="2"/>
-          </svg>
-        </button>
-      </div>
-
       <nav class="bottom-nav" aria-label="Navegação principal">
         <a class="bottom-nav__item {% if active_tab == 'home' %}bottom-nav__item--active{% endif %}" href="/dashboard">
           <span class="bottom-nav__icon" aria-hidden="true">

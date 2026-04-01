@@ -414,40 +414,40 @@ function initializeVariantSwitchers() {
   });
 }
 
-function setFabMenuState(fabRoot, shouldOpen) {
+function setCreateMenuState(createRoot, shouldOpen) {
   /*
     Responsabilidade:
-      Sincronizar o estado visual e acessível do menu do FAB de criação.
+      Sincronizar o estado visual e acessível do menu de criação do header.
 
     Parametros:
-      fabRoot: Container raiz do FAB que concentra botão e atalhos rápidos.
+      createRoot: Container raiz que concentra botão e atalhos rápidos.
       shouldOpen: Define se o menu deve ficar aberto ou fechado.
 
     Retorno:
       Nenhum.
 
     Contexto de uso:
-      Mantém o comportamento do botão flutuante previsível no mobile sem
+      Mantém o comportamento do botão de criar previsível no mobile sem
       depender de bibliotecas externas nem afetar o fluxo principal do app.
   */
 
-  if (!fabRoot) {
+  if (!createRoot) {
     return;
   }
 
-  const trigger = fabRoot.querySelector("[data-fab-trigger]");
+  const trigger = createRoot.querySelector("[data-create-trigger]");
   if (!trigger) {
     return;
   }
 
-  fabRoot.dataset.open = shouldOpen ? "true" : "false";
+  createRoot.dataset.open = shouldOpen ? "true" : "false";
   trigger.setAttribute("aria-expanded", shouldOpen ? "true" : "false");
 }
 
-function initializeCreateFab() {
+function initializeCreateMenu() {
   /*
     Responsabilidade:
-      Ativar o botão flutuante de criação com menu rápido de atalhos.
+      Ativar o botão de criação do header com menu rápido de atalhos.
 
     Parametros:
       Nenhum.
@@ -456,32 +456,32 @@ function initializeCreateFab() {
       Nenhum.
 
     Contexto de uso:
-      Substitui o CTA grande do header por uma ação mais compacta e nativa
-      para mobile, preservando o acesso aos fluxos de importar e cadastrar.
+      Mantém a ação principal de criar no topo da interface sem depender de
+      um FAB separado, reduzindo ruído visual no shell do app.
   */
 
-  const fabRoot = document.querySelector("[data-fab-root]");
-  const fabTrigger = fabRoot?.querySelector("[data-fab-trigger]");
-  if (!fabRoot || !fabTrigger) {
+  const createRoot = document.querySelector("[data-create-root]");
+  const createTrigger = createRoot?.querySelector("[data-create-trigger]");
+  if (!createRoot || !createTrigger) {
     return;
   }
 
-  setFabMenuState(fabRoot, false);
+  setCreateMenuState(createRoot, false);
 
-  fabTrigger.addEventListener("click", () => {
-    const isOpen = fabRoot.dataset.open === "true";
-    setFabMenuState(fabRoot, !isOpen);
+  createTrigger.addEventListener("click", () => {
+    const isOpen = createRoot.dataset.open === "true";
+    setCreateMenuState(createRoot, !isOpen);
   });
 
   document.addEventListener("click", (event) => {
-    if (!fabRoot.contains(event.target)) {
-      setFabMenuState(fabRoot, false);
+    if (!createRoot.contains(event.target)) {
+      setCreateMenuState(createRoot, false);
     }
   });
 
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape") {
-      setFabMenuState(fabRoot, false);
+      setCreateMenuState(createRoot, false);
     }
   });
 }
@@ -538,6 +538,6 @@ document.querySelectorAll("[data-copy-text]").forEach((element) => {
 });
 
 initializeVariantSwitchers();
-initializeCreateFab();
+initializeCreateMenu();
 initializeManualProductForm();
 initializeImageInputPreviews();
