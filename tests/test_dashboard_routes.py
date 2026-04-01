@@ -21,6 +21,7 @@ from backend.models.sku_event import SkuEvent
 from backend.services.internal_catalog_seed_service import resolve_builtin_internal_catalog_seed_file
 from backend.services.manual_product_group_service import ManualProductGroupService
 from backend.services.product_group_service import ProductGroupService
+from backend.services.product_preview_service import ProductPreviewService
 from backend.services.saved_product_service import SavedProductService
 from backend.services.product_store_service import ProductStoreService
 from backend.services.resolver import ResolveResult
@@ -1654,6 +1655,88 @@ def test_dashboard_salva_edicao_de_produto_com_prateleira_manual(tmp_path: Path)
     shelf_response = routes_dashboard.dashboard_shelf_detail(shelf_request, shelf_number=9)
     shelf_content = shelf_response.body.decode("utf-8")
     assert "Produto X" in shelf_content
+
+
+def test_dashboard_preserva_imagem_visual_ao_migrar_item_do_site_para_legacy(tmp_path: Path) -> None:
+    """
+    Responsabilidade:
+        Garantir que a imagem visivel do produto nao suma ao retirar o item do
+        fluxo do site e mantê-lo como legado/manual no catalogo.
+
+    Parametros:
+        tmp_path: Diretorio temporario usado para isolar storage e cache.
+
+    Retorno:
+        Nenhum; valida a persistencia da imagem promovida do preview.
+
+    Contexto de uso:
+        Protege o fluxo operacional em que um perfume sai do site, mas ainda
+        existe fisicamente na loja e precisa continuar com foto no app.
+    """
+
+    app = _build_app_with_temp_storage(tmp_path)
+    app.state.product_resolver = FakeResolver(
+        fetcher=FakePageFetcher(
+            html_content=(
+                "<html><head>"
+                "<title>Joop! Homme 75ml</title>"
+                "<meta property=\"og:image\" content=\"https://cdn.exemplo/joop-homme.jpg\"/>"
+                "</head><body></body></html>"
+            ),
+            final_url="https://example.com/joop-homme",
+        )
+    )
+    app.state.product_preview_service = ProductPreviewService(
+        storage_file_path=tmp_path / "product_previews.json",
+        fetcher=app.state.product_resolver.fetcher,
+    )
+    app.state.product_store_service.upsert_product(
+        ProductRecord(
+            alias="joop_homme_75ml",
+            brand="Joop!",
+            name="Joop! Homme",
+            variant="75ml",
+            last_known_url="https://example.com/joop-homme",
+            last_known_sku="520324842",
+            source_type="site",
+            site_link_status="linked_to_site",
+            shelf_number=9,
+        )
+    )
+    existing_product = app.state.product_store_service.get_by_alias("joop_homme_75ml")
+    assert existing_product is not None
+    preview_service = app.state.product_preview_service
+    assert preview_service.ensure_preview(existing_product) is not None
+
+    payload = urlencode(
+        {
+            "source_type": "legacy",
+            "alias": "joop_homme_75ml",
+            "brand": "Joop!",
+            "name": "Joop! Homme",
+            "concentration": "EDT",
+            "variant": "75ml",
+            "last_known_url": "https://example.com/joop-homme",
+            "last_known_sku": "520324842",
+            "image_url": "",
+            "stock_qty": "0",
+        }
+    ).encode("utf-8")
+    request = _build_request(
+        app,
+        method="POST",
+        path="/dashboard/products/joop_homme_75ml/edit",
+        body=payload,
+        content_type="application/x-www-form-urlencoded",
+    )
+
+    response = asyncio.run(routes_dashboard.dashboard_edit_product(request, alias="joop_homme_75ml"))
+    updated_product = app.state.product_store_service.get_by_alias("joop_homme_75ml")
+
+    assert isinstance(response, RedirectResponse)
+    assert updated_product is not None
+    assert updated_product.source_type == "legacy"
+    assert updated_product.image_url == "https://cdn.exemplo/joop-homme.jpg"
 
 
 def test_dashboard_edita_variante_manual_usando_a_linha_visivel_do_formulario(tmp_path: Path) -> None:

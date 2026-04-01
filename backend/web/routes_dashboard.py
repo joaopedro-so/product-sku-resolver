@@ -1055,6 +1055,64 @@ def _extract_product_form_submission(form_data: Any) -> Dict[str, str]:
     return submitted_data
 
 
+def _resolve_image_url_for_edit_submission(
+    request: Request,
+    existing_product: ProductRecord,
+    submitted_data: Dict[str, str],
+    product_image_file: UploadFile | None,
+) -> str:
+    """
+    Responsabilidade:
+        Definir qual imagem deve ser persistida ao editar um produto existente.
+
+    Parametros:
+        request: Requisicao HTTP atual para acessar uploads e previews.
+        existing_product: Produto persistido antes da edicao.
+        submitted_data: Payload atual do formulario ja normalizado.
+        product_image_file: Upload enviado explicitamente pelo operador.
+
+    Retorno:
+        URL final da imagem que deve ficar gravada no cadastro.
+
+    Contexto de uso:
+        Evita que um produto perca a imagem ao sair do fluxo do site para
+        `manual` ou `legacy`. Nesses casos, se a UI estava usando apenas o
+        preview visual do site, promovemos essa imagem para `image_url`
+        persistida antes de salvar a edicao.
+    """
+
+    if product_image_file is not None:
+        return _get_uploaded_image_service(request).save_uploaded_file(
+            product_image_file,
+            product_alias=submitted_data.get("alias", existing_product.alias),
+            variant_label=submitted_data.get("variant", ""),
+        )
+
+    submitted_image_url = str(submitted_data.get("image_url", "")).strip()
+    if submitted_image_url:
+        return submitted_image_url
+
+    if existing_product.image_url:
+        return existing_product.image_url
+
+    normalized_source_type = str(submitted_data.get("source_type", existing_product.source_type)).strip().lower()
+    if normalized_source_type not in {"manual", "legacy"}:
+        return ""
+
+    preview_service = _get_preview_service(request)
+    if preview_service is None:
+        return ""
+
+    cached_preview = preview_service.get_cached_preview(existing_product)
+    if cached_preview is None:
+        cached_preview = preview_service.ensure_preview(existing_product)
+
+    if cached_preview is None:
+        return ""
+
+    return str(cached_preview.image_url or "").strip()
+
+
 def _validate_product_submission(
     submitted_data: Dict[str, str],
     manual_variants: Optional[List[Dict[str, Any]]] = None,
@@ -3495,14 +3553,12 @@ async def dashboard_edit_product(request: Request, alias: str) -> Any:
         )
 
     try:
-        if product_image_file is not None:
-            submitted_data["image_url"] = _get_uploaded_image_service(request).save_uploaded_file(
-                product_image_file,
-                product_alias=submitted_data.get("alias", alias),
-                variant_label=submitted_data.get("variant", ""),
-            )
-        else:
-            submitted_data["image_url"] = submitted_data.get("image_url") or existing_product.image_url
+        submitted_data["image_url"] = _resolve_image_url_for_edit_submission(
+            request=request,
+            existing_product=existing_product,
+            submitted_data=submitted_data,
+            product_image_file=product_image_file,
+        )
 
         submitted_data["parent_reference"] = existing_product.parent_reference or _build_default_parent_reference(submitted_data)
         submitted_data["source_type"] = submitted_data.get("source_type") or existing_product.source_type
