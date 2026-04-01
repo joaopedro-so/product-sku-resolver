@@ -18,6 +18,7 @@ from urllib.parse import urlencode
 from fastapi import APIRouter, HTTPException, Request, UploadFile, status
 from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
+from starlette.datastructures import UploadFile as StarletteUploadFile
 
 from backend.models.product import ProductRecord
 from backend.models.sku_event import SkuEvent
@@ -847,7 +848,12 @@ def _normalize_uploaded_file(raw_value: Any) -> UploadFile | None:
         durante a criação manual com câmera ou galeria.
     """
 
-    if not isinstance(raw_value, UploadFile):
+    # Decisao tecnica:
+    # O objeto retornado por `await request.form()` costuma ser a classe de
+    # upload do Starlette. Em algumas execucoes ela nao passa em `isinstance`
+    # contra `fastapi.UploadFile`, mesmo sendo um upload valido. Aceitamos as
+    # duas classes para evitar que a imagem seja descartada silenciosamente.
+    if not isinstance(raw_value, (UploadFile, StarletteUploadFile)):
         return None
 
     if not str(raw_value.filename or "").strip():
@@ -1291,7 +1297,7 @@ def _build_product_records_from_submission(
         for row_index, variant_row in enumerate(manual_variants):
             variant_image_url = product_level_image_url
             variant_image_file = variant_row.get("image_file")
-            if isinstance(variant_image_file, UploadFile):
+            if variant_image_file is not None:
                 variant_image_url = uploaded_image_service.save_uploaded_file(
                     variant_image_file,
                     product_alias=submitted_data.get("alias", ""),

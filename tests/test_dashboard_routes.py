@@ -6,10 +6,12 @@ from __future__ import annotations
 
 import asyncio
 import json
+from io import BytesIO
 from pathlib import Path
 from urllib.parse import urlencode, urlsplit
 
 from fastapi import FastAPI
+from starlette.datastructures import UploadFile as StarletteUploadFile
 from starlette.requests import Request
 from starlette.responses import RedirectResponse
 from starlette.templating import _TemplateResponse
@@ -833,6 +835,87 @@ def test_dashboard_respeita_prateleira_manual_no_cadastro(tmp_path: Path) -> Non
     shelf_response = routes_dashboard.dashboard_shelf_detail(shelf_request, shelf_number=8)
     shelf_content = shelf_response.body.decode("utf-8")
     assert "Produto Manual" in shelf_content
+
+
+def test_normalize_uploaded_file_aceita_upload_do_starlette() -> None:
+    """
+    Responsabilidade:
+        Garantir que uploads vindos do parser real do formulario nao sejam
+        descartados por diferenca de classe entre FastAPI e Starlette.
+
+    Parametros:
+        Nenhum.
+
+    Retorno:
+        Nenhum; valida a normalizacao do objeto de upload.
+
+    Contexto de uso:
+        Protege o fluxo mobile de camera/galeria, onde a imagem chegava ao
+        backend mas era ignorada por um `isinstance` restritivo demais.
+    """
+
+    uploaded_file = StarletteUploadFile(
+        filename="frasco.png",
+        file=BytesIO(b"imagem-manual"),
+    )
+
+    normalized_file = routes_dashboard._normalize_uploaded_file(uploaded_file)
+
+    assert normalized_file is uploaded_file
+
+
+def test_build_product_records_from_submission_persiste_imagem_enviada(
+    tmp_path: Path,
+) -> None:
+    """
+    Responsabilidade:
+        Garantir que o cadastro manual converta um upload valido em `image_url`
+        persistivel no ProductRecord final.
+
+    Parametros:
+        tmp_path: Diretorio temporario usado para isolar o storage do app.
+
+    Retorno:
+        Nenhum; valida que a imagem do produto vira URL publica persistida.
+
+    Contexto de uso:
+        Cobre o caminho central do bug reportado: a imagem entrava no POST,
+        mas nao sobrevivia ate o registro salvo do produto.
+    """
+
+    app = _build_app_with_temp_storage(tmp_path)
+    uploaded_file = StarletteUploadFile(
+        filename="frasco.png",
+        file=BytesIO(b"imagem-manual"),
+    )
+    request = _build_request(app, method="GET", path="/dashboard/products/new")
+    submitted_data = {
+        "alias": "produto_com_imagem",
+        "brand": "Marca X",
+        "name": "Perfume Interno",
+        "variant": "100ml",
+        "last_known_url": "",
+        "last_known_sku": "123456",
+        "source_type": "manual",
+        "concentration": "EDT",
+        "shelf_reference_label": "",
+        "notes": "",
+        "image_url": "",
+        "stock_qty": "2",
+        "variant_notes": "",
+        "shelf_number": "9",
+        "display_order": "1",
+    }
+
+    products_to_persist = routes_dashboard._build_product_records_from_submission(
+        request=request,
+        submitted_data=submitted_data,
+        manual_variants=[],
+        product_image_file=routes_dashboard._normalize_uploaded_file(uploaded_file),
+    )
+
+    assert len(products_to_persist) == 1
+    assert products_to_persist[0].image_url.startswith("/dashboard/uploads/")
 
 
 def test_dashboard_search_renderiza_lista_operacional(tmp_path: Path) -> None:
