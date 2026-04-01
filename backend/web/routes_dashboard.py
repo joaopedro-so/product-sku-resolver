@@ -657,6 +657,7 @@ def _build_new_product_form_context(
     form_action_url: str = "/dashboard/products",
     submit_button_label: str = "Salvar produto",
     cancel_url: str = "/dashboard",
+    allows_site_variants: Optional[bool] = None,
 ) -> Dict[str, Any]:
     """
     Responsabilidade:
@@ -673,6 +674,8 @@ def _build_new_product_form_context(
         form_action_url: Endpoint que recebera o submit principal.
         submit_button_label: Texto do botao principal.
         cancel_url: Destino do CTA secundario de cancelamento.
+        allows_site_variants: Define se a UI deve permitir lote de variantes
+            mesmo quando a origem atual for `site`.
 
     Retorno:
         Dicionario compativel com `add_product.html`.
@@ -701,6 +704,7 @@ def _build_new_product_form_context(
         "form_action_url": form_action_url,
         "submit_button_label": submit_button_label,
         "cancel_url": cancel_url,
+        "allows_site_variants": (form_mode != "edit") if allows_site_variants is None else allows_site_variants,
     }
 
 
@@ -1012,6 +1016,107 @@ def _build_single_manual_variant_row(
     ]
 
 
+def _build_manual_variant_rows_from_group(
+    grouped_product: GroupedParentProduct,
+) -> List[Dict[str, str]]:
+    """
+    Responsabilidade:
+        Converter um grupo de variantes em linhas prontas para o formulário.
+
+    Parametros:
+        grouped_product: Produto pai agrupado com todas as variantes atuais.
+
+    Retorno:
+        Lista de dicionarios compatível com a seção repetível do template.
+
+    Contexto de uso:
+        Permite que a edição carregue o perfume inteiro, e não apenas a
+        variante aberta, destravando manutenção de volumes adicionais.
+    """
+
+    return [
+        {
+            "alias": grouped_variant.alias,
+            "label": grouped_variant.product.variant,
+            "code": grouped_variant.product.last_known_sku,
+            "stock_qty": str(grouped_variant.product.stock_qty),
+            "notes": grouped_variant.product.variant_notes,
+        }
+        for grouped_variant in grouped_product.variants
+    ]
+
+
+def _resolve_group_products_for_alias(
+    request: Request,
+    product_alias: str,
+) -> List[ProductRecord]:
+    """
+    Responsabilidade:
+        Descobrir todas as variantes que pertencem ao mesmo perfume pai.
+
+    Parametros:
+        request: Requisicao HTTP atual com acesso ao store e ao agrupador.
+        product_alias: Alias da variante usada como ponto de entrada.
+
+    Retorno:
+        Lista de ProductRecord do mesmo grupo, mantendo a ordem do agrupamento.
+
+    Contexto de uso:
+        Base para formularios de edicao em lote, onde o operador precisa
+        enxergar e salvar o conjunto de variantes do perfume.
+    """
+
+    all_products = _get_store_service(request).list_products()
+    grouped_product = _get_product_group_service(request).get_group_for_alias(all_products, product_alias)
+    if grouped_product is None:
+        fallback_product = _get_store_service(request).get_by_alias(product_alias)
+        return [fallback_product] if fallback_product is not None else []
+
+    return [grouped_variant.product for grouped_variant in grouped_product.variants]
+
+
+def _ensure_batch_aliases_are_available_for_edit(
+    product_store: ProductStoreService,
+    products_to_persist: List[ProductRecord],
+    allowed_current_aliases: set[str],
+) -> Optional[str]:
+    """
+    Responsabilidade:
+        Validar aliases de uma edicao em lote sem bloquear os aliases atuais.
+
+    Parametros:
+        product_store: Storage usado para consultar colisões existentes.
+        products_to_persist: Lote final de variantes que será salvo.
+        allowed_current_aliases: Aliases que já pertencem ao grupo em edição.
+
+    Retorno:
+        Mensagem de erro quando houver colisão; caso contrário, None.
+
+    Contexto de uso:
+        A edição do grupo pode manter aliases antigos, remover linhas e criar
+        novas variantes. Esta validação precisa aceitar os aliases do próprio
+        grupo sem liberar colisões com produtos de fora.
+    """
+
+    seen_aliases: set[str] = set()
+    for product in products_to_persist:
+        normalized_alias = product.alias.strip()
+        if normalized_alias in seen_aliases:
+            return f"O alias '{normalized_alias}' foi repetido no lote de variantes."
+        seen_aliases.add(normalized_alias)
+
+        existing_product = product_store.get_by_alias(normalized_alias)
+        if existing_product is None:
+            continue
+
+        if existing_product.alias in allowed_current_aliases:
+            continue
+
+        return f"Ja existe um produto cadastrado com o alias '{normalized_alias}'."
+
+    return None
+
+
 def _extract_product_form_submission(form_data: Any) -> Dict[str, str]:
     """
     Responsabilidade:
@@ -1111,6 +1216,158 @@ def _resolve_image_url_for_edit_submission(
         return ""
 
     return str(cached_preview.image_url or "").strip()
+
+
+def _build_group_products_for_edit_submission(
+    request: Request,
+    submitted_data: Dict[str, str],
+    manual_variants: List[Dict[str, Any]],
+    current_group_products: List[ProductRecord],
+    product_image_file: UploadFile | None,
+) -> List[ProductRecord]:
+    """
+    Responsabilidade:
+        Transformar a edição em lote de um perfume no conjunto final de variantes.
+
+    Parametros:
+        request: Requisicao HTTP atual para uploads e resolução de preview.
+        submitted_data: Dados comuns do formulário aplicados ao grupo inteiro.
+        manual_variants: Linhas visíveis da seção de variantes.
+        current_group_products: Variantes atualmente persistidas para o grupo.
+        product_image_file: Upload geral do produto usado como fallback visual.
+
+    Retorno:
+        Lista de ProductRecord pronta para substituir/adicionar variantes.
+
+    Contexto de uso:
+        Dá suporte à manutenção real de perfumes com múltiplos volumes sem
+        desmontar o modelo atual em que cada variante ainda é uma linha plana.
+    """
+
+    if not current_group_products:
+        return _build_product_records_from_submission(
+            request=request,
+            submitted_data=submitted_data,
+            manual_variants=manual_variants,
+            product_image_file=product_image_file,
+        )
+
+    existing_products_by_alias = {product.alias: product for product in current_group_products}
+    anchor_product = existing_products_by_alias.get(submitted_data.get("alias", "")) or current_group_products[0]
+    group_parent_reference = next(
+        (product.parent_reference for product in current_group_products if product.parent_reference),
+        "",
+    ) or _build_default_parent_reference(submitted_data)
+    group_base_alias = group_parent_reference or anchor_product.alias or submitted_data.get("alias", "")
+    product_level_image_url = _resolve_image_url_for_edit_submission(
+        request=request,
+        existing_product=anchor_product,
+        submitted_data=submitted_data,
+        product_image_file=product_image_file,
+    )
+
+    normalized_variant_rows = manual_variants or [
+        {
+            "alias": anchor_product.alias,
+            "label": submitted_data.get("variant", ""),
+            "code": submitted_data.get("last_known_sku", ""),
+            "stock_qty": submitted_data.get("stock_qty", "0"),
+            "notes": submitted_data.get("variant_notes", ""),
+            "image_file": None,
+        }
+    ]
+
+    products_to_persist: List[ProductRecord] = []
+    for row_index, variant_row in enumerate(normalized_variant_rows):
+        current_variant_alias = str(variant_row.get("alias", "")).strip()
+        current_variant_product = existing_products_by_alias.get(current_variant_alias)
+        variant_image_url = current_variant_product.image_url if current_variant_product is not None else product_level_image_url
+        variant_image_file = variant_row.get("image_file")
+        if variant_image_file is not None:
+            variant_image_url = _get_uploaded_image_service(request).save_uploaded_file(
+                variant_image_file,
+                product_alias=group_base_alias,
+                variant_label=str(variant_row.get("label", "")),
+            )
+        elif not variant_image_url:
+            variant_image_url = product_level_image_url
+
+        variant_submission = {
+            **submitted_data,
+            "alias": current_variant_alias
+            or _build_manual_variant_alias(
+                base_alias=group_base_alias,
+                variant_label=str(variant_row.get("label", "")),
+                row_index=row_index,
+            ),
+            "variant": str(variant_row.get("label", "")).strip(),
+            "last_known_sku": str(variant_row.get("code", "")).strip(),
+            "stock_qty": _normalize_optional_numeric_text(variant_row.get("stock_qty")) or "0",
+            "variant_notes": str(variant_row.get("notes", "")).strip(),
+            "image_url": variant_image_url,
+            "parent_reference": group_parent_reference,
+        }
+        products_to_persist.append(_build_product_record_from_submission(variant_submission))
+
+    return products_to_persist
+
+
+def _persist_group_edit_submission(
+    request: Request,
+    current_group_products: List[ProductRecord],
+    products_to_persist: List[ProductRecord],
+    preferred_alias: str = "",
+) -> ProductRecord:
+    """
+    Responsabilidade:
+        Aplicar a edição em lote do grupo, incluindo adição e remoção de variantes.
+
+    Parametros:
+        request: Requisicao HTTP atual para acessar store e estados auxiliares.
+        current_group_products: Variantes atualmente salvas para o perfume pai.
+        products_to_persist: Lote final gerado a partir do formulário.
+        preferred_alias: Alias que deve ser priorizado no retorno final.
+
+    Retorno:
+        Primeiro ProductRecord persistido do lote, usado como destino do redirect.
+
+    Contexto de uso:
+        Mantém o contrato atual do storage por variante, mas permite que a UI
+        trate a manutenção do perfume como uma operação única por grupo.
+    """
+
+    store_service = _get_store_service(request)
+    current_products_by_alias = {product.alias: product for product in current_group_products}
+    persisted_products: List[ProductRecord] = []
+
+    for product_to_persist in products_to_persist:
+        if product_to_persist.alias in current_products_by_alias:
+            persisted_product = store_service.replace_product(
+                current_alias=product_to_persist.alias,
+                updated_product=product_to_persist,
+            )
+        else:
+            persisted_product = store_service.upsert_product(product_to_persist)
+        persisted_products.append(persisted_product)
+
+    persisted_aliases = {product.alias for product in products_to_persist}
+    aliases_to_remove = [
+        current_product.alias
+        for current_product in current_group_products
+        if current_product.alias not in persisted_aliases
+    ]
+    for removed_alias in aliases_to_remove:
+        removed_product = store_service.delete_product(removed_alias)
+        _get_saved_service(request).unsave_alias(removed_product.alias)
+        last_update_by_alias.pop(removed_product.alias, None)
+
+    normalized_preferred_alias = preferred_alias.strip()
+    if normalized_preferred_alias:
+        for persisted_product in persisted_products:
+            if persisted_product.alias == normalized_preferred_alias:
+                return persisted_product
+
+    return persisted_products[0]
 
 
 def _validate_product_submission(
@@ -3370,22 +3627,24 @@ def dashboard_edit_product_form(request: Request, alias: str) -> Any:
             ),
             status_code=404,
         )
-
+    current_group_products = _resolve_group_products_for_alias(request, alias)
+    grouped_product = _get_product_group_service(request).get_group_for_alias(
+        _get_store_service(request).list_products(),
+        alias,
+    )
+    manual_variant_rows = (
+        _build_manual_variant_rows_from_group(grouped_product)
+        if grouped_product is not None
+        else _build_single_manual_variant_row(_build_submitted_data_from_product(product), alias)
+    )
     context = _build_new_product_form_context(
         submitted_data=_build_submitted_data_from_product(product),
-        manual_variant_rows=[
-            {
-                "alias": product.alias,
-                "label": product.variant,
-                "code": product.last_known_sku,
-                "stock_qty": str(product.stock_qty),
-                "notes": product.variant_notes,
-            }
-        ],
+        manual_variant_rows=manual_variant_rows,
         form_mode="edit",
         form_action_url=f"/dashboard/products/{alias}/edit",
         submit_button_label="Salvar alteracoes",
         cancel_url=f"/dashboard/products/{alias}",
+        allows_site_variants=True if current_group_products else False,
     )
     return templates.TemplateResponse(
         request,
@@ -3579,26 +3838,30 @@ async def dashboard_edit_product(request: Request, alias: str) -> Any:
             status_code=404,
         )
 
+    current_group_products = _resolve_group_products_for_alias(request, alias)
     form_data = await request.form()
     submitted_data = _extract_product_form_submission(form_data)
     manual_variants = _extract_manual_variant_submissions(form_data)
-    submitted_data, manual_variants = _normalize_single_manual_variant_for_edit(
-        submitted_data=submitted_data,
-        manual_variants=manual_variants,
-        fallback_alias=alias,
-    )
+    use_group_edit_mode = len(current_group_products) > 1 or len(manual_variants) > 1
+    if len(current_group_products) <= 1:
+        submitted_data, manual_variants = _normalize_single_manual_variant_for_edit(
+            submitted_data=submitted_data,
+            manual_variants=manual_variants,
+            fallback_alias=alias,
+        )
     product_image_file = _normalize_uploaded_file(form_data.get("product_image_file"))
 
     validation_error = _validate_product_submission(submitted_data, manual_variants)
     if validation_error:
         context = _build_new_product_form_context(
             submitted_data=submitted_data,
-            manual_variant_rows=_build_single_manual_variant_row(submitted_data, alias),
+            manual_variant_rows=manual_variants or _build_single_manual_variant_row(submitted_data, alias),
             error_message=validation_error,
             form_mode="edit",
             form_action_url=f"/dashboard/products/{alias}/edit",
             submit_button_label="Salvar alteracoes",
             cancel_url=f"/dashboard/products/{alias}",
+            allows_site_variants=True,
         )
         return templates.TemplateResponse(
             request,
@@ -3611,20 +3874,37 @@ async def dashboard_edit_product(request: Request, alias: str) -> Any:
             status_code=400,
         )
 
-    alias_error = _validate_alias_availability(
-        _get_store_service(request),
-        desired_alias=submitted_data["alias"],
-        current_alias=alias,
-    )
+    if use_group_edit_mode:
+        products_to_persist = _build_group_products_for_edit_submission(
+            request=request,
+            submitted_data=submitted_data,
+            manual_variants=manual_variants,
+            current_group_products=current_group_products or [existing_product],
+            product_image_file=product_image_file,
+        )
+        alias_error = _ensure_batch_aliases_are_available_for_edit(
+            product_store=_get_store_service(request),
+            products_to_persist=products_to_persist,
+            allowed_current_aliases={product.alias for product in current_group_products or [existing_product]},
+        )
+    else:
+        products_to_persist = []
+        alias_error = _validate_alias_availability(
+            _get_store_service(request),
+            desired_alias=submitted_data["alias"],
+            current_alias=alias,
+        )
+
     if alias_error:
         context = _build_new_product_form_context(
             submitted_data=submitted_data,
-            manual_variant_rows=_build_single_manual_variant_row(submitted_data, alias),
+            manual_variant_rows=manual_variants or _build_single_manual_variant_row(submitted_data, alias),
             error_message=alias_error,
             form_mode="edit",
             form_action_url=f"/dashboard/products/{alias}/edit",
             submit_button_label="Salvar alteracoes",
             cancel_url=f"/dashboard/products/{alias}",
+            allows_site_variants=True,
         )
         return templates.TemplateResponse(
             request,
@@ -3638,33 +3918,42 @@ async def dashboard_edit_product(request: Request, alias: str) -> Any:
         )
 
     try:
-        submitted_data["image_url"] = _resolve_image_url_for_edit_submission(
-            request=request,
-            existing_product=existing_product,
-            submitted_data=submitted_data,
-            product_image_file=product_image_file,
-        )
+        if products_to_persist:
+            updated_product = _persist_group_edit_submission(
+                request=request,
+                current_group_products=current_group_products or [existing_product],
+                products_to_persist=products_to_persist,
+                preferred_alias=alias,
+            )
+        else:
+            submitted_data["image_url"] = _resolve_image_url_for_edit_submission(
+                request=request,
+                existing_product=existing_product,
+                submitted_data=submitted_data,
+                product_image_file=product_image_file,
+            )
 
-        submitted_data["parent_reference"] = existing_product.parent_reference or _build_default_parent_reference(submitted_data)
-        submitted_data["source_type"] = submitted_data.get("source_type") or existing_product.source_type
-        updated_product = _get_store_service(request).replace_product(
-            current_alias=alias,
-            updated_product=_build_product_record_from_submission(submitted_data),
-        )
-        _migrate_auxiliary_alias_references(
-            request=request,
-            previous_alias=alias,
-            updated_alias=updated_product.alias,
-        )
+            submitted_data["parent_reference"] = existing_product.parent_reference or _build_default_parent_reference(submitted_data)
+            submitted_data["source_type"] = submitted_data.get("source_type") or existing_product.source_type
+            updated_product = _get_store_service(request).replace_product(
+                current_alias=alias,
+                updated_product=_build_product_record_from_submission(submitted_data),
+            )
+            _migrate_auxiliary_alias_references(
+                request=request,
+                previous_alias=alias,
+                updated_alias=updated_product.alias,
+            )
     except (RuntimeError, ValueError) as error:
         context = _build_new_product_form_context(
             submitted_data=submitted_data,
-            manual_variant_rows=_build_single_manual_variant_row(submitted_data, alias),
+            manual_variant_rows=manual_variants or _build_single_manual_variant_row(submitted_data, alias),
             error_message=f"Nao foi possivel salvar as alteracoes: {error}",
             form_mode="edit",
             form_action_url=f"/dashboard/products/{alias}/edit",
             submit_button_label="Salvar alteracoes",
             cancel_url=f"/dashboard/products/{alias}",
+            allows_site_variants=True,
         )
         return templates.TemplateResponse(
             request,

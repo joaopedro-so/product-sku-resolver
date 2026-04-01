@@ -3,7 +3,7 @@
 {% set is_edit_mode = form_mode == 'edit' %}
 {% set current_source_type = submitted_data.get('source_type', 'site') %}
 {% set supports_manual_fields = current_source_type in ['manual', 'legacy'] %}
-{% set supports_site_variant_batch = not is_edit_mode %}
+{% set supports_site_variant_batch = allows_site_variants %}
 {% set current_image_url = submitted_data.get('image_url', '') or (autofill_preview.get('image_url') if autofill_preview else '') %}
 
 {% block title %}{{ 'Editar produto' if is_edit_mode else 'Novo produto' }}{% endblock %}
@@ -290,14 +290,25 @@
             {{ 'Cada linha vira uma variante persistida com código próprio, estoque independente e imagem opcional.' if supports_manual_fields else 'Use esta área para incluir outros volumes do mesmo perfume usando a mesma página importada do site.' }}
           </p>
         </div>
-        {% if not is_edit_mode %}
         <button class="button button--secondary button--small" type="button" data-add-variant-row>Adicionar variante</button>
-        {% endif %}
       </div>
 
       <div class="manual-variant-list" data-manual-variant-list>
         {% for row in manual_variant_rows %}
         <article class="manual-variant-row" data-manual-variant-row>
+          <div class="manual-variant-row__header">
+            <div class="manual-variant-row__heading">
+              <p class="manual-variant-row__eyebrow">Variante {{ loop.index }}</p>
+              <strong class="manual-variant-row__title" data-manual-variant-title>Variante {{ loop.index }}</strong>
+              <p class="manual-variant-row__summary" data-manual-variant-summary>
+                {{ row.get('label', '') or 'Preencha volume, código e estoque para incluir esta linha no grupo.' }}
+              </p>
+            </div>
+            <span class="manual-variant-row__state" data-manual-variant-state>
+              {{ row.get('label', '') or 'Nova variante' }}
+            </span>
+          </div>
+
           <div class="manual-variant-row__grid">
             <label class="form-field">
               <span>Rótulo</span>
@@ -314,7 +325,7 @@
               <input type="number" min="0" name="manual_variant_stock_qty" value="{{ row.get('stock_qty', '0') }}" placeholder="0" />
             </label>
 
-            <label class="form-field" {% if is_edit_mode %}hidden{% endif %}>
+            <label class="form-field">
               <span>Alias da variante</span>
               <input
                 type="text"
@@ -334,7 +345,7 @@
               />
             </label>
 
-            <label class="form-field form-field--full" {% if is_edit_mode %}hidden{% endif %}>
+            <label class="form-field form-field--full">
               <span>Imagem opcional da variante</span>
               <input
                 type="file"
@@ -345,16 +356,24 @@
             </label>
           </div>
 
-          {% if not is_edit_mode %}
           <button class="button button--ghost button--small" type="button" data-remove-variant-row>Remover</button>
-          {% endif %}
         </article>
         {% endfor %}
       </div>
 
-      {% if not is_edit_mode %}
       <template data-manual-variant-template>
         <article class="manual-variant-row" data-manual-variant-row>
+          <div class="manual-variant-row__header">
+            <div class="manual-variant-row__heading">
+              <p class="manual-variant-row__eyebrow">Nova variante</p>
+              <strong class="manual-variant-row__title" data-manual-variant-title>Nova variante</strong>
+              <p class="manual-variant-row__summary" data-manual-variant-summary>
+                Preencha volume, código e estoque para incluir esta linha no grupo.
+              </p>
+            </div>
+            <span class="manual-variant-row__state" data-manual-variant-state>Nova variante</span>
+          </div>
+
           <div class="manual-variant-row__grid">
             <label class="form-field">
               <span>Rótulo</span>
@@ -389,7 +408,6 @@
           <button class="button button--ghost button--small" type="button" data-remove-variant-row>Remover</button>
         </article>
       </template>
-      {% endif %}
     </div>
 
     <div class="editor-card__section">

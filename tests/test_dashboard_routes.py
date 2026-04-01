@@ -1487,8 +1487,8 @@ def test_dashboard_abre_formulario_da_variante_manual_correta(tmp_path: Path) ->
         Nenhum; valida o HTML devolvido pela rota de edição manual.
 
     Contexto de uso:
-        Protege o fluxo em que o operador abre a segunda variante do mesmo
-        perfume e precisa enxergar exatamente os dados dessa variante.
+        Protege o novo fluxo de edição em lote, onde abrir a segunda variante
+        deve carregar o grupo inteiro sem perder o foco na variante escolhida.
     """
 
     app = _build_app_with_temp_storage(tmp_path)
@@ -1528,7 +1528,12 @@ def test_dashboard_abre_formulario_da_variante_manual_correta(tmp_path: Path) ->
     assert "good_girl_interno_80ml" in content
     assert "444555666" in content
     assert 'value="80ml"' in content
-    assert "good_girl_interno_50ml" not in content
+    assert "good_girl_interno_50ml" in content
+    assert "111222333" in content
+    assert "Adicionar variante" in content
+    assert "data-manual-variant-template" in content
+    assert "data-manual-variant-title" in content
+    assert "data-manual-variant-state" in content
 
 
 def test_dashboard_salva_produto_em_saved(tmp_path: Path) -> None:
@@ -1858,6 +1863,11 @@ def test_dashboard_edita_variante_manual_usando_a_linha_visivel_do_formulario(tm
             ("last_known_sku", "111222333"),
             ("stock_qty", "2"),
             ("variant_notes", "Linha oculta antiga."),
+            ("manual_variant_label", "50ml"),
+            ("manual_variant_code", "111222333"),
+            ("manual_variant_stock_qty", "2"),
+            ("manual_variant_notes", "Variante base preservada."),
+            ("manual_variant_alias", "good_girl_interno_50ml"),
             ("manual_variant_label", "80ml"),
             ("manual_variant_code", "888999000"),
             ("manual_variant_stock_qty", "4"),
@@ -1888,6 +1898,106 @@ def test_dashboard_edita_variante_manual_usando_a_linha_visivel_do_formulario(tm
     assert updated_variant.stock_qty == 4
     assert updated_variant.variant_notes == "Variante correta editada."
     assert untouched_variant.last_known_sku == "111222333"
+    assert untouched_variant.variant_notes == "Variante base preservada."
+
+
+def test_dashboard_edita_grupo_de_variantes_e_adiciona_nova_linha(tmp_path: Path) -> None:
+    """
+    Responsabilidade:
+        Garantir que a edicao do grupo aceite atualizar varias variantes e
+        incluir um novo volume no mesmo submit.
+
+    Parametros:
+        tmp_path: Diretorio temporario usado para isolar o storage do teste.
+
+    Retorno:
+        Nenhum; valida persistencia do lote final de variantes.
+
+    Contexto de uso:
+        Protege o fluxo de manutencao pedido pelo operador, em que a edicao do
+        perfume precisa funcionar como painel do grupo inteiro.
+    """
+
+    app = _build_app_with_temp_storage(tmp_path)
+    app.state.product_store_service.upsert_product(
+        ProductRecord(
+            alias="power_of_seduction_100ml",
+            brand="Antonio Banderas",
+            name="Power of Seduction",
+            variant="100ml",
+            last_known_url="https://example.com/power-of-seduction",
+            last_known_sku="546583640",
+            source_type="site",
+            parent_reference="power_of_seduction",
+            shelf_number=3,
+        )
+    )
+    app.state.product_store_service.upsert_product(
+        ProductRecord(
+            alias="power_of_seduction_200ml",
+            brand="Antonio Banderas",
+            name="Power of Seduction",
+            variant="200ml",
+            last_known_url="https://example.com/power-of-seduction",
+            last_known_sku="549040085",
+            source_type="site",
+            parent_reference="power_of_seduction",
+            shelf_number=3,
+        )
+    )
+
+    payload = urlencode(
+        [
+            ("source_type", "site"),
+            ("alias", "power_of_seduction_100ml"),
+            ("brand", "Antonio Banderas"),
+            ("name", "Power of Seduction"),
+            ("concentration", "EDT"),
+            ("variant", "100ml"),
+            ("last_known_url", "https://example.com/power-of-seduction"),
+            ("last_known_sku", "546583640"),
+            ("stock_qty", "0"),
+            ("manual_variant_alias", "power_of_seduction_100ml"),
+            ("manual_variant_label", "100ml"),
+            ("manual_variant_code", "546583640"),
+            ("manual_variant_stock_qty", "2"),
+            ("manual_variant_notes", "estoque revisado"),
+            ("manual_variant_alias", "power_of_seduction_200ml"),
+            ("manual_variant_label", "200ml"),
+            ("manual_variant_code", "549040085"),
+            ("manual_variant_stock_qty", "1"),
+            ("manual_variant_notes", "frasco maior"),
+            ("manual_variant_alias", ""),
+            ("manual_variant_label", "50ml"),
+            ("manual_variant_code", "536814854"),
+            ("manual_variant_stock_qty", "3"),
+            ("manual_variant_notes", "nova variante"),
+        ],
+        doseq=True,
+    ).encode("utf-8")
+    request = _build_request(
+        app,
+        method="POST",
+        path="/dashboard/products/power_of_seduction_100ml/edit",
+        body=payload,
+        content_type="application/x-www-form-urlencoded",
+    )
+
+    response = asyncio.run(routes_dashboard.dashboard_edit_product(request, alias="power_of_seduction_100ml"))
+    variant_100ml = app.state.product_store_service.get_by_alias("power_of_seduction_100ml")
+    variant_200ml = app.state.product_store_service.get_by_alias("power_of_seduction_200ml")
+    variant_50ml = app.state.product_store_service.get_by_alias("power_of_seduction_50ml")
+
+    assert isinstance(response, RedirectResponse)
+    assert response.status_code == 303
+    assert variant_100ml is not None
+    assert variant_200ml is not None
+    assert variant_50ml is not None
+    assert variant_100ml.stock_qty == 2
+    assert variant_100ml.variant_notes == "estoque revisado"
+    assert variant_200ml.stock_qty == 1
+    assert variant_50ml.last_known_sku == "536814854"
+    assert variant_50ml.parent_reference == "power_of_seduction"
 
 
 def test_dashboard_edita_alias_e_migra_salvos_e_historico(tmp_path: Path) -> None:

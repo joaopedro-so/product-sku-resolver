@@ -359,6 +359,135 @@ function clearVariantRowInputs(variantRow) {
   });
 }
 
+function readManualVariantFieldValue(variantRow, fieldName) {
+  /*
+    Responsabilidade:
+      Ler de forma segura o valor textual principal de um campo da variante.
+
+    Parametros:
+      variantRow: Linha visual que concentra os inputs da variante.
+      fieldName: Nome do campo HTML a ser consultado.
+
+    Retorno:
+      Texto normalizado sem espaços nas pontas. Retorna string vazia se o
+      campo não existir.
+
+    Contexto de uso:
+      Centraliza a leitura dos campos do editor de variantes para que a
+      camada visual monte títulos e resumos sem duplicar seletores.
+  */
+
+  if (!variantRow) {
+    return "";
+  }
+
+  const field = variantRow.querySelector(`[name="${fieldName}"]`);
+  if (!field || typeof field.value !== "string") {
+    return "";
+  }
+
+  return field.value.trim();
+}
+
+function hasManualVariantImageSelection(variantRow) {
+  /*
+    Responsabilidade:
+      Identificar se a linha da variante já possui uma imagem escolhida.
+
+    Parametros:
+      variantRow: Linha visual avaliada no formulário.
+
+    Retorno:
+      `true` quando existe arquivo selecionado ou alguma referência de imagem
+      persistida na linha; `false` nos demais casos.
+
+    Contexto de uso:
+      O status visual da linha precisa considerar também imagens importadas,
+      porque uma variante pode estar em edição mesmo antes de receber código.
+  */
+
+  if (!variantRow) {
+    return false;
+  }
+
+  const fileField = variantRow.querySelector('[name="manual_variant_image"]');
+  if (fileField && fileField.files && fileField.files.length > 0) {
+    return true;
+  }
+
+  const persistedImageField = variantRow.querySelector('[name="manual_variant_image_url"]');
+  return Boolean(persistedImageField && persistedImageField.value.trim());
+}
+
+function refreshManualVariantRowPresentation(variantList) {
+  /*
+    Responsabilidade:
+      Atualizar títulos, estados e resumo visual das linhas de variante.
+
+    Parametros:
+      variantList: Container que agrupa todas as variantes do formulário.
+
+    Retorno:
+      Nenhum.
+
+    Contexto de uso:
+      Mantém a edição mais clara ao renumerar as linhas após adição/remoção e
+      ao diferenciar visualmente uma variante preenchida de uma nova linha.
+  */
+
+  if (!variantList) {
+    return;
+  }
+
+  const variantRows = Array.from(variantList.querySelectorAll("[data-manual-variant-row]"));
+
+  variantRows.forEach((variantRow, index) => {
+    const titleElement = variantRow.querySelector("[data-manual-variant-title]");
+    const eyebrowElement = variantRow.querySelector(".manual-variant-row__eyebrow");
+    const summaryElement = variantRow.querySelector("[data-manual-variant-summary]");
+    const stateElement = variantRow.querySelector("[data-manual-variant-state]");
+    const variantLabel = readManualVariantFieldValue(variantRow, "manual_variant_label");
+    const variantCode = readManualVariantFieldValue(variantRow, "manual_variant_code");
+    const variantAlias = readManualVariantFieldValue(variantRow, "manual_variant_alias");
+    const variantNotes = readManualVariantFieldValue(variantRow, "manual_variant_notes");
+    const rawStockQty = readManualVariantFieldValue(variantRow, "manual_variant_stock_qty");
+    const hasSelectedImage = hasManualVariantImageSelection(variantRow);
+    const hasMeaningfulStock = rawStockQty !== "" && rawStockQty !== "0";
+    const hasMeaningfulData = Boolean(
+      variantLabel || variantCode || variantAlias || variantNotes || hasMeaningfulStock || hasSelectedImage,
+    );
+    const sequenceLabel = `Variante ${index + 1}`;
+
+    if (eyebrowElement) {
+      eyebrowElement.textContent = sequenceLabel;
+    }
+
+    if (titleElement) {
+      titleElement.textContent = sequenceLabel;
+    }
+
+    if (stateElement) {
+      stateElement.textContent = hasMeaningfulData ? (variantLabel || "Em edição") : "Nova variante";
+    }
+
+    if (summaryElement) {
+      if (!hasMeaningfulData) {
+        summaryElement.textContent = "Preencha volume, código e estoque para incluir esta linha no grupo.";
+      } else if (variantLabel && variantCode) {
+        summaryElement.textContent = `${variantLabel} • código ${variantCode}`;
+      } else if (variantLabel) {
+        summaryElement.textContent = `${variantLabel} • complete o código e o estoque se necessário`;
+      } else if (variantCode) {
+        summaryElement.textContent = `Código ${variantCode} • defina o rótulo da variante`;
+      } else {
+        summaryElement.textContent = "Linha em edição • revise os campos antes de salvar";
+      }
+    }
+
+    variantRow.classList.toggle("manual-variant-row--draft", !hasMeaningfulData);
+  });
+}
+
 function initializeManualProductForm() {
   /*
     Responsabilidade:
@@ -393,9 +522,12 @@ function initializeManualProductForm() {
   const addVariantButton = formRoot.querySelector("[data-add-variant-row]");
 
   if (variantList && variantTemplate && addVariantButton) {
+    refreshManualVariantRowPresentation(variantList);
+
     addVariantButton.addEventListener("click", () => {
       const fragment = variantTemplate.content.cloneNode(true);
       variantList.appendChild(fragment);
+      refreshManualVariantRowPresentation(variantList);
     });
 
     variantList.addEventListener("click", (event) => {
@@ -412,11 +544,24 @@ function initializeManualProductForm() {
 
       if (variantRows.length <= 1) {
         clearVariantRowInputs(variantRow);
+        refreshManualVariantRowPresentation(variantList);
         return;
       }
 
       variantRow.remove();
+      refreshManualVariantRowPresentation(variantList);
     });
+
+    const refreshRowState = (event) => {
+      if (!event.target.closest("[data-manual-variant-row]")) {
+        return;
+      }
+
+      refreshManualVariantRowPresentation(variantList);
+    };
+
+    variantList.addEventListener("input", refreshRowState);
+    variantList.addEventListener("change", refreshRowState);
   }
 }
 
