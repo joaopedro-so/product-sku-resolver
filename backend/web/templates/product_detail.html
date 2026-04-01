@@ -132,14 +132,9 @@
           <strong class="barcode-panel__sku" title="{{ product.variant_code }}" data-variant-code-label>{{ product.variant_code }}</strong>
         </article>
 
-        {# Mantemos as ações em grade simples para evitar botões espremidos e desconexos. #}
-        <div class="detail-actions">
-          <a class="button button--secondary" href="/dashboard/products/{{ product.alias }}/barcode" data-variant-barcode-link>Código em tela cheia</a>
-          <form method="post" action="/dashboard/products/{{ product.alias }}/update" data-variant-update-form data-variant-sync-action {% if not product.is_syncable %}hidden{% endif %}>
-            <button class="button" type="submit">Atualizar agora</button>
-          </form>
+        {# A hero mantém só a ação de cadastro para não competir com a barra fixa operacional. #}
+        <div class="detail-actions detail-actions--single">
           <a class="button button--secondary" href="/dashboard/products/{{ product.alias }}/edit" data-variant-edit-link>Editar cadastro</a>
-          <button class="button button--ghost" type="button" data-copy-text="{{ product.variant_code }}" data-variant-copy-trigger>Copiar código</button>
         </div>
       </div>
     </div>

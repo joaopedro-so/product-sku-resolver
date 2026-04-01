@@ -1303,6 +1303,10 @@ form {
   min-width: 0;
 }
 
+.detail-actions--single {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .detail-actions .button,
 .detail-actions form {
   width: 100%;
