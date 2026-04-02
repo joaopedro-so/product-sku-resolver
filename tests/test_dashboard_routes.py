@@ -1153,7 +1153,9 @@ def test_dashboard_search_renderiza_lista_operacional(tmp_path: Path) -> None:
     content = response.body.decode("utf-8")
     assert "Resultados" in content
     assert "Produto X" in content
-    assert "SKU" in content
+    assert "Encontre o perfume" in content
+    assert 'class="shelf-product-card"' in content
+    assert "Código" in content
 
 
 def test_dashboard_search_preserva_contexto_nos_links_de_detalhe_e_barcode(tmp_path: Path) -> None:
@@ -1182,6 +1184,104 @@ def test_dashboard_search_preserva_contexto_nos_links_de_detalhe_e_barcode(tmp_p
     assert response.status_code == 200
     content = response.body.decode("utf-8")
     assert "return_to=%2Fdashboard%2Fsearch%3Fq%3Dproduto_teste" in content
+
+
+def test_dashboard_search_agrupa_variantes_em_um_unico_card(tmp_path: Path) -> None:
+    """
+    Responsabilidade:
+        Garantir que a busca respeite o modelo pai + variantes da prateleira.
+
+    Parametros:
+        tmp_path: Diretório temporário para isolar o storage do teste.
+
+    Retorno:
+        Nenhum; valida que variantes não aparecem duplicadas na busca.
+
+    Contexto de uso:
+        Protege a experiência de busca para que ela continue coerente com a
+        estrutura semântica do catálogo e não replique ml como produtos soltos.
+    """
+
+    app = _build_app_with_temp_storage(tmp_path)
+    app.state.product_store_service.upsert_product(
+        ProductRecord(
+            alias="good_girl_50ml",
+            brand="Carolina Herrera",
+            name="Good Girl",
+            variant="50ml",
+            last_known_url="https://example.com/good-girl",
+            last_known_sku="sku-50",
+            parent_reference="good_girl",
+            shelf_number=5,
+        )
+    )
+    app.state.product_store_service.upsert_product(
+        ProductRecord(
+            alias="good_girl_80ml",
+            brand="Carolina Herrera",
+            name="Good Girl",
+            variant="80ml",
+            last_known_url="https://example.com/good-girl",
+            last_known_sku="sku-80",
+            parent_reference="good_girl",
+            shelf_number=5,
+        )
+    )
+    request = _build_request(app, method="GET", path="/dashboard/search?q=Good+Girl")
+
+    response = routes_dashboard.dashboard_search(request)
+
+    assert isinstance(response, _TemplateResponse)
+    assert response.status_code == 200
+    content = response.body.decode("utf-8")
+    assert content.count('class="shelf-product-card"') == 1
+    assert "Good Girl" in content
+    assert "50ml" in content
+    assert "80ml" in content
+
+
+def test_dashboard_prateleira_exibe_busca_explicita_e_limpeza_do_filtro(tmp_path: Path) -> None:
+    """
+    Responsabilidade:
+        Garantir que a busca da prateleira tenha ação explícita e limpeza visível.
+
+    Parametros:
+        tmp_path: Diretório temporário usado para isolar o storage do teste.
+
+    Retorno:
+        Nenhum; valida o formulário de busca contextual da prateleira.
+
+    Contexto de uso:
+        Evita a sensação de filtro "quebrado" no mobile ao deixar claro como
+        buscar e como limpar a query sem perder o filtro de marca atual.
+    """
+
+    app = _build_app_with_temp_storage(tmp_path)
+    app.state.product_store_service.upsert_product(
+        ProductRecord(
+            alias="produto_prateleira_busca",
+            brand="Paco Rabanne",
+            name="Produto de Busca",
+            variant="100ml",
+            last_known_url="https://example.com/produto-busca",
+            last_known_sku="sku-busca",
+            shelf_number=4,
+        )
+    )
+    request = _build_request(
+        app,
+        method="GET",
+        path="/dashboard/prateleiras/4?brand=Paco+Rabanne&q=produto",
+    )
+
+    response = routes_dashboard.dashboard_shelf_detail(request, shelf_number=4)
+
+    assert isinstance(response, _TemplateResponse)
+    assert response.status_code == 200
+    content = response.body.decode("utf-8")
+    assert 'name="brand" value="Paco Rabanne"' in content
+    assert ">Buscar<" in content
+    assert ">Limpar busca<" in content
 
 
 def test_dashboard_cria_lote_de_variantes_no_cadastro_importado_do_site(tmp_path: Path) -> None:
@@ -1702,7 +1802,7 @@ def test_dashboard_cria_produto_manual_com_variantes_e_persistencia_real(tmp_pat
     assert "Good Girl" in shelf_content
     assert "50ml" in shelf_content
     assert "80ml" in shelf_content
-    assert "Cadastro interno" in shelf_content
+    assert "Manual" in shelf_content
 
 
 def test_dashboard_bloqueia_update_para_produto_manual(tmp_path: Path) -> None:

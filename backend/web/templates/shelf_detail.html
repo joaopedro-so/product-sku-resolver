@@ -50,6 +50,12 @@
       {% if selected_brand %}
       <input type="hidden" name="brand" value="{{ selected_brand }}" />
       {% endif %}
+      <div class="search-entry-form__actions">
+        <button class="button button--small" type="submit">Buscar</button>
+        {% if query_text %}
+        <a class="button button--secondary button--small" href="{{ shelf_search_reset_href }}">Limpar busca</a>
+        {% endif %}
+      </div>
     </form>
 
     <div class="filter-chip-row" role="list" aria-label="Filtrar por marca nesta prateleira">
@@ -65,118 +71,7 @@
 <section class="page-section">
   <div class="shelf-product-list">
     {% for card in products %}
-    <article
-      class="shelf-product-card"
-      data-variant-switcher
-      data-variant-storage-key="shelf-{{ card.group_id }}"
-      data-inline-barcode-card
-    >
-      <a class="shelf-product-card__media" href="{{ card.detail_href }}" data-variant-detail-link>
-        <span class="shelf-product-card__media-frame">
-          {% if card.image_url %}
-          <img src="{{ card.image_url }}" alt="Imagem do produto {{ card.name }}" loading="lazy" data-variant-image />
-          {% else %}
-          <div class="product-card__placeholder">Sem imagem</div>
-          {% endif %}
-        </span>
-      </a>
-
-      <div class="shelf-product-card__content">
-        <div class="product-card__topline">
-          <p class="shelf-product-card__brand">{{ card.brand }}</p>
-          {% if card.source_type != 'site' %}
-          <span
-            class="status-badge {% if card.source_type == 'legacy' %}status-badge--warning{% else %}status-badge--neutral{% endif %}"
-            data-variant-source-badge
-          >
-            {{ card.source_label }}
-          </span>
-          {% endif %}
-        </div>
-
-        <a class="shelf-product-card__title" href="{{ card.detail_href }}" data-variant-detail-link>{{ card.name }}</a>
-
-        <p class="shelf-product-card__meta">
-          {% if card.concentration %}{{ card.concentration }}{% endif %}{% if card.concentration and card.selected_variant_label %} • {% endif %}{% if card.selected_variant_label %}<span data-variant-label-only>{{ card.selected_variant_label }}</span>{% endif %}
-        </p>
-
-        <div class="variant-chip-list" role="list" aria-label="Variantes disponíveis de {{ card.name }}">
-          {% for variant in card.variants %}
-          <button
-            class="variant-chip {% if variant.alias == card.selected_alias %}variant-chip--active{% endif %}"
-            type="button"
-            data-variant-option
-            data-variant-alias="{{ variant.alias }}"
-            data-variant-label="{{ variant.label }}"
-            data-variant-code="{{ variant.variant_code }}"
-            data-variant-detail-href="{{ variant.detail_href }}"
-            data-variant-barcode-href="{{ variant.barcode_href }}"
-            data-variant-image-url="{{ variant.image_url or '' }}"
-            data-variant-barcode-data-uri="{{ variant.barcode_data_uri or '' }}"
-            data-variant-status-value="{{ variant.status_label }}"
-            data-variant-status-tone-value="{{ variant.status_tone }}"
-            data-variant-timestamp-value="{{ variant.timestamp_label }}"
-            data-variant-source-value="{{ variant.source_label }}"
-            data-variant-source-type="{{ variant.source_type }}"
-            data-variant-stock-qty="{{ variant.stock_qty }}"
-            data-variant-is-syncable="{{ '1' if variant.is_syncable else '0' }}"
-            aria-label="Selecionar variante {{ variant.label }}"
-          >
-            <span data-variant-option-label>{{ variant.label }}</span>
-          </button>
-          {% endfor %}
-        </div>
-
-        <p class="shelf-product-card__support-line">
-          <span class="shelf-product-card__status" data-variant-status-label>{{ card.status_label }}</span>
-          <span data-variant-stock-label>Estoque {{ card.stock_qty }}</span>
-        </p>
-
-        <div class="shelf-product-card__actions">
-          <button class="button button--small" type="button" data-inline-barcode-toggle aria-expanded="false">Código</button>
-          <a class="button button--secondary button--small" href="{{ card.detail_href }}" data-variant-detail-link>Abrir</a>
-        </div>
-
-        <section class="shelf-inline-barcode" data-inline-barcode-panel hidden aria-label="Código do produto {{ card.name }}">
-          <div class="shelf-inline-barcode__header">
-            <div class="shelf-inline-barcode__identity">
-              <p class="section-kicker">Variante ativa</p>
-              <p class="shelf-inline-barcode__variant"><span data-variant-label-only>{{ card.selected_variant_label }}</span></p>
-            </div>
-            <div class="shelf-inline-barcode__code-block">
-              <p class="section-kicker">Código atual</p>
-              <strong class="shelf-inline-barcode__code-value" title="{{ card.variant_code }}" data-variant-code-label>{{ card.variant_code }}</strong>
-            </div>
-          </div>
-
-          <div class="shelf-inline-barcode__image-frame" data-variant-barcode-image-frame {% if not card.barcode_data_uri %}hidden{% endif %}>
-            <img
-              class="shelf-inline-barcode__image"
-              src="{{ card.barcode_data_uri or '' }}"
-              alt="Código de barras do código {{ card.variant_code }}"
-              data-variant-barcode-image
-              loading="lazy"
-            />
-          </div>
-          <div class="shelf-inline-barcode__empty" data-variant-barcode-empty {% if card.barcode_data_uri %}hidden{% endif %}>
-            Nenhum código disponível para esta variante.
-          </div>
-
-          <div class="shelf-inline-barcode__actions">
-            <a class="button button--secondary button--small" href="{{ card.barcode_href }}" data-variant-barcode-link>Tela cheia</a>
-            <button
-              class="button button--ghost button--small"
-              type="button"
-              data-variant-copy-trigger
-              data-copy-text="{{ card.variant_code }}"
-            >
-              Copiar código
-            </button>
-            <button class="button button--ghost button--small" type="button" data-inline-barcode-close>Fechar</button>
-          </div>
-        </section>
-      </div>
-    </article>
+      {% include "partials/grouped_scanning_card.html" %}
     {% else %}
     <article class="empty-card">
       <h3>Nenhum produto encontrado nesta prateleira.</h3>

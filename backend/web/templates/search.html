@@ -6,8 +6,9 @@
 <section class="page-section">
   <div class="search-screen-header">
     <div class="search-screen-header__copy">
-      <p class="section-kicker">Catálogo técnico</p>
-      <h1 class="section-title">Buscar perfumes e códigos</h1>
+      <p class="section-kicker">Busca</p>
+      <h1 class="section-title">Encontre o perfume</h1>
+      <p class="section-text">Busque por nome, marca ou código e abra o barcode sem perder o contexto.</p>
     </div>
 
     <form class="search-entry-form search-entry-form--stacked" method="get" action="/dashboard/search">
@@ -15,7 +16,7 @@
         type="search"
         name="q"
         value="{{ filters.q }}"
-        placeholder="Buscar por nome do produto, SKU ou código"
+        placeholder="Buscar por nome do produto, marca ou código"
         aria-label="Buscar produto"
       />
       <div class="search-entry-form__actions">
@@ -25,7 +26,7 @@
     </form>
 
     <details class="filter-sheet" {% if filters.brand or filters.sync_status or filters.updated_scope or filters.saved_only or filters.image_only or filters.sort != 'recent' %}open{% endif %}>
-      <summary>Filtrar e ordenar</summary>
+      <summary>Filtros</summary>
       <form class="filter-form" method="get" action="/dashboard/search">
         <input type="hidden" name="q" value="{{ filters.q }}" />
 
@@ -63,7 +64,7 @@
           <select name="sort">
             <option value="recent" {% if filters.sort == 'recent' %}selected{% endif %}>Mais recentes</option>
             <option value="name" {% if filters.sort == 'name' %}selected{% endif %}>Nome</option>
-            <option value="sku" {% if filters.sort == 'sku' %}selected{% endif %}>SKU</option>
+            <option value="sku" {% if filters.sort == 'sku' %}selected{% endif %}>Código</option>
           </select>
         </label>
 
@@ -89,14 +90,13 @@
   <div class="section-heading">
     <div>
       <p class="section-kicker">Resultados</p>
-      <h2 class="section-title">{{ results_count }} produto(s)</h2>
+      <h2 class="section-title">{{ results_count }} perfume(s)</h2>
     </div>
-    <a class="button button--secondary button--small" href="/dashboard/products/new">Novo produto</a>
   </div>
 
-  <div class="product-list product-list--compact">
+  <div class="shelf-product-list">
     {% for card in products %}
-      {% include "partials/product_card.html" %}
+      {% include "partials/grouped_scanning_card.html" %}
     {% else %}
     <article class="empty-card">
       <h3>Nenhum item encontrado.</h3>

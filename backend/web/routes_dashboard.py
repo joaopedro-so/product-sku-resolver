@@ -1948,6 +1948,7 @@ def _build_product_activity(
             "status_key": "candidate_found",
             "status_tone": "warning",
             "status_label": "Possível correspondência",
+            "badge_label": "Revisar vínculo",
             "status_message": "Esse item manual pode ser o mesmo produto que voltou ao site.",
             "timestamp": product.last_matched_at or None,
             "timestamp_label": _format_timestamp_label(product.last_matched_at),
@@ -1959,6 +1960,7 @@ def _build_product_activity(
             "status_key": "manual_catalog",
             "status_tone": "neutral",
             "status_label": "Cadastro interno",
+            "badge_label": "Sem sync",
             "status_message": "Produto mantido manualmente no catálogo operacional.",
             "timestamp": None,
             "timestamp_label": "Sem dependência de sync",
@@ -1970,6 +1972,7 @@ def _build_product_activity(
             "status_key": "legacy_catalog",
             "status_tone": "warning",
             "status_label": "Fora do site",
+            "badge_label": "Sem sync",
             "status_message": "Item preservado no catálogo mesmo sem página ativa no site.",
             "timestamp": None,
             "timestamp_label": "Sync desativado",
@@ -1983,6 +1986,7 @@ def _build_product_activity(
                 "status_key": "manual_ok",
                 "status_tone": "success",
                 "status_label": "Atualizado agora",
+                "badge_label": "Atualizado",
                 "status_message": manual_snapshot.get("message") or "Atualização manual concluída.",
                 "timestamp": recorded_at,
                 "timestamp_label": _format_timestamp_label(recorded_at),
@@ -1993,6 +1997,7 @@ def _build_product_activity(
             "status_key": "manual_error",
             "status_tone": "error",
             "status_label": "Falha na tentativa",
+            "badge_label": "Falha",
             "status_message": manual_snapshot.get("message") or "A atualização manual falhou.",
             "timestamp": recorded_at,
             "timestamp_label": _format_timestamp_label(recorded_at),
@@ -2004,6 +2009,7 @@ def _build_product_activity(
             "status_key": "idle",
             "status_tone": "neutral",
             "status_label": "Sem sincronização",
+            "badge_label": "Sem sync",
             "status_message": "Ainda não há histórico recente para este produto.",
             "timestamp": None,
             "timestamp_label": "Sem sync recente",
@@ -2015,6 +2021,7 @@ def _build_product_activity(
             "status_key": "failed",
             "status_tone": "error",
             "status_label": "Falha na sincronização",
+            "badge_label": "Falha",
             "status_message": "A última verificação terminou com erro e pede revisão.",
             "timestamp": latest_event.timestamp,
             "timestamp_label": _format_timestamp_label(latest_event.timestamp),
@@ -2031,6 +2038,7 @@ def _build_product_activity(
             "status_key": "changed",
             "status_tone": "warning",
             "status_label": "Código atualizado",
+            "badge_label": "Código mudou",
             "status_message": change_description,
             "timestamp": latest_event.timestamp,
             "timestamp_label": _format_timestamp_label(latest_event.timestamp),
@@ -2041,6 +2049,7 @@ def _build_product_activity(
         "status_key": "synced",
         "status_tone": "success",
         "status_label": "Sincronizado",
+        "badge_label": "Sem mudança",
         "status_message": "O último ciclo passou sem mudanças relevantes.",
         "timestamp": latest_event.timestamp,
         "timestamp_label": _format_timestamp_label(latest_event.timestamp),
@@ -2173,34 +2182,36 @@ def _apply_search_filters(
 
     filtered_cards: List[Dict[str, Any]] = []
     for card in cards:
-        haystack = " ".join(
-            [
-                card["alias"],
-                card["name"],
-                card["brand"],
-                card["variant"],
-                card["sku"],
-            ]
-        ).lower()
+        haystack = str(card.get("search_text") or "").lower()
+        if not haystack:
+            haystack = " ".join(
+                [
+                    str(card.get("alias", "")),
+                    str(card.get("name", "")),
+                    str(card.get("brand", "")),
+                    str(card.get("variant", "")),
+                    str(card.get("sku", "")),
+                ]
+            ).lower()
         if normalized_query and normalized_query not in haystack:
             continue
 
-        if normalized_brand and card["brand"].lower() != normalized_brand:
+        if normalized_brand and str(card.get("brand", "")).lower() != normalized_brand:
             continue
 
-        if normalized_sync_status and card["activity"]["status_key"] != normalized_sync_status:
+        if normalized_sync_status and str(card.get("activity", {}).get("status_key", "")) != normalized_sync_status:
             continue
 
-        if normalized_updated_scope == "today" and not card["activity"].get("is_today"):
+        if normalized_updated_scope == "today" and not card.get("activity", {}).get("is_today"):
             continue
 
-        if normalized_updated_scope == "recent" and not card["activity"].get("timestamp"):
+        if normalized_updated_scope == "recent" and not card.get("activity", {}).get("timestamp"):
             continue
 
-        if saved_only and not card["is_saved"]:
+        if saved_only and not card.get("is_saved"):
             continue
 
-        if image_only and not card["image_url"]:
+        if image_only and not card.get("image_url"):
             continue
 
         filtered_cards.append(card)
@@ -2239,6 +2250,35 @@ def _build_brand_chips(products: Iterable[ProductRecord]) -> List[Dict[str, Any]
         for brand_name, count in sorted(brand_counter.items(), key=lambda item: (-item[1], item[0].lower()))
     ]
     return chips[:8]
+
+
+def _build_search_status_options() -> List[Dict[str, str]]:
+    """
+    Responsabilidade:
+        Centralizar as opções de filtro de status exibidas na busca.
+
+    Parametros:
+        Nenhum.
+
+    Retorno:
+        Lista de dicionários com `value` e `label` para o select de status.
+
+    Contexto de uso:
+        Evita que a UI da busca tenha uma lista manual espalhada pelo template
+        e mantém os rótulos operacionais alinhados ao resumo de status da app.
+    """
+
+    return [
+        {"value": "manual_ok", "label": "Atualizado"},
+        {"value": "manual_error", "label": "Falha manual"},
+        {"value": "candidate_found", "label": "Revisar vínculo"},
+        {"value": "manual_catalog", "label": "Cadastro interno"},
+        {"value": "legacy_catalog", "label": "Fora do site"},
+        {"value": "changed", "label": "Código mudou"},
+        {"value": "failed", "label": "Falha"},
+        {"value": "synced", "label": "Sem mudança"},
+        {"value": "idle", "label": "Sem sync"},
+    ]
 
 
 def _build_short_product_name(product_name: str, product_brand: str) -> str:
@@ -2358,7 +2398,9 @@ def _build_group_variant_payload(
         "is_saved": is_saved,
         "save_button_label": "Remover dos salvos" if is_saved else "Salvar",
         "last_known_url": variant_product.last_known_url,
-        "status_label": activity["status_label"],
+        "status_key": activity["status_key"],
+        "status_label": activity.get("badge_label") or activity["status_label"],
+        "status_description": activity["status_label"],
         "status_tone": activity["status_tone"],
         "timestamp_label": activity["timestamp_label"],
         "barcode_data_uri": barcode_data_uri,
@@ -2377,6 +2419,161 @@ def _build_group_variant_payload(
         "concentration": variant_product.concentration,
         "variant_notes": variant_product.variant_notes,
         "is_syncable": variant_product.is_syncable,
+    }
+
+
+def _build_group_card_support_tags(
+    activity: Dict[str, Any],
+    stock_qty: int,
+    location_label: str = "",
+) -> List[str]:
+    """
+    Responsabilidade:
+        Definir os pequenos apoios textuais exibidos no card agrupado.
+
+    Parametros:
+        activity: Resumo operacional consolidado da variante selecionada.
+        stock_qty: Estoque atual da variante ativa.
+        location_label: Texto opcional de localização, usado fora da prateleira.
+
+    Retorno:
+        Lista curta de rótulos úteis para escaneabilidade rápida no card.
+
+    Contexto de uso:
+        A busca e a prateleira precisam mostrar só o suficiente para orientar
+        a bipagem, sem transformar cada card em uma mini tela de detalhe.
+    """
+
+    support_tags: List[str] = []
+    normalized_location_label = str(location_label).strip()
+    if normalized_location_label:
+        support_tags.append(normalized_location_label)
+
+    normalized_badge_label = str(activity.get("badge_label") or "").strip()
+    status_key = str(activity.get("status_key") or "").strip()
+    should_show_status_tag = status_key not in {"idle", "synced"} and bool(normalized_badge_label)
+    if should_show_status_tag:
+        support_tags.append(normalized_badge_label)
+
+    if stock_qty > 0:
+        support_tags.append(f"Estoque {stock_qty}")
+
+    if not support_tags and normalized_badge_label:
+        support_tags.append(normalized_badge_label)
+
+    return support_tags
+
+
+def _build_grouped_catalog_card(
+    request: Request,
+    grouped_product: GroupedParentProduct,
+    preview_map: Dict[str, Optional[ProductPreview]],
+    latest_events: Dict[str, SkuEvent],
+    saved_aliases: set[str],
+    return_query_params: Optional[Dict[str, Any]],
+    *,
+    variant_storage_prefix: str,
+    placement: Optional[ShelfPlacement] = None,
+    include_barcode_data_uri: bool = True,
+) -> Dict[str, Any]:
+    """
+    Responsabilidade:
+        Montar um card agrupado pronto para busca e prateleira.
+
+    Parametros:
+        request: Requisição atual para acesso aos services compartilhados.
+        grouped_product: Produto pai com variantes já agrupadas.
+        preview_map: Mapa de previews previamente carregados para as variantes.
+        latest_events: Último evento conhecido por alias.
+        saved_aliases: Conjunto de aliases salvos pelo operador.
+        return_query_params: Query params de contexto para detalhe/barcode.
+        variant_storage_prefix: Prefixo usado no localStorage da variante ativa.
+        placement: Localização física opcional do produto selecionado.
+        include_barcode_data_uri: Indica se o card precisa trazer o SVG inline.
+
+    Retorno:
+        Dicionário serializável e estável para o template do card agrupado.
+
+    Contexto de uso:
+        Evita duplicação entre a busca e a prateleira ao centralizar a regra
+        do card semântico "produto pai + variantes + acesso rápido ao código".
+    """
+
+    group_service = _get_product_group_service(request)
+    selected_variant = group_service.choose_default_variant(grouped_product)
+    selected_activity = _build_product_activity(
+        selected_variant.product,
+        latest_events.get(selected_variant.alias),
+        last_update_by_alias.get(selected_variant.alias),
+    )
+
+    variant_options: List[Dict[str, Any]] = []
+    for grouped_variant in grouped_product.variants:
+        variant_options.append(
+            _build_group_variant_payload(
+                grouped_product=grouped_product,
+                variant_alias=grouped_variant.alias,
+                preview=preview_map.get(grouped_variant.alias),
+                activity=_build_product_activity(
+                    grouped_variant.product,
+                    latest_events.get(grouped_variant.alias),
+                    last_update_by_alias.get(grouped_variant.alias),
+                ),
+                barcode_module_width_px=2,
+                barcode_height_px=72,
+                include_barcode_data_uri=include_barcode_data_uri,
+                saved_aliases=saved_aliases,
+                return_query_params=return_query_params,
+            )
+        )
+
+    selected_variant_payload = next(
+        (
+            variant_option
+            for variant_option in variant_options
+            if variant_option.get("alias") == selected_variant.alias
+        ),
+        variant_options[0],
+    )
+
+    location_label = ""
+    if placement is not None:
+        location_label = f"Prateleira {placement.shelf_number:02d}"
+
+    return {
+        "alias": selected_variant.alias,
+        "group_id": grouped_product.group_id,
+        "variant_storage_key": f"{variant_storage_prefix}-{grouped_product.group_id}",
+        "name": _build_short_product_name(grouped_product.parent_name, grouped_product.brand),
+        "brand": grouped_product.brand,
+        "variant_code": selected_variant_payload["variant_code"],
+        "sku": selected_variant_payload["variant_code"],
+        "parent_page_sku": grouped_product.parent_page_sku,
+        "image_url": selected_variant_payload["image_url"],
+        "barcode_href": selected_variant_payload["barcode_href"],
+        "detail_href": selected_variant_payload["detail_href"],
+        "status_label": selected_activity.get("badge_label") or selected_activity["status_label"],
+        "status_description": selected_activity["status_label"],
+        "status_tone": selected_activity["status_tone"],
+        "activity": selected_activity,
+        "source_label": selected_variant.product.source_label,
+        "source_type": selected_variant.product.source_type,
+        "stock_qty": selected_variant.product.stock_qty,
+        "barcode_data_uri": selected_variant_payload.get("barcode_data_uri"),
+        "concentration": selected_variant.product.concentration,
+        "is_syncable": selected_variant.product.is_syncable,
+        "placement": placement,
+        "location_label": location_label,
+        "support_tags": _build_group_card_support_tags(
+            activity=selected_activity,
+            stock_qty=selected_variant.product.stock_qty,
+            location_label=location_label,
+        ),
+        "selected_alias": selected_variant.alias,
+        "selected_variant_label": selected_variant.label,
+        "variants": variant_options,
+        "search_text": _build_group_search_text(grouped_product),
+        "is_saved": any(variant_option.get("is_saved") for variant_option in variant_options),
     }
 
 
@@ -2850,6 +3047,10 @@ def _build_shelf_detail_context(request: Request, shelf_number: int) -> Dict[str
     raw_query_text = request.query_params.get("q", "").strip()
     query_text = raw_query_text.lower()
     selected_brand = request.query_params.get("brand", "").strip()
+    shelf_search_reset_href = _append_dashboard_query_params(
+        f"/dashboard/prateleiras/{shelf_number}",
+        {"brand": selected_brand} if selected_brand else None,
+    )
     brand_filters = _build_shelf_brand_filters(
         shelf_number=shelf_number,
         grouped_products=grouped_products,
@@ -2866,66 +3067,21 @@ def _build_shelf_detail_context(request: Request, shelf_number: int) -> Dict[str
             continue
 
         selected_variant = _get_product_group_service(request).choose_default_variant(grouped_product)
-        selected_preview = preview_map.get(selected_variant.alias)
-        selected_activity = _build_product_activity(
-            selected_variant.product,
-            latest_events.get(selected_variant.alias),
-            last_update_by_alias.get(selected_variant.alias),
-        )
-
-        variant_options = []
-        for grouped_variant in grouped_product.variants:
-            variant_options.append(
-                _build_group_variant_payload(
-                    grouped_product=grouped_product,
-                    variant_alias=grouped_variant.alias,
-                    preview=preview_map.get(grouped_variant.alias),
-                    activity=_build_product_activity(
-                        grouped_variant.product,
-                        latest_events.get(grouped_variant.alias),
-                        last_update_by_alias.get(grouped_variant.alias),
-                    ),
-                    barcode_module_width_px=2,
-                    barcode_height_px=72,
-                    include_barcode_data_uri=True,
-                    saved_aliases=saved_aliases,
-                    return_query_params=return_query_params,
-                )
-            )
-
         shelf_product_cards.append(
-            {
-                "group_id": grouped_product.group_id,
-                "name": _build_short_product_name(grouped_product.parent_name, grouped_product.brand),
-                "brand": grouped_product.brand,
-                "variant_code": selected_variant.product.variant_code,
-                "parent_page_sku": grouped_product.parent_page_sku,
-                "image_url": selected_variant.product.image_url
-                or (selected_preview.image_url if selected_preview else None),
-                "barcode_href": f"/dashboard/products/{selected_variant.alias}/barcode",
-                "detail_href": f"/dashboard/products/{selected_variant.alias}",
-                "status_label": selected_activity["status_label"],
-                "source_label": selected_variant.product.source_label,
-                "source_type": selected_variant.product.source_type,
-                "stock_qty": selected_variant.product.stock_qty,
-                "barcode_data_uri": next(
-                    (
-                        variant_option.get("barcode_data_uri")
-                        for variant_option in variant_options
-                        if variant_option.get("alias") == selected_variant.alias
-                    ),
-                    None,
-                ),
-                "concentration": selected_variant.product.concentration,
-                "is_syncable": selected_variant.product.is_syncable,
-                "placement": shelf_service.get_product_placement(
+            _build_grouped_catalog_card(
+                request=request,
+                grouped_product=grouped_product,
+                preview_map=preview_map,
+                latest_events=latest_events,
+                saved_aliases=saved_aliases,
+                return_query_params=return_query_params,
+                variant_storage_prefix="shelf",
+                placement=shelf_service.get_product_placement(
                     product=selected_variant.product,
                     all_products=products,
                 ),
-                "selected_alias": selected_variant.alias,
-                "selected_variant_label": selected_variant.label,
-                "variants": variant_options,
-            }
+                include_barcode_data_uri=True,
+            )
         )
 
     return _with_app_shell(
@@ -2947,6 +3103,7 @@ def _build_shelf_detail_context(request: Request, shelf_number: int) -> Dict[str
             "query_text": raw_query_text,
             "brand_filters": brand_filters,
             "selected_brand": selected_brand,
+            "shelf_search_reset_href": shelf_search_reset_href,
             "back_navigation": {"href": "/dashboard", "label": "Voltar para Início"},
         },
     )
@@ -3074,6 +3231,7 @@ def _build_search_context(request: Request) -> Dict[str, Any]:
     product_store = _get_store_service(request)
     saved_service = _get_saved_service(request)
     products = product_store.list_products()
+    grouped_products = _get_product_group_service(request).group_products(products)
     history_events = _get_history_store(request).list_events()
     latest_events = _build_latest_event_map(history_events)
     saved_aliases = saved_service.get_saved_aliases_set()
@@ -3081,14 +3239,21 @@ def _build_search_context(request: Request) -> Dict[str, Any]:
     return_query_params = _resolve_return_query_params(request)
 
     all_cards = [
-        _build_product_card(
-            product=product,
-            preview=preview_map.get(product.alias),
-            activity=_build_product_activity(product, latest_events.get(product.alias), last_update_by_alias.get(product.alias)),
-            is_saved=product.alias in saved_aliases,
+        _build_grouped_catalog_card(
+            request=request,
+            grouped_product=grouped_product,
+            preview_map=preview_map,
+            latest_events=latest_events,
+            saved_aliases=saved_aliases,
             return_query_params=return_query_params,
+            variant_storage_prefix="search",
+            placement=_get_shelf_service(request).get_product_placement(
+                product=_get_product_group_service(request).choose_default_variant(grouped_product).product,
+                all_products=products,
+            ),
+            include_barcode_data_uri=True,
         )
-        for product in products
+        for grouped_product in grouped_products
     ]
 
     active_filters = {
@@ -3121,15 +3286,7 @@ def _build_search_context(request: Request) -> Dict[str, Any]:
             "filters": active_filters,
             "brand_chips": _build_brand_chips(products),
             "results_count": len(sorted_cards),
-            "available_statuses": [
-                {"value": "manual_ok", "label": "Atualizado agora"},
-                {"value": "manual_error", "label": "Falha manual"},
-                {"value": "manual_catalog", "label": "Cadastro interno"},
-                {"value": "legacy_catalog", "label": "Fora do site"},
-                {"value": "changed", "label": "Código atualizado"},
-                {"value": "failed", "label": "Falha na sincronização"},
-                {"value": "idle", "label": "Sem sincronização"},
-            ],
+            "available_statuses": _build_search_status_options(),
         },
     )
 

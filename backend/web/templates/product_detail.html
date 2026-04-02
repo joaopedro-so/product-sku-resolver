@@ -42,7 +42,7 @@
 
       <div class="detail-hero__content">
         <div class="detail-hero__badges detail-hero__badges--stacked">
-          <span class="status-badge status-badge--{{ activity.status_tone }}" data-variant-status-badge>{{ activity.status_label }}</span>
+          <span class="status-badge status-badge--{{ activity.status_tone }}" data-variant-status-badge>{{ activity.badge_label }}</span>
           <span
             class="status-badge {% if selected_variant and selected_variant.source_type == 'legacy' %}status-badge--warning{% else %}status-badge--neutral{% endif %}"
             data-variant-source-badge
@@ -121,7 +121,7 @@
           </div>
           <div>
             <span class="detail-summary__label">Estado</span>
-            <strong class="detail-summary__value" data-variant-status-label>{{ activity.status_label }}</strong>
+            <strong class="detail-summary__value" data-variant-status-label>{{ activity.badge_label }}</strong>
           </div>
         </div>
 

@@ -44,6 +44,7 @@ function applyVariantSelection(variantRoot, variantOption) {
   const selectedSaveLabel = variantOption.dataset.variantSaveLabel || (selectedIsSaved ? "Remover dos salvos" : "Salvar");
   const selectedProductUrl = variantOption.dataset.variantProductUrl || "";
   const selectedImageUrl = variantOption.dataset.variantImageUrl || "";
+  const selectedStatusKey = variantOption.dataset.variantStatusKey || "";
   const selectedStatusLabel = variantOption.dataset.variantStatusValue || "";
   const selectedStatusTone = variantOption.dataset.variantStatusToneValue || "";
   const selectedTimestamp = variantOption.dataset.variantTimestampValue || "";
@@ -172,6 +173,20 @@ function applyVariantSelection(variantRoot, variantOption) {
     element.textContent = selectedStockQty || "0";
   });
 
+  const supportLineShouldShowStatus = shouldDisplayVariantStatusInSupportLine(selectedStatusKey);
+  variantRoot.querySelectorAll("[data-variant-support-status-label]").forEach((element) => {
+    element.hidden = !supportLineShouldShowStatus;
+  });
+
+  variantRoot.querySelectorAll("[data-variant-support-stock-label]").forEach((element) => {
+    element.hidden = Number(selectedStockQty || "0") <= 0;
+  });
+
+  variantRoot.querySelectorAll("[data-variant-support-line]").forEach((element) => {
+    const hasVisibleChild = Array.from(element.children).some((childElement) => !childElement.hidden);
+    element.hidden = !hasVisibleChild;
+  });
+
   variantRoot.querySelectorAll("[data-variant-copy-trigger]").forEach((element) => {
     element.setAttribute("data-copy-text", selectedVariantCode);
   });
@@ -249,6 +264,27 @@ function applyVariantSelection(variantRoot, variantOption) {
   if (storageKey && selectedAlias) {
     window.localStorage.setItem(storageKey, selectedAlias);
   }
+}
+
+function shouldDisplayVariantStatusInSupportLine(statusKey) {
+  /*
+    Responsabilidade:
+      Definir quando o resumo de status merece aparecer no card colapsado.
+
+    Parametros:
+      statusKey: Chave interna do estado operacional da variante ativa.
+
+    Retorno:
+      `true` quando o status precisa chamar atenção no card; `false` quando ele
+      só adicionaria ruído visual ao fluxo de bipagem.
+
+    Contexto de uso:
+      Busca e prateleira devem priorizar nome, variante e acesso ao código.
+      Estados neutros como "sem sync" ou "sem mudança" só entram em telas mais
+      profundas; no card, mostramos apenas situações que pedem decisão rápida.
+  */
+
+  return ["candidate_found", "manual_ok", "manual_error", "changed", "failed"].includes(String(statusKey || ""));
 }
 
 function setInlineBarcodePanelState(inlineBarcodeCard, shouldOpen) {
