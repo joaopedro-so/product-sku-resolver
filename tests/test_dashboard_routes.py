@@ -565,20 +565,101 @@ def test_dashboard_importa_seed_interno_da_prateleira_09(tmp_path: Path, monkeyp
     assert stored_product.image_url == "https://example.com/polo-blue.jpg"
 
 
+def test_dashboard_importa_seed_interno_da_prateleira_01(tmp_path: Path, monkeypatch) -> None:
+    """
+    Responsabilidade:
+        Garantir que a prateleira 01 possa ser importada pelo seed interno.
+
+    Parametros:
+        tmp_path: Diretorio temporario para isolar o storage do teste.
+        monkeypatch: Fixture usada para apontar o seed interno para um arquivo fake.
+
+    Retorno:
+        Nenhum; valida redirecionamento e persistencia do item importado.
+
+    Contexto de uso:
+        Protege a carga da prateleira de perfumes arabes sem depender de
+        shell, mantendo o fluxo administrativo pronto para a Railway.
+    """
+
+    seed_file_path = tmp_path / "seed_catalog_01.json"
+    seed_file_path.write_text(
+        json.dumps(
+            {
+                "products": [
+                    {
+                        "alias": "al_wataniah_sabah_al_ward_100ml",
+                        "brand": "Al Wataniah",
+                        "name": "Sabah Al Ward",
+                        "variant": "100ml",
+                        "last_known_url": "https://example.com/sabah-al-ward",
+                        "last_known_sku": "882050324",
+                        "page_family_sku": "882050316",
+                        "parent_reference": "al_wataniah_sabah_al_ward",
+                        "source_type": "site",
+                        "concentration": "EDP",
+                        "shelf_reference_label": "",
+                        "notes": "",
+                        "image_url": "",
+                        "stock_qty": 0,
+                        "variant_notes": "",
+                        "is_active": True,
+                        "site_link_status": "linked_to_site",
+                        "site_product_id": "882050316",
+                        "site_candidate_id": "",
+                        "site_candidate_url": "",
+                        "site_candidate_code": "",
+                        "site_candidate_variant_id": "",
+                        "match_confidence": None,
+                        "match_signals": [],
+                        "last_matched_at": "",
+                        "site_variant_id": "",
+                        "current_site_code": "882050324",
+                        "current_barcode_value": "882050324",
+                        "shelf_number": 1,
+                        "display_order": 1
+                    }
+                ]
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        routes_dashboard,
+        "resolve_builtin_internal_catalog_seed_file",
+        lambda seed_name: seed_file_path,
+    )
+
+    app = _build_app_with_temp_storage(tmp_path)
+    request = _build_request(app, method="POST", path="/dashboard/imports/prestige-shelf-01")
+
+    response = routes_dashboard.dashboard_import_prestige_shelf_01(request)
+
+    assert isinstance(response, RedirectResponse)
+    assert response.status_code == 303
+    assert "import_status=success" in response.headers["location"]
+    stored_product = app.state.product_store_service.get_by_alias("al_wataniah_sabah_al_ward_100ml")
+    assert stored_product is not None
+    assert stored_product.shelf_number == 1
+    assert stored_product.last_known_sku == "882050324"
+
+
 def test_dashboard_home_nao_exibe_atalho_manual_de_importacao_da_prateleira_09(tmp_path: Path) -> None:
     """
     Responsabilidade:
-        Garantir que a Home nao exponha mais o atalho manual de importacao.
+        Garantir que a Home exponha apenas o atalho operacional da prateleira 01.
 
     Parametros:
         tmp_path: Diretorio temporario usado para isolar o app de teste.
 
     Retorno:
-        Nenhum; valida a ausencia do botao na tela inicial.
+        Nenhum; valida a presenca do botao atual e a ausencia do antigo.
 
     Contexto de uso:
-        A importacao foi mantida como rota interna, mas a Home nao deve ficar
-        poluida com um CTA operacional depois que a carga ja foi realizada.
+        A Home deve continuar limpa, mas precisa manter um atalho temporario
+        para importar a prateleira de perfumes arabes na Railway.
     """
 
     app = _build_app_with_temp_storage(tmp_path)
@@ -588,6 +669,8 @@ def test_dashboard_home_nao_exibe_atalho_manual_de_importacao_da_prateleira_09(t
 
     assert isinstance(response, _TemplateResponse)
     content = response.body.decode("utf-8")
+    assert "Importar prateleira 01" in content
+    assert "/dashboard/imports/prestige-shelf-01" in content
     assert "Importar prateleira 09" not in content
     assert "/dashboard/imports/prestige-shelf-09" not in content
 
