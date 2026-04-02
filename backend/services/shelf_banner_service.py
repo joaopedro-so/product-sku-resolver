@@ -75,6 +75,7 @@ class ShelfBannerService:
 
         self._static_directory = static_directory
         self._banner_directory = static_directory / "shelf-banners"
+        self._resolved_public_urls: Dict[str, str] = {}
 
     def get_visual(self, shelf_number: int, shelf_title: str) -> ShelfBannerVisual:
         """
@@ -199,8 +200,39 @@ class ShelfBannerService:
         if not normalized_file_name:
             return ""
 
+        cached_public_url = self._resolved_public_urls.get(normalized_file_name, "")
+        if cached_public_url:
+            return cached_public_url
+
         banner_path = self._banner_directory / normalized_file_name
         if not banner_path.is_file():
             return ""
 
-        return f"/dashboard/static/shelf-banners/{normalized_file_name}"
+        public_url = self._build_versioned_public_url(
+            file_name=normalized_file_name,
+            banner_path=banner_path,
+        )
+        self._resolved_public_urls[normalized_file_name] = public_url
+        return public_url
+
+    def _build_versioned_public_url(self, file_name: str, banner_path: Path) -> str:
+        """
+        Responsabilidade:
+            Gerar uma URL publica estavel e versionada para o banner.
+
+        Parametros:
+            file_name: Nome do arquivo estatico configurado para a prateleira.
+            banner_path: Caminho absoluto do arquivo real no disco.
+
+        Retorno:
+            URL publica com versao baseada no timestamp do arquivo.
+
+        Contexto de uso:
+            A versao no query param permanece identica entre renders e muda
+            apenas quando a imagem e realmente trocada. Isso permite cache
+            `immutable` no navegador sem prender o app para sempre a uma arte
+            antiga quando o arquivo for atualizado.
+        """
+
+        version_token = str(int(banner_path.stat().st_mtime_ns))
+        return f"/dashboard/static/shelf-banners/{file_name}?v={version_token}"

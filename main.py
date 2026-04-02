@@ -8,13 +8,13 @@ web reutilizem a mesma lógica de negócio já existente no projeto.
 from __future__ import annotations
 
 from fastapi import FastAPI
-from fastapi.staticfiles import StaticFiles
 
 from backend.services.product_store_service import ProductStoreService
 from backend.services.resolver import ProductResolver
 from backend.services.storage_path_service import resolve_default_data_file
 from backend.utils.fetcher import Fetcher
 from backend.web.routes_dashboard import router as dashboard_router
+from backend.web.static_files import DashboardStaticFiles
 
 
 def create_app() -> FastAPI:
@@ -48,7 +48,7 @@ def create_app() -> FastAPI:
     app.state.product_resolver = product_resolver
 
     app.include_router(dashboard_router)
-    app.mount("/dashboard/static", StaticFiles(directory="backend/web/static"), name="static")
+    app.mount("/dashboard/static", DashboardStaticFiles(directory="backend/web/static"), name="static")
 
     return app
 

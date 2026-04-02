@@ -12,11 +12,11 @@ import logging
 
 from fastapi import FastAPI
 from fastapi.responses import RedirectResponse
-from fastapi.staticfiles import StaticFiles
 
 from api.routes_products import router as products_router
 from backend.services.runtime_context import RuntimeServices, build_runtime_services
 from backend.web.routes_dashboard import router as dashboard_router
+from backend.web.static_files import DashboardStaticFiles
 
 
 def create_app(services: RuntimeServices | None = None) -> FastAPI:
@@ -56,7 +56,7 @@ def create_app(services: RuntimeServices | None = None) -> FastAPI:
 
     app.include_router(products_router)
     app.include_router(dashboard_router)
-    app.mount("/dashboard/static", StaticFiles(directory="backend/web/static"), name="static")
+    app.mount("/dashboard/static", DashboardStaticFiles(directory="backend/web/static"), name="static")
 
     @app.get("/", include_in_schema=False)
     def redirect_root_to_dashboard() -> RedirectResponse:
