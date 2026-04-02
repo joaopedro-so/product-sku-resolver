@@ -2517,6 +2517,10 @@ def _build_shelves_context(request: Request) -> Dict[str, Any]:
             "import_feedback": import_feedback,
             "internal_import_actions": [
                 {
+                    "label": "Importar prateleira 02",
+                    "href": "/dashboard/imports/prestige-shelf-02",
+                },
+                {
                     "label": "Importar prateleira 01",
                     "href": "/dashboard/imports/prestige-shelf-01",
                 }
@@ -3331,6 +3335,44 @@ def dashboard_import_prestige_shelf_09(request: Request) -> RedirectResponse:
     )
     query_params = {
         "seed": "prestige-shelf-09",
+        "import_count": str(processed_count),
+    }
+    if import_succeeded:
+        query_params["import_status"] = "success"
+    else:
+        query_params["import_status"] = "error"
+        query_params["import_message"] = import_message
+
+    return RedirectResponse(
+        url=f"/dashboard?{urlencode(query_params)}",
+        status_code=status.HTTP_303_SEE_OTHER,
+    )
+
+
+@router.post("/imports/prestige-shelf-02")
+def dashboard_import_prestige_shelf_02(request: Request) -> RedirectResponse:
+    """
+    Responsabilidade:
+        Importar no ambiente atual o seed interno da prateleira 02.
+
+    Parametros:
+        request: Requisicao HTTP atual com acesso aos servicos compartilhados.
+
+    Retorno:
+        RedirectResponse para a Home com feedback de sucesso ou falha.
+
+    Contexto de uso:
+        Facilita subir a prateleira com a referencia fisica Azzaro na Railway,
+        incluindo itens que hoje dependem de cadastro interno por nao terem
+        pagina sincronizavel na Renner ou Ashua.
+    """
+
+    import_succeeded, import_message, processed_count = _run_builtin_catalog_seed_import(
+        request=request,
+        seed_name="prestige_shelf_02_catalog",
+    )
+    query_params = {
+        "seed": "prestige-shelf-02",
         "import_count": str(processed_count),
     }
     if import_succeeded:

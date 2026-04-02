@@ -568,6 +568,87 @@ def test_dashboard_importa_seed_interno_da_prateleira_09(tmp_path: Path, monkeyp
     assert stored_product.image_url == "https://example.com/polo-blue.jpg"
 
 
+def test_dashboard_importa_seed_interno_da_prateleira_02(tmp_path: Path, monkeypatch) -> None:
+    """
+    Responsabilidade:
+        Garantir que a Railway possa importar a prateleira 02 sem shell.
+
+    Parametros:
+        tmp_path: Diretorio temporario para isolar o storage do teste.
+        monkeypatch: Fixture usada para apontar o seed interno para um arquivo fake.
+
+    Retorno:
+        Nenhum; valida redirecionamento e persistencia do item importado.
+
+    Contexto de uso:
+        Protege o fluxo administrativo da prateleira Azzaro, que mistura itens
+        sincronizaveis do site com produtos legacy mantidos no catalogo interno.
+    """
+
+    seed_file_path = tmp_path / "seed_catalog_02.json"
+    seed_file_path.write_text(
+        json.dumps(
+            {
+                "products": [
+                    {
+                        "alias": "azzaro_importado_100ml",
+                        "brand": "Azzaro",
+                        "name": "Azzaro Pour Homme",
+                        "variant": "100ml",
+                        "last_known_url": "https://example.com/azzaro-pour-homme",
+                        "last_known_sku": "500892674",
+                        "page_family_sku": "500177144",
+                        "parent_reference": "azzaro_pour_homme",
+                        "source_type": "site",
+                        "concentration": "EDT",
+                        "shelf_reference_label": "",
+                        "notes": "",
+                        "image_url": "https://example.com/azzaro.jpg",
+                        "stock_qty": 0,
+                        "variant_notes": "",
+                        "is_active": True,
+                        "site_link_status": "linked_to_site",
+                        "site_product_id": "500177144",
+                        "site_candidate_id": "",
+                        "site_candidate_url": "",
+                        "site_candidate_code": "",
+                        "site_candidate_variant_id": "",
+                        "match_confidence": None,
+                        "match_signals": [],
+                        "last_matched_at": "",
+                        "site_variant_id": "",
+                        "current_site_code": "500892674",
+                        "current_barcode_value": "500892674",
+                        "shelf_number": 2,
+                        "display_order": 1,
+                    }
+                ]
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        routes_dashboard,
+        "resolve_builtin_internal_catalog_seed_file",
+        lambda seed_name: seed_file_path,
+    )
+
+    app = _build_app_with_temp_storage(tmp_path)
+    request = _build_request(app, method="POST", path="/dashboard/imports/prestige-shelf-02")
+
+    response = routes_dashboard.dashboard_import_prestige_shelf_02(request)
+
+    assert isinstance(response, RedirectResponse)
+    assert response.status_code == 303
+    assert "import_status=success" in response.headers["location"]
+    stored_product = app.state.product_store_service.get_by_alias("azzaro_importado_100ml")
+    assert stored_product is not None
+    assert stored_product.shelf_number == 2
+    assert stored_product.image_url == "https://example.com/azzaro.jpg"
+
+
 def test_seed_embarcado_da_prateleira_09_usa_url_ashua_no_kit_adidas_goal(tmp_path: Path) -> None:
     """
     Responsabilidade:
@@ -707,6 +788,8 @@ def test_dashboard_home_nao_exibe_atalho_manual_de_importacao_da_prateleira_09(t
 
     assert isinstance(response, _TemplateResponse)
     content = response.body.decode("utf-8")
+    assert "Importar prateleira 02" in content
+    assert "/dashboard/imports/prestige-shelf-02" in content
     assert "Importar prateleira 01" in content
     assert "/dashboard/imports/prestige-shelf-01" in content
     assert "Importar prateleira 09" not in content
