@@ -33,6 +33,16 @@
               <a class="header-create__action" href="/dashboard/products/new#manual">
                 <span class="header-create__action-label">Cadastrar manualmente</span>
               </a>
+              {% if internal_import_actions %}
+              <p class="header-create__section-label">Ferramentas internas</p>
+              {% for action in internal_import_actions %}
+              <form method="post" action="{{ action.href }}" class="header-create__action-form">
+                <button class="header-create__action header-create__action--admin" type="submit">
+                  <span class="header-create__action-label">{{ action.label }}</span>
+                </button>
+              </form>
+              {% endfor %}
+              {% endif %}
             </div>
             <button
               class="header-create__button"

@@ -243,10 +243,159 @@ function applyVariantSelection(variantRoot, variantOption) {
     variantBarcodeImage.setAttribute("alt", `Código de barras do código ${selectedVariantCode}`);
   }
 
+  syncInlineBarcodeContent(variantRoot);
+
   const storageKey = variantRoot.dataset.variantStorageKey || "";
   if (storageKey && selectedAlias) {
     window.localStorage.setItem(storageKey, selectedAlias);
   }
+}
+
+function setInlineBarcodePanelState(inlineBarcodeCard, shouldOpen) {
+  /*
+    Responsabilidade:
+      Abrir ou fechar o painel inline de codigo dentro do card da prateleira.
+
+    Parametros:
+      inlineBarcodeCard: Card do produto que concentra o painel expansivel.
+      shouldOpen: Estado desejado para o painel do card.
+
+    Retorno:
+      Nenhum.
+
+    Contexto de uso:
+      A leitura do codigo precisa acontecer sem tirar o operador da lista da
+      prateleira. Esta funcao centraliza o estado visual e acessivel do card.
+  */
+
+  if (!inlineBarcodeCard) {
+    return;
+  }
+
+  const inlineBarcodePanel = inlineBarcodeCard.querySelector("[data-inline-barcode-panel]");
+  const toggleButton = inlineBarcodeCard.querySelector("[data-inline-barcode-toggle]");
+  if (!inlineBarcodePanel || !toggleButton) {
+    return;
+  }
+
+  inlineBarcodeCard.classList.toggle("shelf-product-card--barcode-open", shouldOpen);
+  inlineBarcodeCard.dataset.inlineBarcodeOpen = shouldOpen ? "true" : "false";
+  inlineBarcodePanel.hidden = !shouldOpen;
+  toggleButton.setAttribute("aria-expanded", shouldOpen ? "true" : "false");
+}
+
+function closeOtherInlineBarcodePanels(currentCard) {
+  /*
+    Responsabilidade:
+      Garantir que apenas um card de prateleira fique expandido por vez.
+
+    Parametros:
+      currentCard: Card que deve permanecer aberto, quando existir.
+
+    Retorno:
+      Nenhum.
+
+    Contexto de uso:
+      Mantem a lista leve no celular e evita que varios barcodes disputem
+      espaco ao mesmo tempo durante a conferencia.
+  */
+
+  document.querySelectorAll("[data-inline-barcode-card]").forEach((card) => {
+    if (card === currentCard) {
+      return;
+    }
+
+    setInlineBarcodePanelState(card, false);
+  });
+}
+
+function syncInlineBarcodeContent(variantRoot) {
+  /*
+    Responsabilidade:
+      Sincronizar o bloco inline de barcode com a variante atualmente ativa.
+
+    Parametros:
+      variantRoot: Card ou detalhe que contem as opcoes de variante.
+
+    Retorno:
+      Nenhum.
+
+    Contexto de uso:
+      A prateleira precisa trocar codigo e barcode inline sem navegar. Esta
+      rotina le a variante ativa e garante que o painel aberto continue fiel
+      ao ml selecionado no card.
+  */
+
+  if (!variantRoot) {
+    return;
+  }
+
+  const activeVariantOption = variantRoot.querySelector("[data-variant-option].variant-chip--active");
+  if (!activeVariantOption) {
+    return;
+  }
+
+  const selectedVariantCode = activeVariantOption.dataset.variantCode || "";
+  const selectedBarcodeDataUri = activeVariantOption.dataset.variantBarcodeDataUri || "";
+
+  variantRoot.querySelectorAll("[data-variant-barcode-image]").forEach((element) => {
+    if (selectedBarcodeDataUri) {
+      element.setAttribute("src", selectedBarcodeDataUri);
+      element.setAttribute("alt", `Codigo de barras do codigo ${selectedVariantCode}`);
+      return;
+    }
+
+    element.removeAttribute("src");
+    element.setAttribute("alt", "Codigo de barras indisponivel");
+  });
+
+  variantRoot.querySelectorAll("[data-variant-barcode-image-frame]").forEach((element) => {
+    element.hidden = !selectedBarcodeDataUri;
+  });
+
+  variantRoot.querySelectorAll("[data-variant-barcode-empty]").forEach((element) => {
+    element.hidden = Boolean(selectedBarcodeDataUri);
+  });
+}
+
+function initializeInlineBarcodePanels() {
+  /*
+    Responsabilidade:
+      Transformar o CTA `Codigo` da prateleira em expansao inline do barcode.
+
+    Parametros:
+      Nenhum.
+
+    Retorno:
+      Nenhum.
+
+    Contexto de uso:
+      O fluxo principal do app agora prioriza bipagem: abrir o codigo dentro do
+      proprio card, manter a prateleira visivel e so depois, se necessario,
+      oferecer a tela cheia.
+  */
+
+  document.querySelectorAll("[data-inline-barcode-card]").forEach((inlineBarcodeCard) => {
+    const toggleButton = inlineBarcodeCard.querySelector("[data-inline-barcode-toggle]");
+    const closeButton = inlineBarcodeCard.querySelector("[data-inline-barcode-close]");
+    if (!toggleButton) {
+      return;
+    }
+
+    setInlineBarcodePanelState(inlineBarcodeCard, false);
+    syncInlineBarcodeContent(inlineBarcodeCard);
+
+    toggleButton.addEventListener("click", () => {
+      const shouldOpen = inlineBarcodeCard.dataset.inlineBarcodeOpen !== "true";
+      closeOtherInlineBarcodePanels(shouldOpen ? inlineBarcodeCard : null);
+      setInlineBarcodePanelState(inlineBarcodeCard, shouldOpen);
+      syncInlineBarcodeContent(inlineBarcodeCard);
+    });
+
+    closeButton?.addEventListener("click", () => {
+      setInlineBarcodePanelState(inlineBarcodeCard, false);
+    });
+  });
 }
 
 function syncSourceTypeFields(formRoot) {
@@ -805,6 +954,7 @@ document.querySelectorAll("[data-copy-text]").forEach((element) => {
 });
 
 initializeVariantSwitchers();
+initializeInlineBarcodePanels();
 initializeCreateMenu();
 initializeManualProductForm();
 initializeImageInputPreviews();

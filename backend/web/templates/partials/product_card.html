@@ -42,14 +42,8 @@
     </div>
 
     <div class="product-card__actions">
-      <a class="button button--secondary button--small" href="/dashboard/products/{{ card.alias }}">Abrir</a>
-      {% if card.is_syncable %}
-      <form method="post" action="/dashboard/products/{{ card.alias }}/update">
-        <button class="button button--small" type="submit">Atualizar</button>
-      </form>
-      {% else %}
       <a class="button button--small" href="/dashboard/products/{{ card.alias }}/barcode">Código</a>
-      {% endif %}
+      <a class="button button--secondary button--small" href="/dashboard/products/{{ card.alias }}">Abrir</a>
     </div>
   </div>
 </article>

@@ -643,7 +643,37 @@ def _with_app_shell(
         "hide_app_chrome": hide_app_chrome,
         "body_class": body_class,
         "saved_count": saved_count,
+        "internal_import_actions": _build_internal_import_actions(),
     }
+
+
+def _build_internal_import_actions() -> List[Dict[str, str]]:
+    """
+    Responsabilidade:
+        Concentrar os atalhos administrativos de importacao interna da loja.
+
+    Parametros:
+        Nenhum.
+
+    Retorno:
+        Lista de acoes POST com rotulo curto e rota correspondente.
+
+    Contexto de uso:
+        A Home precisa priorizar busca e prateleiras. Ao concentrar esses
+        atalhos no menu global do botao `+`, mantemos a operacao administrativa
+        acessivel sem competir com o fluxo principal de leitura de codigo.
+    """
+
+    return [
+        {
+            "label": "Importar prateleira 02",
+            "href": "/dashboard/imports/prestige-shelf-02",
+        },
+        {
+            "label": "Importar prateleira 01",
+            "href": "/dashboard/imports/prestige-shelf-01",
+        },
+    ]
 
 
 def _build_new_product_form_context(
@@ -2515,16 +2545,6 @@ def _build_shelves_context(request: Request) -> Dict[str, Any]:
             "page_title": "Prateleiras",
             "shelves": shelf_cards,
             "import_feedback": import_feedback,
-            "internal_import_actions": [
-                {
-                    "label": "Importar prateleira 02",
-                    "href": "/dashboard/imports/prestige-shelf-02",
-                },
-                {
-                    "label": "Importar prateleira 01",
-                    "href": "/dashboard/imports/prestige-shelf-01",
-                }
-            ],
         },
     )
 
@@ -2708,7 +2728,7 @@ def _build_shelf_detail_context(request: Request, shelf_number: int) -> Dict[str
                     ),
                     barcode_module_width_px=2,
                     barcode_height_px=72,
-                    include_barcode_data_uri=False,
+                    include_barcode_data_uri=True,
                     saved_aliases=saved_aliases,
                 )
             )
@@ -2728,6 +2748,14 @@ def _build_shelf_detail_context(request: Request, shelf_number: int) -> Dict[str
                 "source_label": selected_variant.product.source_label,
                 "source_type": selected_variant.product.source_type,
                 "stock_qty": selected_variant.product.stock_qty,
+                "barcode_data_uri": next(
+                    (
+                        variant_option.get("barcode_data_uri")
+                        for variant_option in variant_options
+                        if variant_option.get("alias") == selected_variant.alias
+                    ),
+                    None,
+                ),
                 "concentration": selected_variant.product.concentration,
                 "is_syncable": selected_variant.product.is_syncable,
                 "placement": shelf_service.get_product_placement(

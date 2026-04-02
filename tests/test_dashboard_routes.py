@@ -406,6 +406,7 @@ def test_dashboard_home_carrega_lista_de_produtos(tmp_path: Path) -> None:
     assert "Buscar produto, marca ou SKU" in content
     assert "Importar do site" in content
     assert "Cadastrar manualmente" in content
+    assert '<div class="detail-inline-actions">' not in content
     assert "/dashboard/static/shelf-banners/shelf-04-paco-rabanne.png" in content
 
 
@@ -824,6 +825,9 @@ def test_dashboard_abre_detalhe_da_prateleira_com_produtos_alocados(tmp_path: Pa
     assert "Produto X" in content
     assert "Código" in content
     assert "Abrir" in content
+    assert "data-inline-barcode-toggle" in content
+    assert "data-inline-barcode-panel" in content
+    assert "tela cheia" in content
     assert "/dashboard/static/shelf-banners/shelf-04-paco-rabanne.png" in content
 
 

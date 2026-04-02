@@ -1161,6 +1161,91 @@ form {
   min-width: 0;
 }
 
+.shelf-product-card--barcode-open {
+  border-color: rgba(215, 38, 56, 0.18);
+  box-shadow: 0 22px 40px -34px rgba(215, 38, 56, 0.2);
+}
+
+.shelf-product-card__support-line {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem 0.9rem;
+  align-items: center;
+  margin: 0;
+  color: var(--color-text-soft);
+  font-size: 0.76rem;
+  line-height: 1.35;
+}
+
+.shelf-inline-barcode {
+  display: grid;
+  gap: 0.8rem;
+  margin-top: 0.22rem;
+  padding: 0.85rem;
+  border: 1px solid rgba(39, 31, 24, 0.08);
+  border-radius: 1rem;
+  background:
+    linear-gradient(180deg, rgba(252, 250, 247, 0.98) 0%, rgba(243, 238, 232, 0.9) 100%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.75);
+}
+
+.shelf-inline-barcode__header {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 0.7rem;
+}
+
+.shelf-inline-barcode__copy {
+  min-width: 0;
+}
+
+.shelf-inline-barcode__variant {
+  margin: 0.25rem 0 0;
+  color: var(--color-panel);
+  font-size: 0.92rem;
+  font-weight: 700;
+}
+
+.shelf-inline-barcode__image-frame {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 8.8rem;
+  padding: 0.9rem;
+  border-radius: 0.95rem;
+  background: #ffffff;
+  border: 1px solid rgba(39, 31, 24, 0.06);
+}
+
+.shelf-inline-barcode__image {
+  width: 100%;
+  max-width: 16.5rem;
+}
+
+.shelf-inline-barcode__empty {
+  padding: 1rem;
+  border: 1px dashed rgba(39, 31, 24, 0.14);
+  border-radius: 0.95rem;
+  color: var(--color-text-soft);
+  font-size: 0.82rem;
+  text-align: center;
+}
+
+.shelf-inline-barcode__code {
+  justify-self: start;
+}
+
+.shelf-inline-barcode__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+}
+
+.shelf-inline-barcode__actions > * {
+  min-width: 0;
+}
+
 .variant-chip-list,
 .filter-chip-row {
   display: flex;
@@ -1797,19 +1882,42 @@ form {
 .header-create__action {
   display: inline-flex;
   align-items: center;
+  justify-content: flex-start;
   min-height: 2.6rem;
+  width: 100%;
   padding: 0.62rem 0.85rem;
   border: 1px solid rgba(27, 27, 29, 0.08);
   border-radius: 0.95rem;
   background: rgba(252, 251, 249, 0.99);
   color: var(--color-panel);
   box-shadow: var(--shadow-panel);
+  cursor: pointer;
 }
 
 .header-create__action-label {
   font-size: 0.8rem;
   font-weight: 700;
   white-space: nowrap;
+}
+
+.header-create__section-label {
+  margin: 0.15rem 0 0;
+  color: var(--color-text-muted);
+  font-size: 0.66rem;
+  font-weight: 800;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.header-create__action-form {
+  margin: 0;
+}
+
+.header-create__action--admin {
+  border-style: dashed;
+  color: var(--color-text-soft);
+  background: rgba(243, 238, 232, 0.92);
+  box-shadow: none;
 }
 
 .header-create__button {
@@ -1971,6 +2079,21 @@ form {
     min-width: 0;
   }
 
+  .shelf-inline-barcode {
+    padding: 0.78rem;
+  }
+
+  .shelf-inline-barcode__header,
+  .shelf-inline-barcode__actions {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .shelf-inline-barcode__image-frame {
+    min-height: 7.8rem;
+    padding: 0.8rem;
+  }
+
   .variant-chip-list,
   .filter-chip-row {
     gap: 0.42rem;
@@ -2084,7 +2207,8 @@ form {
   .product-card__actions,
   .shelf-product-card__actions,
   .detail-actions,
-  .detail-inline-actions {
+  .detail-inline-actions,
+  .shelf-inline-barcode__actions {
     display: grid;
     grid-template-columns: minmax(0, 1fr);
   }

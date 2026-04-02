@@ -58,7 +58,12 @@
 <section class="page-section">
   <div class="shelf-product-list">
     {% for card in products %}
-    <article class="shelf-product-card" data-variant-switcher data-variant-storage-key="shelf-{{ card.group_id }}">
+    <article
+      class="shelf-product-card"
+      data-variant-switcher
+      data-variant-storage-key="shelf-{{ card.group_id }}"
+      data-inline-barcode-card
+    >
       <a class="shelf-product-card__media" href="{{ card.detail_href }}" data-variant-detail-link>
         <span class="shelf-product-card__media-frame">
           {% if card.image_url %}
@@ -84,6 +89,10 @@
 
         <a class="shelf-product-card__title" href="{{ card.detail_href }}" data-variant-detail-link>{{ card.name }}</a>
 
+        <p class="shelf-product-card__meta">
+          {{ card.brand }}{% if card.concentration %} • {{ card.concentration }}{% endif %}{% if card.selected_variant_label %} • <span data-variant-label-only>{{ card.selected_variant_label }}</span>{% endif %}
+        </p>
+
         <div class="variant-chip-list" role="list" aria-label="Variantes disponíveis de {{ card.name }}">
           {% for variant in card.variants %}
           <button
@@ -96,7 +105,10 @@
             data-variant-detail-href="{{ variant.detail_href }}"
             data-variant-barcode-href="{{ variant.barcode_href }}"
             data-variant-image-url="{{ variant.image_url or '' }}"
+            data-variant-barcode-data-uri="{{ variant.barcode_data_uri or '' }}"
             data-variant-status-value="{{ variant.status_label }}"
+            data-variant-status-tone-value="{{ variant.status_tone }}"
+            data-variant-timestamp-value="{{ variant.timestamp_label }}"
             data-variant-source-value="{{ variant.source_label }}"
             data-variant-source-type="{{ variant.source_type }}"
             data-variant-stock-qty="{{ variant.stock_qty }}"
@@ -110,16 +122,55 @@
 
         <div class="shelf-product-card__technical-line">
           <p class="shelf-product-card__sku" title="{{ card.variant_code }}">Código <span data-variant-code-label>{{ card.variant_code }}</span></p>
-          <p class="shelf-product-card__status" data-variant-status-label>{{ card.status_label }}</p>
-          <p class="shelf-product-card__meta">
+          <p class="shelf-product-card__support-line">
+            <span class="shelf-product-card__status" data-variant-status-label>{{ card.status_label }}</span>
             <span data-variant-stock-label>Estoque {{ card.stock_qty }}</span>
           </p>
         </div>
 
         <div class="shelf-product-card__actions">
-          <a class="button button--secondary button--small" href="{{ card.barcode_href }}" data-variant-barcode-link>Código</a>
-          <a class="button button--small" href="{{ card.detail_href }}" data-variant-detail-link>Abrir</a>
+          <button class="button button--small" type="button" data-inline-barcode-toggle aria-expanded="false">Código</button>
+          <a class="button button--secondary button--small" href="{{ card.detail_href }}" data-variant-detail-link>Abrir</a>
         </div>
+
+        <section class="shelf-inline-barcode" data-inline-barcode-panel hidden aria-label="Código do produto {{ card.name }}">
+          <div class="shelf-inline-barcode__header">
+            <div class="shelf-inline-barcode__copy">
+              <p class="section-kicker">Pronto para bipar</p>
+              <p class="shelf-inline-barcode__variant">Variante <span data-variant-label-only>{{ card.selected_variant_label }}</span></p>
+            </div>
+            <button class="button button--ghost button--small" type="button" data-inline-barcode-close>Fechar</button>
+          </div>
+
+          <div class="shelf-inline-barcode__image-frame" data-variant-barcode-image-frame {% if not card.barcode_data_uri %}hidden{% endif %}>
+            <img
+              class="shelf-inline-barcode__image"
+              src="{{ card.barcode_data_uri or '' }}"
+              alt="Código de barras do código {{ card.variant_code }}"
+              data-variant-barcode-image
+              loading="lazy"
+            />
+          </div>
+          <div class="shelf-inline-barcode__empty" data-variant-barcode-empty {% if card.barcode_data_uri %}hidden{% endif %}>
+            Nenhum código disponível para esta variante.
+          </div>
+
+          <p class="shelf-inline-barcode__code shelf-product-card__sku" title="{{ card.variant_code }}">
+            Código <span data-variant-code-label>{{ card.variant_code }}</span>
+          </p>
+
+          <div class="shelf-inline-barcode__actions">
+            <a class="button button--secondary button--small" href="{{ card.barcode_href }}" data-variant-barcode-link>Código em tela cheia</a>
+            <button
+              class="button button--ghost button--small"
+              type="button"
+              data-variant-copy-trigger
+              data-copy-text="{{ card.variant_code }}"
+            >
+              Copiar código
+            </button>
+          </div>
+        </section>
       </div>
     </article>
     {% else %}
