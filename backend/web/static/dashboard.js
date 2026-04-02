@@ -278,10 +278,15 @@ function setInlineBarcodePanelState(inlineBarcodeCard, shouldOpen) {
     return;
   }
 
+  if (!toggleButton.dataset.closedLabel) {
+    toggleButton.dataset.closedLabel = toggleButton.textContent || "Código";
+  }
+
   inlineBarcodeCard.classList.toggle("shelf-product-card--barcode-open", shouldOpen);
   inlineBarcodeCard.dataset.inlineBarcodeOpen = shouldOpen ? "true" : "false";
   inlineBarcodePanel.hidden = !shouldOpen;
   toggleButton.setAttribute("aria-expanded", shouldOpen ? "true" : "false");
+  toggleButton.textContent = shouldOpen ? "Recolher" : toggleButton.dataset.closedLabel;
 }
 
 function closeOtherInlineBarcodePanels(currentCard) {

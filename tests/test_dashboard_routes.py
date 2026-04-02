@@ -827,7 +827,7 @@ def test_dashboard_abre_detalhe_da_prateleira_com_produtos_alocados(tmp_path: Pa
     assert "Abrir" in content
     assert "data-inline-barcode-toggle" in content
     assert "data-inline-barcode-panel" in content
-    assert "tela cheia" in content
+    assert "Tela cheia" in content
     assert "/dashboard/static/shelf-banners/shelf-04-paco-rabanne.png" in content
 
 

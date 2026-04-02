@@ -1180,9 +1180,11 @@ form {
 .shelf-inline-barcode {
   display: grid;
   gap: 0.8rem;
-  margin-top: 0.22rem;
+  margin-top: 0.32rem;
   padding: 0.85rem;
+  padding-top: 0.95rem;
   border: 1px solid rgba(39, 31, 24, 0.08);
+  border-top-color: rgba(39, 31, 24, 0.1);
   border-radius: 1rem;
   background:
     linear-gradient(180deg, rgba(252, 250, 247, 0.98) 0%, rgba(243, 238, 232, 0.9) 100%);
@@ -1190,21 +1192,51 @@ form {
 }
 
 .shelf-inline-barcode__header {
-  display: flex;
-  align-items: start;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
   gap: 0.7rem;
 }
 
-.shelf-inline-barcode__copy {
+.shelf-inline-barcode__identity {
   min-width: 0;
 }
 
 .shelf-inline-barcode__variant {
-  margin: 0.25rem 0 0;
+  margin: 0.22rem 0 0;
   color: var(--color-panel);
-  font-size: 0.92rem;
-  font-weight: 700;
+  font-size: 0.96rem;
+  font-weight: 800;
+}
+
+.shelf-inline-barcode__code-block {
+  display: grid;
+  justify-items: end;
+  gap: 0.22rem;
+  min-width: 0;
+}
+
+.shelf-inline-barcode__code-block .section-kicker {
+  margin-bottom: 0;
+}
+
+.shelf-inline-barcode__code-value {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  max-width: 100%;
+  padding: 0.42rem 0.62rem;
+  border: 1px solid rgba(27, 27, 29, 0.1);
+  border-radius: 0.8rem;
+  background: rgba(17, 17, 17, 0.04);
+  color: var(--color-panel);
+  font-size: 0.98rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .shelf-inline-barcode__image-frame {
@@ -1230,10 +1262,6 @@ form {
   color: var(--color-text-soft);
   font-size: 0.82rem;
   text-align: center;
-}
-
-.shelf-inline-barcode__code {
-  justify-self: start;
 }
 
 .shelf-inline-barcode__actions {
@@ -2083,10 +2111,17 @@ form {
     padding: 0.78rem;
   }
 
-  .shelf-inline-barcode__header,
   .shelf-inline-barcode__actions {
     display: grid;
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .shelf-inline-barcode__header {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .shelf-inline-barcode__code-block {
+    justify-items: start;
   }
 
   .shelf-inline-barcode__image-frame {

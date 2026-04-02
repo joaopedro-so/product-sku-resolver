@@ -90,7 +90,7 @@
         <a class="shelf-product-card__title" href="{{ card.detail_href }}" data-variant-detail-link>{{ card.name }}</a>
 
         <p class="shelf-product-card__meta">
-          {{ card.brand }}{% if card.concentration %} • {{ card.concentration }}{% endif %}{% if card.selected_variant_label %} • <span data-variant-label-only>{{ card.selected_variant_label }}</span>{% endif %}
+          {% if card.concentration %}{{ card.concentration }}{% endif %}{% if card.concentration and card.selected_variant_label %} • {% endif %}{% if card.selected_variant_label %}<span data-variant-label-only>{{ card.selected_variant_label }}</span>{% endif %}
         </p>
 
         <div class="variant-chip-list" role="list" aria-label="Variantes disponíveis de {{ card.name }}">
@@ -135,11 +135,14 @@
 
         <section class="shelf-inline-barcode" data-inline-barcode-panel hidden aria-label="Código do produto {{ card.name }}">
           <div class="shelf-inline-barcode__header">
-            <div class="shelf-inline-barcode__copy">
-              <p class="section-kicker">Pronto para bipar</p>
-              <p class="shelf-inline-barcode__variant">Variante <span data-variant-label-only>{{ card.selected_variant_label }}</span></p>
+            <div class="shelf-inline-barcode__identity">
+              <p class="section-kicker">Variante ativa</p>
+              <p class="shelf-inline-barcode__variant"><span data-variant-label-only>{{ card.selected_variant_label }}</span></p>
             </div>
-            <button class="button button--ghost button--small" type="button" data-inline-barcode-close>Fechar</button>
+            <div class="shelf-inline-barcode__code-block">
+              <p class="section-kicker">Código atual</p>
+              <strong class="shelf-inline-barcode__code-value" title="{{ card.variant_code }}" data-variant-code-label>{{ card.variant_code }}</strong>
+            </div>
           </div>
 
           <div class="shelf-inline-barcode__image-frame" data-variant-barcode-image-frame {% if not card.barcode_data_uri %}hidden{% endif %}>
@@ -155,12 +158,8 @@
             Nenhum código disponível para esta variante.
           </div>
 
-          <p class="shelf-inline-barcode__code shelf-product-card__sku" title="{{ card.variant_code }}">
-            Código <span data-variant-code-label>{{ card.variant_code }}</span>
-          </p>
-
           <div class="shelf-inline-barcode__actions">
-            <a class="button button--secondary button--small" href="{{ card.barcode_href }}" data-variant-barcode-link>Código em tela cheia</a>
+            <a class="button button--secondary button--small" href="{{ card.barcode_href }}" data-variant-barcode-link>Tela cheia</a>
             <button
               class="button button--ghost button--small"
               type="button"
@@ -169,6 +168,7 @@
             >
               Copiar código
             </button>
+            <button class="button button--ghost button--small" type="button" data-inline-barcode-close>Fechar</button>
           </div>
         </section>
       </div>
