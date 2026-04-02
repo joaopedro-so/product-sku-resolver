@@ -13,8 +13,15 @@
 </section>
 {% else %}
 <section class="fullscreen-barcode">
+  {% if back_navigation %}
+  <a class="context-back-link context-back-link--fullscreen" href="{{ back_navigation.href }}" aria-label="{{ back_navigation.label }}">
+    <span class="context-back-link__icon" aria-hidden="true">←</span>
+    <span>{{ back_navigation.label }}</span>
+  </a>
+  {% endif %}
+
   <div class="fullscreen-barcode__header">
-    <a class="button button--secondary button--small" href="/dashboard/products/{{ product.alias }}">Fechar</a>
+    <a class="button button--secondary button--small" href="{{ back_navigation.href if back_navigation else '/dashboard/products/' ~ product.alias }}">Fechar</a>
     <div>
       <h1>{{ parent_product.parent_name if parent_product else product.name }}</h1>
       <p>

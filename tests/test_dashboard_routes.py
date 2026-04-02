@@ -1255,6 +1255,35 @@ def test_dashboard_detalhe_abre_produto_existente(tmp_path: Path) -> None:
     assert "Código em tela cheia" in content
 
 
+def test_dashboard_detalhe_exibe_atalho_de_volta_para_prateleira_de_origem(tmp_path: Path) -> None:
+    """
+    Responsabilidade:
+        Garantir que a PDP exponha um retorno claro para a prateleira aberta.
+
+    Parametros:
+        tmp_path: Diretorio temporario para isolamento do storage.
+
+    Retorno:
+        Nenhum; valida href e copy do atalho contextual.
+
+    Contexto de uso:
+        O operador entra no produto a partir da prateleira e precisa voltar
+        rapido para continuar a conferencia sem depender do navegador.
+    """
+
+    app = _build_app_with_temp_storage(tmp_path)
+    _seed_product(app)
+    request = _build_request(app, method="GET", path="/dashboard/products/produto_teste?from_shelf=4")
+
+    response = routes_dashboard.dashboard_product_detail(request, alias="produto_teste")
+
+    assert isinstance(response, _TemplateResponse)
+    assert response.status_code == 200
+    content = response.body.decode("utf-8")
+    assert "/dashboard/prateleiras/4" in content
+    assert "Voltar para a prateleira 04" in content
+
+
 def test_dashboard_detalhe_expone_estado_de_salvo_por_variante_no_html(tmp_path: Path) -> None:
     """
     Responsabilidade:
@@ -1338,6 +1367,35 @@ def test_dashboard_barcode_fullscreen_exibe_modo_operacional(tmp_path: Path) -> 
     assert "Fechar" in content
     assert "sku-inicial" in content
     assert "Atualizar" in content
+
+
+def test_dashboard_barcode_fullscreen_preserva_retorno_para_prateleira(tmp_path: Path) -> None:
+    """
+    Responsabilidade:
+        Garantir que o fullscreen do barcode mantenha o contexto da prateleira.
+
+    Parametros:
+        tmp_path: Diretorio temporario para isolamento do storage.
+
+    Retorno:
+        Nenhum; valida o atalho de retorno contextual.
+
+    Contexto de uso:
+        O fluxo de bipagem pode abrir tela cheia, mas o operador ainda precisa
+        voltar para a mesma prateleira sem se perder na navegacao.
+    """
+
+    app = _build_app_with_temp_storage(tmp_path)
+    _seed_product(app)
+    request = _build_request(app, method="GET", path="/dashboard/products/produto_teste/barcode?from_shelf=4")
+
+    response = routes_dashboard.dashboard_product_barcode_fullscreen(request, alias="produto_teste")
+
+    assert isinstance(response, _TemplateResponse)
+    assert response.status_code == 200
+    content = response.body.decode("utf-8")
+    assert "/dashboard/prateleiras/4" in content
+    assert "Voltar para a prateleira 04" in content
 
 
 def test_dashboard_cria_produto_via_formulario(tmp_path: Path) -> None:

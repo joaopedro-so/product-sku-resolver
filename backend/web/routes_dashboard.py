@@ -2266,6 +2266,7 @@ def _build_group_variant_payload(
     barcode_height_px: int,
     include_barcode_data_uri: bool = True,
     saved_aliases: Optional[set[str]] = None,
+    return_query_params: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """
     Responsabilidade:
@@ -2280,6 +2281,8 @@ def _build_group_variant_payload(
         barcode_height_px: Altura das barras usada no SVG.
         include_barcode_data_uri: Define se o payload precisa incluir o SVG.
         saved_aliases: Conjunto opcional com os aliases salvos pelo operador.
+        return_query_params: Query params opcionais para preservar contexto
+            de origem, como a prateleira aberta antes do detalhe.
 
     Retorno:
         Dicionario serializavel com links, SKU, status e barcode da variante.
@@ -2318,6 +2321,14 @@ def _build_group_variant_payload(
         )
 
     is_saved = variant_product.alias in (saved_aliases or set())
+    detail_href = _append_dashboard_query_params(
+        f"/dashboard/products/{variant_product.alias}",
+        return_query_params,
+    )
+    barcode_href = _append_dashboard_query_params(
+        f"/dashboard/products/{variant_product.alias}/barcode",
+        return_query_params,
+    )
 
     return {
         "alias": variant_product.alias,
@@ -2325,8 +2336,8 @@ def _build_group_variant_payload(
         "variant_code": variant_product.variant_code,
         "parent_page_sku": grouped_product.parent_page_sku,
         "image_url": variant_product.image_url or (preview.image_url if preview and preview.image_url else None),
-        "detail_href": f"/dashboard/products/{variant_product.alias}",
-        "barcode_href": f"/dashboard/products/{variant_product.alias}/barcode",
+        "detail_href": detail_href,
+        "barcode_href": barcode_href,
         "update_href": f"/dashboard/products/{variant_product.alias}/update",
         "edit_href": f"/dashboard/products/{variant_product.alias}/edit",
         "delete_href": f"/dashboard/products/{variant_product.alias}/delete",
@@ -2354,6 +2365,107 @@ def _build_group_variant_payload(
         "variant_notes": variant_product.variant_notes,
         "is_syncable": variant_product.is_syncable,
     }
+
+
+def _append_dashboard_query_params(base_path: str, query_params: Optional[Dict[str, Any]]) -> str:
+    """
+    Responsabilidade:
+        Acrescentar query params de contexto a um caminho interno do dashboard.
+
+    Parametros:
+        base_path: Caminho base da rota que recebera os parametros.
+        query_params: Dicionario opcional com pares chave/valor serializaveis.
+
+    Retorno:
+        URL final com query string estavel quando houver parametros validos.
+
+    Contexto de uso:
+        Permite preservar de onde o operador veio, como a prateleira atual,
+        para que a tela seguinte consiga oferecer um "voltar" coerente.
+    """
+
+    if not query_params:
+        return base_path
+
+    normalized_items = {
+        str(key): str(value)
+        for key, value in query_params.items()
+        if value not in (None, "")
+    }
+    if not normalized_items:
+        return base_path
+
+    return f"{base_path}?{urlencode(normalized_items)}"
+
+
+def _resolve_return_query_params(request: Request, fallback_shelf_number: Optional[int] = None) -> Dict[str, str]:
+    """
+    Responsabilidade:
+        Definir quais parametros de retorno devem acompanhar os links da UI.
+
+    Parametros:
+        request: Requisicao atual para inspecionar origem explicitada na URL.
+        fallback_shelf_number: Numero da prateleira a ser usado quando a URL
+            atual nao trouxer um contexto de origem explicito.
+
+    Retorno:
+        Dicionario enxuto com query params usados para reconstruir o retorno.
+
+    Contexto de uso:
+        Mantem a experiencia previsivel ao abrir um produto a partir da
+        prateleira, sem depender apenas do historico do navegador.
+    """
+
+    from_shelf_value = request.query_params.get("from_shelf", "").strip()
+    if from_shelf_value.isdigit():
+        return {"from_shelf": from_shelf_value}
+
+    if fallback_shelf_number is not None:
+        return {"from_shelf": str(fallback_shelf_number)}
+
+    return {}
+
+
+def _build_back_navigation(
+    request: Request,
+    *,
+    fallback_href: str,
+    fallback_label: str,
+    shelf_placement: Optional[ShelfPlacement] = None,
+) -> Dict[str, str]:
+    """
+    Responsabilidade:
+        Montar o destino de retorno exibido nas telas secundarias do app.
+
+    Parametros:
+        request: Requisicao atual, usada para ler um contexto explicito de
+            retorno vindo da URL.
+        fallback_href: URL usada quando nao houver contexto mais especifico.
+        fallback_label: Texto amigavel correspondente ao fallback.
+        shelf_placement: Posicao fisica do produto, quando conhecida.
+
+    Retorno:
+        Dicionario com `href` e `label` pronto para o template.
+
+    Contexto de uso:
+        O fluxo operacional depende de voltar rapidamente para a prateleira
+        depois de inspecionar um produto ou abrir o barcode em tela cheia.
+    """
+
+    from_shelf_value = request.query_params.get("from_shelf", "").strip()
+    if from_shelf_value.isdigit():
+        return {
+            "href": f"/dashboard/prateleiras/{from_shelf_value}",
+            "label": f"Voltar para a prateleira {int(from_shelf_value):02d}",
+        }
+
+    if shelf_placement is not None:
+        return {
+            "href": f"/dashboard/prateleiras/{shelf_placement.shelf_number}",
+            "label": f"Voltar para a prateleira {shelf_placement.shelf_number:02d}",
+        }
+
+    return {"href": fallback_href, "label": fallback_label}
 
 
 def _build_group_search_text(grouped_product: GroupedParentProduct) -> str:
@@ -2686,6 +2798,7 @@ def _build_shelf_detail_context(request: Request, shelf_number: int) -> Dict[str
     shelf_products = shelf_service.list_products_for_shelf(products, shelf_number)
     shelf_visual = _build_shelf_card_visual_metadata(request, shelf_definition.shelf_number, shelf_definition.shelf_title)
     grouped_products = _get_product_group_service(request).group_products(shelf_products)
+    return_query_params = _resolve_return_query_params(request, fallback_shelf_number=shelf_number)
     latest_events = _build_latest_event_map(_get_history_store(request).list_events())
     preview_map = _build_preview_map(request, shelf_products, fetch_limit=max(12, len(shelf_products)))
     raw_query_text = request.query_params.get("q", "").strip()
@@ -2730,6 +2843,7 @@ def _build_shelf_detail_context(request: Request, shelf_number: int) -> Dict[str
                     barcode_height_px=72,
                     include_barcode_data_uri=True,
                     saved_aliases=saved_aliases,
+                    return_query_params=return_query_params,
                 )
             )
 
@@ -2787,6 +2901,7 @@ def _build_shelf_detail_context(request: Request, shelf_number: int) -> Dict[str
             "query_text": raw_query_text,
             "brand_filters": brand_filters,
             "selected_brand": selected_brand,
+            "back_navigation": {"href": "/dashboard", "label": "Voltar para Início"},
         },
     )
 
@@ -3191,6 +3306,13 @@ def _build_product_detail_context(request: Request, alias: str) -> Dict[str, Any
         product=selected_variant.product,
         all_products=all_products,
     )
+    return_query_params = _resolve_return_query_params(request)
+    back_navigation = _build_back_navigation(
+        request,
+        fallback_href="/dashboard/search",
+        fallback_label="Voltar para Buscar",
+        shelf_placement=shelf_placement,
+    )
 
     latest_history_event_by_alias: Dict[str, Optional[SkuEvent]] = {}
     for grouped_variant in grouped_product.variants:
@@ -3218,6 +3340,7 @@ def _build_product_detail_context(request: Request, alias: str) -> Dict[str, Any
                 barcode_height_px=124,
                 include_barcode_data_uri=True,
                 saved_aliases=saved_aliases,
+                return_query_params=return_query_params,
             )
         )
 
@@ -3280,6 +3403,7 @@ def _build_product_detail_context(request: Request, alias: str) -> Dict[str, Any
             "history_cards": history_cards,
             "related_products": related_products[:4],
             "last_update": last_update_by_alias.get(selected_variant.alias),
+            "back_navigation": back_navigation,
         },
     )
 
@@ -3862,6 +3986,14 @@ def dashboard_product_barcode_fullscreen(request: Request, alias: str) -> Any:
 
     context = _build_product_detail_context(request, alias)
     status_code = 404 if context.get("error_message") else 200
+    if not context.get("error_message"):
+        return_query_params = _resolve_return_query_params(request)
+        context["back_navigation"] = _build_back_navigation(
+            request,
+            fallback_href=_append_dashboard_query_params(f"/dashboard/products/{alias}", return_query_params),
+            fallback_label="Voltar para o produto",
+            shelf_placement=context.get("shelf_placement"),
+        )
     fullscreen_context = _with_app_shell(
         request=request,
         active_tab="search",

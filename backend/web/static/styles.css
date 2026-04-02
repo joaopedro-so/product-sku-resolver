@@ -161,6 +161,33 @@ form {
   margin-top: 1.05rem;
 }
 
+.context-back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin-bottom: 0.8rem;
+  color: var(--color-text-soft);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.context-back-link__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.8rem;
+  height: 1.8rem;
+  border: 1px solid rgba(39, 31, 24, 0.08);
+  border-radius: 999px;
+  background: rgba(252, 250, 247, 0.9);
+  color: var(--color-panel);
+  box-shadow: var(--shadow-inset);
+}
+
+.context-back-link--fullscreen {
+  margin-bottom: 0.15rem;
+}
+
 .page-title,
 .section-title {
   margin: 0;

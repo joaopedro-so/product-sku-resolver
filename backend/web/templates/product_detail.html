@@ -20,6 +20,13 @@
 
 <div data-variant-switcher data-variant-storage-key="detail-{{ parent_product.group_id }}">
   <section class="page-section">
+    {% if back_navigation %}
+    <a class="context-back-link" href="{{ back_navigation.href }}" aria-label="{{ back_navigation.label }}">
+      <span class="context-back-link__icon" aria-hidden="true">←</span>
+      <span>{{ back_navigation.label }}</span>
+    </a>
+    {% endif %}
+
     <div class="detail-hero">
       <div class="detail-hero__media">
         {% if product.image_url %}

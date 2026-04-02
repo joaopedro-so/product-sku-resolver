@@ -13,6 +13,13 @@
 </section>
 {% else %}
 <section class="page-section">
+  {% if back_navigation %}
+  <a class="context-back-link" href="{{ back_navigation.href }}" aria-label="{{ back_navigation.label }}">
+    <span class="context-back-link__icon" aria-hidden="true">←</span>
+    <span>{{ back_navigation.label }}</span>
+  </a>
+  {% endif %}
+
   <div class="search-entry-card search-entry-card--location">
     <div class="shelf-hero-banner shelf-hero-banner--{{ shelf_visual.banner_variant }}">
       {% if banner_image_url %}
