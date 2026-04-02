@@ -1110,6 +1110,11 @@ form {
   font-size: 0.88rem;
 }
 
+.shelf-product-card__meta {
+  min-height: 1.2rem;
+  font-size: 0.84rem;
+}
+
 .product-card__technical-line,
 .shelf-product-card__technical-line,
 .detail-summary {
@@ -1173,8 +1178,9 @@ form {
   align-items: center;
   margin: 0;
   color: var(--color-text-soft);
-  font-size: 0.76rem;
+  font-size: 0.74rem;
   line-height: 1.35;
+  opacity: 0.88;
 }
 
 .shelf-inline-barcode {
@@ -1520,6 +1526,63 @@ form {
 .detail-block-grid {
   display: grid;
   gap: 0.9rem;
+}
+
+.detail-block-grid--technical {
+  margin-top: 0.9rem;
+}
+
+.detail-technical-sheet {
+  border: 1px solid rgba(39, 31, 24, 0.08);
+  border-radius: 1.1rem;
+  background: rgba(252, 250, 247, 0.88);
+  box-shadow: var(--shadow-panel);
+  overflow: hidden;
+}
+
+.detail-technical-sheet[open] {
+  background:
+    linear-gradient(180deg, rgba(252, 250, 247, 0.96) 0%, rgba(243, 238, 232, 0.9) 100%);
+}
+
+.detail-technical-sheet__summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.85rem;
+  padding: 0.95rem 1rem;
+  cursor: pointer;
+  list-style: none;
+}
+
+.detail-technical-sheet__summary::-webkit-details-marker {
+  display: none;
+}
+
+.detail-technical-sheet__title {
+  display: block;
+  margin-top: 0.22rem;
+  color: var(--color-panel);
+  font-size: 1rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.detail-technical-sheet__status {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 2rem;
+  padding: 0.35rem 0.7rem;
+  border-radius: 999px;
+  border: 1px solid rgba(39, 31, 24, 0.08);
+  background: rgba(17, 17, 17, 0.04);
+  color: var(--color-text-soft);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
 }
 
 .detail-meta-grid {
@@ -2177,6 +2240,16 @@ form {
 
   .detail-inline-actions {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .detail-technical-sheet__summary {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    align-items: stretch;
+  }
+
+  .detail-technical-sheet__status {
+    justify-self: start;
   }
 
   .barcode-panel .section-heading {

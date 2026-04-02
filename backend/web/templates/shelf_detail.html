@@ -120,13 +120,10 @@
           {% endfor %}
         </div>
 
-        <div class="shelf-product-card__technical-line">
-          <p class="shelf-product-card__sku" title="{{ card.variant_code }}">Código <span data-variant-code-label>{{ card.variant_code }}</span></p>
-          <p class="shelf-product-card__support-line">
-            <span class="shelf-product-card__status" data-variant-status-label>{{ card.status_label }}</span>
-            <span data-variant-stock-label>Estoque {{ card.stock_qty }}</span>
-          </p>
-        </div>
+        <p class="shelf-product-card__support-line">
+          <span class="shelf-product-card__status" data-variant-status-label>{{ card.status_label }}</span>
+          <span data-variant-stock-label>Estoque {{ card.stock_qty }}</span>
+        </p>
 
         <div class="shelf-product-card__actions">
           <button class="button button--small" type="button" data-inline-barcode-toggle aria-expanded="false">Código</button>
