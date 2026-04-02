@@ -2053,6 +2053,7 @@ def _build_product_card(
     preview: Optional[ProductPreview],
     activity: Dict[str, Any],
     is_saved: bool,
+    return_query_params: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """
     Responsabilidade:
@@ -2063,6 +2064,8 @@ def _build_product_card(
         preview: Preview visual cached ou recem-buscado.
         activity: Status operacional consolidado do produto.
         is_saved: Indica se o produto esta salvo como atalho.
+        return_query_params: Query params opcionais para preservar o contexto
+            atual ao abrir detalhe ou barcode a partir de uma lista.
 
     Retorno:
         Dicionario com campos prontos para os templates de lista.
@@ -2072,6 +2075,14 @@ def _build_product_card(
     """
 
     variant_summary_parts = [part for part in [product.brand, product.variant] if str(part).strip()]
+    detail_href = _append_dashboard_query_params(
+        f"/dashboard/products/{product.alias}",
+        return_query_params,
+    )
+    barcode_href = _append_dashboard_query_params(
+        f"/dashboard/products/{product.alias}/barcode",
+        return_query_params,
+    )
     return {
         "alias": product.alias,
         "name": product.name,
@@ -2089,6 +2100,8 @@ def _build_product_card(
         "source_label": product.source_label,
         "stock_qty": product.stock_qty,
         "is_syncable": product.is_syncable,
+        "detail_href": detail_href,
+        "barcode_href": barcode_href,
     }
 
 
@@ -2416,12 +2429,27 @@ def _resolve_return_query_params(request: Request, fallback_shelf_number: Option
         prateleira, sem depender apenas do historico do navegador.
     """
 
+    explicit_return_to = request.query_params.get("return_to", "").strip()
+    if explicit_return_to.startswith("/dashboard"):
+        return {"return_to": explicit_return_to}
+
     from_shelf_value = request.query_params.get("from_shelf", "").strip()
     if from_shelf_value.isdigit():
         return {"from_shelf": from_shelf_value}
 
+    current_path = str(request.url.path)
+    current_query = str(request.url.query)
+    current_dashboard_locations = {
+        "/dashboard",
+        "/dashboard/search",
+        "/dashboard/saved",
+    }
+    if current_path in current_dashboard_locations or current_path.startswith("/dashboard/prateleiras/"):
+        normalized_return_to = current_path if not current_query else f"{current_path}?{current_query}"
+        return {"return_to": normalized_return_to}
+
     if fallback_shelf_number is not None:
-        return {"from_shelf": str(fallback_shelf_number)}
+        return {"return_to": f"/dashboard/prateleiras/{fallback_shelf_number}"}
 
     return {}
 
@@ -2451,6 +2479,24 @@ def _build_back_navigation(
         O fluxo operacional depende de voltar rapidamente para a prateleira
         depois de inspecionar um produto ou abrir o barcode em tela cheia.
     """
+
+    explicit_return_to = request.query_params.get("return_to", "").strip()
+    if explicit_return_to.startswith("/dashboard/prateleiras/"):
+        shelf_fragment = explicit_return_to.removeprefix("/dashboard/prateleiras/").split("?", maxsplit=1)[0].strip()
+        if shelf_fragment.isdigit():
+            return {
+                "href": explicit_return_to,
+                "label": f"Voltar para a prateleira {int(shelf_fragment):02d}",
+            }
+
+    if explicit_return_to.startswith("/dashboard/search"):
+        return {"href": explicit_return_to, "label": "Voltar para Buscar"}
+
+    if explicit_return_to.startswith("/dashboard/saved"):
+        return {"href": explicit_return_to, "label": "Voltar para Salvos"}
+
+    if explicit_return_to == "/dashboard" or explicit_return_to.startswith("/dashboard?"):
+        return {"href": explicit_return_to, "label": "Voltar para Início"}
 
     from_shelf_value = request.query_params.get("from_shelf", "").strip()
     if from_shelf_value.isdigit():
@@ -2928,6 +2974,7 @@ def _build_home_context(request: Request) -> Dict[str, Any]:
     latest_events = _build_latest_event_map(history_events)
     saved_aliases = saved_service.get_saved_aliases_set()
     preview_map = _build_preview_map(request, products, fetch_limit=6)
+    return_query_params = _resolve_return_query_params(request)
 
     cards = [
         _build_product_card(
@@ -2935,6 +2982,7 @@ def _build_home_context(request: Request) -> Dict[str, Any]:
             preview=preview_map.get(product.alias),
             activity=_build_product_activity(product, latest_events.get(product.alias), last_update_by_alias.get(product.alias)),
             is_saved=product.alias in saved_aliases,
+            return_query_params=return_query_params,
         )
         for product in products
     ]
@@ -3030,6 +3078,7 @@ def _build_search_context(request: Request) -> Dict[str, Any]:
     latest_events = _build_latest_event_map(history_events)
     saved_aliases = saved_service.get_saved_aliases_set()
     preview_map = _build_preview_map(request, products, fetch_limit=12)
+    return_query_params = _resolve_return_query_params(request)
 
     all_cards = [
         _build_product_card(
@@ -3037,6 +3086,7 @@ def _build_search_context(request: Request) -> Dict[str, Any]:
             preview=preview_map.get(product.alias),
             activity=_build_product_activity(product, latest_events.get(product.alias), last_update_by_alias.get(product.alias)),
             is_saved=product.alias in saved_aliases,
+            return_query_params=return_query_params,
         )
         for product in products
     ]
@@ -3107,6 +3157,7 @@ def _build_saved_context(request: Request) -> Dict[str, Any]:
     history_events = _get_history_store(request).list_events()
     latest_events = _build_latest_event_map(history_events)
     preview_map = _build_preview_map(request, saved_products, fetch_limit=8)
+    return_query_params = _resolve_return_query_params(request)
 
     cards = [
         _build_product_card(
@@ -3114,6 +3165,7 @@ def _build_saved_context(request: Request) -> Dict[str, Any]:
             preview=preview_map.get(product.alias),
             activity=_build_product_activity(product, latest_events.get(product.alias), last_update_by_alias.get(product.alias)),
             is_saved=True,
+            return_query_params=return_query_params,
         )
         for product in saved_products
     ]

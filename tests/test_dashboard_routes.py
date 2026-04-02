@@ -1156,6 +1156,34 @@ def test_dashboard_search_renderiza_lista_operacional(tmp_path: Path) -> None:
     assert "SKU" in content
 
 
+def test_dashboard_search_preserva_contexto_nos_links_de_detalhe_e_barcode(tmp_path: Path) -> None:
+    """
+    Responsabilidade:
+        Garantir que os resultados da busca preservem a origem nos links.
+
+    Parametros:
+        tmp_path: Diretorio temporario para isolamento do storage.
+
+    Retorno:
+        Nenhum; valida o query param de retorno aplicado nos CTAs da lista.
+
+    Contexto de uso:
+        Evita que o operador perca filtros e resultados da busca ao abrir um
+        produto ou barcode e tentar voltar para o ponto em que estava.
+    """
+
+    app = _build_app_with_temp_storage(tmp_path)
+    _seed_product(app)
+    request = _build_request(app, method="GET", path="/dashboard/search?q=produto_teste")
+
+    response = routes_dashboard.dashboard_search(request)
+
+    assert isinstance(response, _TemplateResponse)
+    assert response.status_code == 200
+    content = response.body.decode("utf-8")
+    assert "return_to=%2Fdashboard%2Fsearch%3Fq%3Dproduto_teste" in content
+
+
 def test_dashboard_cria_lote_de_variantes_no_cadastro_importado_do_site(tmp_path: Path) -> None:
     """
     Responsabilidade:
@@ -1282,6 +1310,39 @@ def test_dashboard_detalhe_exibe_atalho_de_volta_para_prateleira_de_origem(tmp_p
     content = response.body.decode("utf-8")
     assert "/dashboard/prateleiras/4" in content
     assert "Voltar para a prateleira 04" in content
+
+
+def test_dashboard_detalhe_exibe_atalho_de_volta_para_busca_de_origem(tmp_path: Path) -> None:
+    """
+    Responsabilidade:
+        Garantir que a PDP preserve retorno para a busca quando vier dela.
+
+    Parametros:
+        tmp_path: Diretorio temporario para isolamento do storage.
+
+    Retorno:
+        Nenhum; valida href e copy do atalho contextual da busca.
+
+    Contexto de uso:
+        Mantem o operador no fluxo de localizar e comparar perfumes sem perder
+        a lista filtrada ao inspecionar um item individualmente.
+    """
+
+    app = _build_app_with_temp_storage(tmp_path)
+    _seed_product(app)
+    request = _build_request(
+        app,
+        method="GET",
+        path="/dashboard/products/produto_teste?return_to=%2Fdashboard%2Fsearch%3Fq%3Dproduto_teste",
+    )
+
+    response = routes_dashboard.dashboard_product_detail(request, alias="produto_teste")
+
+    assert isinstance(response, _TemplateResponse)
+    assert response.status_code == 200
+    content = response.body.decode("utf-8")
+    assert "/dashboard/search?q=produto_teste" in content
+    assert "Voltar para Buscar" in content
 
 
 def test_dashboard_detalhe_expone_estado_de_salvo_por_variante_no_html(tmp_path: Path) -> None:

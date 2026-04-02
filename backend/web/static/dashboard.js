@@ -648,6 +648,47 @@ function refreshManualVariantRowPresentation(variantList) {
   });
 }
 
+function revealManualVariantRow(variantRow) {
+  /*
+    Responsabilidade:
+      Levar o operador até a variante recém-criada e destacar a nova linha.
+
+    Parametros:
+      variantRow: Linha visual recém-adicionada ao formulário.
+
+    Retorno:
+      Nenhum.
+
+    Contexto de uso:
+      Ao adicionar uma variante, o operador não deve procurar manualmente onde
+      a nova seção apareceu. Esta rotina rola a tela, aplica destaque breve e
+      foca o primeiro campo útil da linha.
+  */
+
+  if (!variantRow) {
+    return;
+  }
+
+  variantRow.classList.add("manual-variant-row--highlighted");
+  window.setTimeout(() => {
+    variantRow.classList.remove("manual-variant-row--highlighted");
+  }, 1800);
+
+  variantRow.scrollIntoView({ behavior: "smooth", block: "center" });
+
+  const firstInteractiveField = variantRow.querySelector(
+    'input:not([type="hidden"]):not([type="file"]):not([disabled]), textarea:not([disabled]), select:not([disabled])',
+  );
+  if (firstInteractiveField instanceof HTMLElement) {
+    window.requestAnimationFrame(() => {
+      firstInteractiveField.focus({ preventScroll: true });
+      if (typeof firstInteractiveField.select === "function" && firstInteractiveField instanceof HTMLInputElement) {
+        firstInteractiveField.select();
+      }
+    });
+  }
+}
+
 function initializeManualProductForm() {
   /*
     Responsabilidade:
@@ -688,6 +729,9 @@ function initializeManualProductForm() {
       const fragment = variantTemplate.content.cloneNode(true);
       variantList.appendChild(fragment);
       refreshManualVariantRowPresentation(variantList);
+      const appendedRows = Array.from(variantList.querySelectorAll("[data-manual-variant-row]"));
+      const newestRow = appendedRows[appendedRows.length - 1] || null;
+      revealManualVariantRow(newestRow);
     });
 
     variantList.addEventListener("click", (event) => {
@@ -791,6 +835,107 @@ function initializeImageInputPreviews() {
 
       const objectUrl = window.URL.createObjectURL(selectedFile);
       updateImagePreview(targetKey, objectUrl);
+    });
+  });
+}
+
+function resolveSubmitBusyLabel(originalLabel) {
+  /*
+    Responsabilidade:
+      Traduzir o rótulo atual do botão para uma versão de processamento.
+
+    Parametros:
+      originalLabel: Texto original do botão de submit acionado.
+
+    Retorno:
+      Rótulo curto e coerente com o tipo de ação em andamento.
+
+    Contexto de uso:
+      O app possui muitas ações rápidas de manutenção. Um feedback curto e
+      contextual reduz ansiedade e evita toques repetidos durante o envio.
+  */
+
+  const normalizedLabel = String(originalLabel || "").trim().toLowerCase();
+  if (!normalizedLabel) {
+    return "Processando...";
+  }
+
+  if (normalizedLabel.includes("atualizar")) {
+    return "Atualizando...";
+  }
+
+  if (normalizedLabel.includes("salvar") || normalizedLabel.includes("cadastrar")) {
+    return "Salvando...";
+  }
+
+  if (normalizedLabel.includes("importar")) {
+    return "Importando...";
+  }
+
+  if (normalizedLabel.includes("excluir")) {
+    return "Excluindo...";
+  }
+
+  if (normalizedLabel.includes("vincular")) {
+    return "Vinculando...";
+  }
+
+  if (normalizedLabel.includes("ignorar")) {
+    return "Ignorando...";
+  }
+
+  return "Processando...";
+}
+
+function initializePostFormFeedback() {
+  /*
+    Responsabilidade:
+      Bloquear envios duplicados e sinalizar processamento em formulários POST.
+
+    Parametros:
+      Nenhum.
+
+    Retorno:
+      Nenhum.
+
+    Contexto de uso:
+      A operação diária depende de cliques rápidos em salvar, atualizar,
+      vincular e excluir. Esta rotina reduz toque duplo e deixa claro que a
+      ação já foi enviada para o servidor.
+  */
+
+  document.querySelectorAll('form[method="post"]').forEach((formElement) => {
+    formElement.addEventListener("submit", (event) => {
+      if (formElement.dataset.submitting === "true") {
+        event.preventDefault();
+        return;
+      }
+
+      const submitTrigger =
+        event.submitter ||
+        formElement.querySelector('button[type="submit"], input[type="submit"]');
+      if (!(submitTrigger instanceof HTMLElement)) {
+        return;
+      }
+
+      formElement.dataset.submitting = "true";
+      formElement.setAttribute("aria-busy", "true");
+
+      const explicitBusyLabel =
+        submitTrigger.getAttribute("data-submitting-label") ||
+        formElement.getAttribute("data-submitting-label") ||
+        "";
+      const busyLabel = explicitBusyLabel || resolveSubmitBusyLabel(submitTrigger.textContent || "");
+
+      formElement.querySelectorAll('button[type="submit"], input[type="submit"]').forEach((submitElement) => {
+        submitElement.setAttribute("disabled", "disabled");
+        submitElement.classList.add("button--busy");
+      });
+
+      if (!submitTrigger.dataset.originalLabel) {
+        submitTrigger.dataset.originalLabel = submitTrigger.textContent || "";
+      }
+      submitTrigger.textContent = busyLabel;
     });
   });
 }
@@ -963,3 +1108,4 @@ initializeInlineBarcodePanels();
 initializeCreateMenu();
 initializeManualProductForm();
 initializeImageInputPreviews();
+initializePostFormFeedback();

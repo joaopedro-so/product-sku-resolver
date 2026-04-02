@@ -438,6 +438,16 @@ form {
   filter: brightness(1.02);
 }
 
+.button:disabled,
+.button[disabled],
+.button--busy {
+  cursor: wait;
+  opacity: 0.72;
+  transform: none;
+  filter: saturate(0.9);
+  box-shadow: 0 10px 22px -24px rgba(32, 23, 17, 0.18);
+}
+
 .button--small {
   min-height: 2.35rem;
   padding: 0.62rem 0.85rem;
@@ -691,6 +701,13 @@ form {
   border: 1px solid rgba(27, 27, 29, 0.08);
   border-radius: 1rem;
   background: rgba(255, 255, 255, 0.58);
+}
+
+.manual-variant-row--highlighted {
+  border-color: rgba(215, 38, 56, 0.28);
+  box-shadow:
+    0 0 0 4px rgba(215, 38, 56, 0.08),
+    var(--shadow-panel);
 }
 
 .manual-variant-row--draft {

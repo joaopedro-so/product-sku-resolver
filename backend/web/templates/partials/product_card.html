@@ -1,10 +1,10 @@
 {#
   Componente reutilizável:
-  Este card mantém a leitura rápida do catálogo, mas agora explicita quando o
-  item é manual/legado e evita exibir CTA de sync onde ele não faz sentido.
+  Este card mantém a leitura rápida do catálogo, mas agora preserva o contexto
+  da lista de origem ao abrir detalhe ou barcode.
 #}
 <article class="product-card">
-  <a class="product-card__media" href="/dashboard/products/{{ card.alias }}">
+  <a class="product-card__media" href="{{ card.detail_href }}">
     <span class="product-card__media-frame">
       {% if card.image_url %}
       <img src="{{ card.image_url }}" alt="Imagem do produto {{ card.name }}" loading="lazy" />
@@ -24,7 +24,7 @@
       {% endif %}
     </div>
 
-    <a class="product-card__title-link" href="/dashboard/products/{{ card.alias }}">
+    <a class="product-card__title-link" href="{{ card.detail_href }}">
       <h3 class="product-card__title">{{ card.name }}</h3>
     </a>
     <p class="product-card__subtitle">
@@ -42,8 +42,8 @@
     </div>
 
     <div class="product-card__actions">
-      <a class="button button--small" href="/dashboard/products/{{ card.alias }}/barcode">Código</a>
-      <a class="button button--secondary button--small" href="/dashboard/products/{{ card.alias }}">Abrir</a>
+      <a class="button button--small" href="{{ card.barcode_href }}">Código</a>
+      <a class="button button--secondary button--small" href="{{ card.detail_href }}">Abrir</a>
     </div>
   </div>
 </article>
