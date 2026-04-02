@@ -267,3 +267,46 @@ def test_match_accepts_brand_alias_inside_expected_name_core() -> None:
     assert result.brand_matched is True
     assert result.name_matched is True
     assert result.variant_matched is True
+
+
+def test_match_accepts_kit_page_with_exact_code_and_contextual_variant() -> None:
+    """
+    Responsabilidade:
+        Garantir matching de kit quando a página omite parte do nome comercial.
+
+    Parâmetros:
+        Nenhum.
+
+    Retorno:
+        Nenhum.
+
+    Contexto de uso:
+        Reproduz o kit Adidas UEFA Goal vendido na Ashua, onde o HTML mantém o
+        código correto mas expõe um título mais genérico do que o cadastro.
+    """
+
+    expected_product = ProductRecord(
+        alias="adidas_uefa_goal_kit_50ml_gel_banho_250ml",
+        brand="Adidas",
+        name="Kit Adidas UEFA Goal + Gel de Banho",
+        variant="KIT",
+        last_known_url="https://www.lojasrenner.com.br/ashua/p/kit-adidas-uefa-eau-de-toilette-50ml-gel-de-banho-250ml/-/A-929705333-br.lr?sku=929705341",
+        last_known_sku="929705341",
+        concentration="KIT",
+    )
+
+    observed_page = PageData(
+        url="https://www.lojasrenner.com.br/ashua/p/kit-adidas-uefa-eau-de-toilette-50ml-gel-de-banho-250ml/-/A-929705333-br.lr?sku=929705341",
+        title="Kit Adidas Uefa Eau de Toilette 50ml + Gel de Banho 250ml KIT",
+        brand=None,
+        name="Kit Adidas Uefa Eau de Toilette 50ml + Gel de Banho 250ml KIT - Lojas Renner",
+        variant="50ml",
+        sku="929705341",
+    )
+
+    result = match_product_with_page(expected_product, observed_page)
+
+    assert result.matched is True
+    assert result.brand_matched is True
+    assert result.variant_matched is True
+    assert "Código atual compatível com a página validada" in result.reasons

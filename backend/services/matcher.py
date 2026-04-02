@@ -18,6 +18,7 @@ from backend.utils.parser import PageData
 NAME_WEIGHT = 0.5
 BRAND_WEIGHT = 0.3
 VARIANT_WEIGHT = 0.2
+CODE_WEIGHT = 0.25
 DEFAULT_MATCH_THRESHOLD = 0.7
 
 
@@ -235,6 +236,81 @@ def _is_informative_core_name(raw_text: str) -> bool:
     return bool(informative_tokens)
 
 
+def _match_variant_with_context(
+    expected_variant: str,
+    observed_variant: str,
+    observed_identity_text: str,
+) -> bool:
+    """
+    Responsabilidade:
+        Comparar variante com fallback contextual para produtos de kit.
+
+    Parâmetros:
+        expected_variant: Variante esperada já normalizada do cadastro.
+        observed_variant: Variante parseada da página já normalizada.
+        observed_identity_text: Texto agregado da página com title/name/brand.
+
+    Retorno:
+        `True` quando a variante for compatível no modo estrito ou contextual.
+
+    Contexto de uso:
+        Alguns kits da Renner expõem volumes dos componentes no HTML e deixam
+        de repetir a variante "KIT" no campo parseado. Sem esse fallback, o
+        matcher reprova a mesma página mesmo quando o item continua sendo o
+        kit correto com o mesmo código operacional.
+    """
+
+    if _contains_or_equals(expected_variant, observed_variant):
+        return True
+
+    # Decisão técnica:
+    # Para kits, aceitamos a presença do marcador textual "kit" no texto
+    # agregado da página como evidência de variante, porque o parser pode
+    # capturar apenas "50ml" ou "250ml" a partir dos componentes internos.
+    if expected_variant == "kit" and "kit" in observed_identity_text.split():
+        return True
+
+    return False
+
+
+def _codes_match_with_sufficient_context(
+    expected_product: ProductRecord,
+    observed_page_data: PageData,
+    brand_matched: bool,
+    name_matched: bool,
+    variant_matched: bool,
+) -> bool:
+    """
+    Responsabilidade:
+        Verificar se o código igual pode reforçar o match com segurança.
+
+    Parâmetros:
+        expected_product: Produto persistido usado como referência.
+        observed_page_data: Dados da página já parseados.
+        brand_matched: Resultado atual da comparação de marca.
+        name_matched: Resultado atual da comparação de nome.
+        variant_matched: Resultado atual da comparação de variante.
+
+    Retorno:
+        `True` quando houver código idêntico e contexto mínimo confiável.
+
+    Contexto de uso:
+        O código não deve ser a identidade primária do produto, mas ele é um
+        sinal importante em páginas problemáticas da Renner/Ashua, sobretudo
+        para kits e páginas que omitem parte do nome comercial no título.
+    """
+
+    expected_code = normalize_text(expected_product.variant_code or expected_product.last_known_sku)
+    observed_code = normalize_text(observed_page_data.sku)
+    if not expected_code or expected_code != observed_code:
+        return False
+
+    # Decisão técnica:
+    # Exigimos pelo menos marca correta e mais um sinal de contexto para não
+    # transformar igualdade de código em critério isolado de aceitação.
+    return brand_matched and (name_matched or variant_matched)
+
+
 def match_product_with_page(
     expected_product: ProductRecord,
     observed_page_data: PageData,
@@ -301,7 +377,18 @@ def match_product_with_page(
             normalized_observed_name_core,
         )
     )
-    variant_matched = _contains_or_equals(normalized_expected_variant, normalized_observed_variant)
+    variant_matched = _match_variant_with_context(
+        expected_variant=normalized_expected_variant,
+        observed_variant=normalized_observed_variant,
+        observed_identity_text=normalized_observed_identity_text,
+    )
+    code_matched = _codes_match_with_sufficient_context(
+        expected_product=expected_product,
+        observed_page_data=observed_page_data,
+        brand_matched=brand_matched,
+        name_matched=name_matched,
+        variant_matched=variant_matched,
+    )
 
     score = 0.0
     if name_matched:
@@ -322,6 +409,11 @@ def match_product_with_page(
     else:
         conflicts.append("Variante divergente entre cadastro e página")
 
+    if code_matched:
+        score += CODE_WEIGHT
+        reasons.append("Código atual compatível com a página validada")
+
+    score = min(score, 1.0)
     matched = score >= match_threshold
     if matched:
         reasons.append(f"Score final {score:.2f} acima do limiar {match_threshold:.2f}")

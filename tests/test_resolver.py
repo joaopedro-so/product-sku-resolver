@@ -243,6 +243,58 @@ def test_resolver_success_with_valid_url(tmp_path: Path) -> None:
     assert result.product.last_known_sku == "NEW-123"
 
 
+def test_resolver_accepts_kit_page_with_generic_title_when_code_matches(tmp_path: Path) -> None:
+    """
+    Responsabilidade:
+        Garantir sync de kit quando a página mantém o código, mas simplifica o nome.
+
+    Parâmetros:
+        tmp_path: Diretório temporário para storage isolado por teste.
+
+    Retorno:
+        Nenhum.
+
+    Contexto de uso:
+        Reproduz o caso do kit Adidas UEFA Goal na Ashua, que hoje existe no
+        site com o mesmo código operacional, mas um título menos específico.
+    """
+
+    html_valid = """
+    <html><head>
+      <title>Kit Adidas Uefa Eau de Toilette 50ml + Gel de Banho 250ml KIT</title>
+      <meta property="og:title" content="Kit Adidas Uefa Eau de Toilette 50ml + Gel de Banho 250ml KIT - Lojas Renner" />
+    </head><body><div data-sku="929705341"></div></body></html>
+    """
+
+    store = ProductStoreService(tmp_path / "products.json")
+    store.upsert_product(
+        ProductRecord(
+            alias="adidas_uefa_goal_kit_50ml_gel_banho_250ml",
+            brand="Adidas",
+            name="Kit Adidas UEFA Goal + Gel de Banho",
+            variant="KIT",
+            last_known_url="https://www.lojasrenner.com.br/ashua/p/kit-adidas-uefa-eau-de-toilette-50ml-gel-de-banho-250ml/-/A-929705333-br.lr?sku=929705341",
+            last_known_sku="929705341",
+            concentration="KIT",
+        )
+    )
+
+    fetcher = FakeFetcherMap(
+        {
+            "https://www.lojasrenner.com.br/ashua/p/kit-adidas-uefa-eau-de-toilette-50ml-gel-de-banho-250ml/-/A-929705333-br.lr?sku=929705341": html_valid
+        }
+    )
+    resolver = ProductResolver(store, fetcher)
+
+    result = resolver.resolve_sku_for_alias("adidas_uefa_goal_kit_50ml_gel_banho_250ml")
+
+    assert result.success is True
+    assert result.match_result is not None
+    assert result.match_result.matched is True
+    assert result.product is not None
+    assert result.product.last_known_sku == "929705341"
+
+
 def test_resolver_chooses_best_search_candidate(tmp_path: Path) -> None:
     """
     Responsabilidade:

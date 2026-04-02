@@ -18,7 +18,10 @@ from starlette.templating import _TemplateResponse
 
 from backend.models.product import ProductRecord
 from backend.models.sku_event import SkuEvent
-from backend.services.internal_catalog_seed_service import resolve_builtin_internal_catalog_seed_file
+from backend.services.internal_catalog_seed_service import (
+    InternalCatalogSeedService,
+    resolve_builtin_internal_catalog_seed_file,
+)
 from backend.services.manual_product_group_service import ManualProductGroupService
 from backend.services.product_group_service import ProductGroupService
 from backend.services.product_preview_service import ProductPreviewService
@@ -563,6 +566,41 @@ def test_dashboard_importa_seed_interno_da_prateleira_09(tmp_path: Path, monkeyp
     assert stored_product is not None
     assert stored_product.shelf_number == 9
     assert stored_product.image_url == "https://example.com/polo-blue.jpg"
+
+
+def test_seed_embarcado_da_prateleira_09_usa_url_ashua_no_kit_adidas_goal(tmp_path: Path) -> None:
+    """
+    Responsabilidade:
+        Garantir que o seed oficial da prateleira 09 aponte para a URL correta da Ashua.
+
+    Parametros:
+        tmp_path: Diretorio temporario usado para isolar o storage do teste.
+
+    Retorno:
+        Nenhum; o teste valida o conteudo versionado do seed embarcado.
+
+    Contexto de uso:
+        Protege o cadastro do kit Adidas UEFA Goal + Gel de Banho, que hoje
+        sincroniza pela vitrine da Ashua e nao deve voltar para a URL antiga
+        da loja principal sem uma revisao consciente.
+    """
+
+    product_store_service = ProductStoreService(tmp_path / "products.json")
+    seed_service = InternalCatalogSeedService(product_store_service)
+    seed_file_path = resolve_builtin_internal_catalog_seed_file("prestige_shelf_09_catalog")
+
+    loaded_products = seed_service.load_products_from_file(seed_file_path)
+    target_product = next(
+        product
+        for product in loaded_products
+        if product.alias == "adidas_uefa_goal_kit_50ml_gel_banho_250ml"
+    )
+
+    assert target_product.last_known_url == (
+        "https://www.lojasrenner.com.br/ashua/p/"
+        "kit-adidas-uefa-eau-de-toilette-50ml-gel-de-banho-250ml/"
+        "-/A-929705333-br.lr?sku=929705341"
+    )
 
 
 def test_dashboard_importa_seed_interno_da_prateleira_01(tmp_path: Path, monkeypatch) -> None:
