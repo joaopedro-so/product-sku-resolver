@@ -5,6 +5,110 @@
   codigo da variante, compartilhar links e alternar variantes sem navegar.
 */
 
+let activeToastTimeoutId = 0;
+
+function showAppToast(messageText, tone = "neutral") {
+  /*
+    Responsabilidade:
+      Exibir um feedback global curto e nao modal para a operacao atual.
+
+    Parametros:
+      messageText: Texto objetivo que explica o resultado da acao.
+      tone: Tom visual do toast, como `success`, `error` ou `neutral`.
+
+    Retorno:
+      Nenhum.
+
+    Contexto de uso:
+      O app precisa confirmar copias, compartilhamentos e pequenas falhas sem
+      interromper o fluxo com alertas modais. O toast global reaproveita o
+      shell existente e reduz atrito em uso repetitivo no celular.
+  */
+
+  const toastElement = document.querySelector("[data-app-toast]");
+  if (!(toastElement instanceof HTMLElement) || !messageText) {
+    return;
+  }
+
+  toastElement.hidden = false;
+  toastElement.textContent = messageText;
+  toastElement.className = "app-toast";
+  toastElement.classList.add(`app-toast--${tone || "neutral"}`);
+
+  if (activeToastTimeoutId) {
+    window.clearTimeout(activeToastTimeoutId);
+  }
+
+  activeToastTimeoutId = window.setTimeout(() => {
+    toastElement.hidden = true;
+    toastElement.textContent = "";
+    toastElement.className = "app-toast";
+  }, 2400);
+}
+
+function showTemporaryButtonLabel(buttonElement, temporaryLabel, durationInMilliseconds = 1200) {
+  /*
+    Responsabilidade:
+      Trocar o rotulo de um botao por alguns instantes sem perder o texto original.
+
+    Parametros:
+      buttonElement: Botao visual que recebera o feedback temporario.
+      temporaryLabel: Texto curto usado como confirmacao imediata.
+      durationInMilliseconds: Janela de tempo antes de restaurar o rotulo.
+
+    Retorno:
+      Nenhum.
+
+    Contexto de uso:
+      Reforca microinteracoes como copiar codigo sem depender apenas do toast
+      global. Assim o operador percebe o sucesso tanto no contexto local quanto
+      no shell do aplicativo.
+  */
+
+  if (!(buttonElement instanceof HTMLElement) || !temporaryLabel) {
+    return;
+  }
+
+  if (!buttonElement.dataset.originalLabel) {
+    buttonElement.dataset.originalLabel = buttonElement.textContent || "";
+  }
+
+  buttonElement.textContent = temporaryLabel;
+  window.setTimeout(() => {
+    buttonElement.textContent = buttonElement.dataset.originalLabel || buttonElement.textContent;
+  }, durationInMilliseconds);
+}
+
+function focusFieldWithoutScroll(targetElement, shouldSelectText = false) {
+  /*
+    Responsabilidade:
+      Aplicar foco contextual sem provocar saltos extras de scroll na pagina.
+
+    Parametros:
+      targetElement: Campo que deve receber foco.
+      shouldSelectText: Define se o texto atual do input deve ser selecionado.
+
+    Retorno:
+      Nenhum.
+
+    Contexto de uso:
+      A UX pede autofocus apenas quando ele realmente acelera a tarefa. Usamos
+      `preventScroll` para respeitar o contexto atual e evitar que a tela
+      "roube" a posicao do operador em navegacao mobile.
+  */
+
+  if (!(targetElement instanceof HTMLElement)) {
+    return;
+  }
+
+  window.requestAnimationFrame(() => {
+    targetElement.focus({ preventScroll: true });
+    if (shouldSelectText && typeof targetElement.select === "function") {
+      targetElement.select();
+    }
+  });
+}
+
 function applyVariantSelection(variantRoot, variantOption) {
   /*
     Responsabilidade:
@@ -875,6 +979,60 @@ function initializeImageInputPreviews() {
   });
 }
 
+function initializeContextualAutofocus() {
+  /*
+    Responsabilidade:
+      Aplicar foco automatico apenas nas telas em que isso reduz atrito real.
+
+    Parametros:
+      Nenhum.
+
+    Retorno:
+      Nenhum.
+
+    Contexto de uso:
+      A Home nao deve abrir teclado ao carregar, mas a busca vazia e o
+      cadastro iniciado por ancora podem ganhar velocidade com foco imediato.
+      Esta rotina centraliza as regras para evitar comportamentos agressivos.
+  */
+
+  const searchField = document.querySelector('[data-contextual-autofocus="search"]');
+  if (searchField instanceof HTMLInputElement && searchField.dataset.autofocusEnabled === "true") {
+    focusFieldWithoutScroll(searchField, false);
+    return;
+  }
+
+  const manualProductForm = document.querySelector("[data-manual-product-form]");
+  if (!(manualProductForm instanceof HTMLElement)) {
+    return;
+  }
+
+  const formMode = manualProductForm.dataset.formMode || "create";
+  const pageHash = window.location.hash || "";
+  const autofillField = document.querySelector('[data-contextual-autofocus="autofill-url"]');
+  const manualPrimaryField = manualProductForm.querySelector('[data-contextual-autofocus="manual-primary"]');
+
+  if (formMode !== "edit") {
+    if (pageHash === "#autofill" && autofillField instanceof HTMLInputElement) {
+      focusFieldWithoutScroll(autofillField, false);
+      return;
+    }
+
+    if (pageHash === "#manual" && manualPrimaryField instanceof HTMLInputElement) {
+      focusFieldWithoutScroll(manualPrimaryField, true);
+    }
+    return;
+  }
+
+  if (pageHash && pageHash !== "#manual") {
+    return;
+  }
+
+  if (manualPrimaryField instanceof HTMLInputElement) {
+    focusFieldWithoutScroll(manualPrimaryField, true);
+  }
+}
+
 function resolveSubmitBusyLabel(originalLabel) {
   /*
     Responsabilidade:
@@ -1099,12 +1257,10 @@ document.addEventListener("click", async (event) => {
 
     try {
       await navigator.clipboard.writeText(textToCopy);
-      copyTrigger.textContent = "Copiado";
-      window.setTimeout(() => {
-        copyTrigger.textContent = copyTrigger.dataset.originalLabel || copyTrigger.textContent;
-      }, 1200);
+      showTemporaryButtonLabel(copyTrigger, "Copiado");
+      showAppToast("Codigo copiado.", "success");
     } catch (error) {
-      window.alert(`Não foi possível copiar o código: ${error}`);
+      showAppToast("Nao foi possivel copiar o codigo.", "error");
     }
     return;
   }
@@ -1121,9 +1277,12 @@ document.addEventListener("click", async (event) => {
       }
 
       await navigator.clipboard.writeText(shareUrl);
-      window.alert("Link copiado para a área de transferência.");
+      showAppToast("Link copiado para a area de transferencia.", "success");
     } catch (error) {
-      window.alert(`Não foi possível compartilhar: ${error}`);
+      if (error instanceof Error && error.name === "AbortError") {
+        return;
+      }
+      showAppToast("Nao foi possivel compartilhar o link.", "error");
     }
   }
 });
@@ -1144,4 +1303,5 @@ initializeInlineBarcodePanels();
 initializeCreateMenu();
 initializeManualProductForm();
 initializeImageInputPreviews();
+initializeContextualAutofocus();
 initializePostFormFeedback();

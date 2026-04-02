@@ -406,6 +406,8 @@ def test_dashboard_home_carrega_lista_de_produtos(tmp_path: Path) -> None:
     assert "Buscar produto, marca ou SKU" in content
     assert "Importar do site" in content
     assert "Cadastrar manualmente" in content
+    assert 'data-app-toast-region' in content
+    assert 'data-app-toast' in content
     assert '<div class="detail-inline-actions">' not in content
     assert "/dashboard/static/shelf-banners/shelf-04-paco-rabanne.png" in content
 
@@ -1155,7 +1157,38 @@ def test_dashboard_search_renderiza_lista_operacional(tmp_path: Path) -> None:
     assert "Produto X" in content
     assert "Encontre o perfume" in content
     assert 'class="shelf-product-card"' in content
+    assert 'data-contextual-autofocus="search"' in content
+    assert 'data-autofocus-enabled="true"' in content
     assert "Código" in content
+
+
+def test_dashboard_search_nao_forca_autofocus_quando_ja_existe_query(tmp_path: Path) -> None:
+    """
+    Responsabilidade:
+        Garantir que a busca nao roube o foco quando a tela ja abre preenchida.
+
+    Parametros:
+        tmp_path: Diretorio temporario usado para isolar o storage do teste.
+
+    Retorno:
+        Nenhum; valida o atributo que controla o autofocus contextual.
+
+    Contexto de uso:
+        Evita reposicionamento e abertura desnecessaria do teclado quando o
+        operador volta para uma busca que ja estava em andamento.
+    """
+
+    app = _build_app_with_temp_storage(tmp_path)
+    _seed_product(app)
+    request = _build_request(app, method="GET", path="/dashboard/search?q=produto")
+
+    response = routes_dashboard.dashboard_search(request)
+
+    assert isinstance(response, _TemplateResponse)
+    assert response.status_code == 200
+    content = response.body.decode("utf-8")
+    assert 'data-contextual-autofocus="search"' in content
+    assert 'data-autofocus-enabled="false"' in content
 
 
 def test_dashboard_search_preserva_contexto_nos_links_de_detalhe_e_barcode(tmp_path: Path) -> None:
@@ -1379,6 +1412,9 @@ def test_dashboard_detalhe_abre_produto_existente(tmp_path: Path) -> None:
     assert "Prateleira 04 — Paco Rabanne" in content
     assert "sku-inicial" in content
     assert "Imagem do produto" in content
+    assert content.count("Editar cadastro") == 1
+    assert content.count("Atualizar agora") == 1
+    assert 'class="sticky-action-bar sticky-action-bar--detail"' in content
     assert "Código de barras" in content
     assert "Código em tela cheia" in content
 
@@ -1903,6 +1939,37 @@ def test_dashboard_abre_formulario_de_edicao(tmp_path: Path) -> None:
     assert "produto_teste" in content
     assert "sku-inicial" in content
     assert "Salvar alteracoes" in content
+    assert 'data-form-mode="edit"' in content
+    assert 'data-contextual-autofocus="manual-primary"' in content
+
+
+def test_dashboard_abre_formulario_novo_com_ganchos_de_autofocus_contextual(tmp_path: Path) -> None:
+    """
+    Responsabilidade:
+        Garantir que o cadastro novo exponha os alvos de foco por contexto.
+
+    Parametros:
+        tmp_path: Diretorio temporario para isolar o storage do teste.
+
+    Retorno:
+        Nenhum; valida a presenca dos atributos usados pelo frontend.
+
+    Contexto de uso:
+        Protege a UX em que `#autofill` e `#manual` precisam levar o foco ao
+        primeiro campo util sem depender de logica espalhada no HTML.
+    """
+
+    app = _build_app_with_temp_storage(tmp_path)
+    request = _build_request(app, method="GET", path="/dashboard/products/new")
+
+    response = routes_dashboard.dashboard_new_product_form(request)
+
+    assert isinstance(response, _TemplateResponse)
+    assert response.status_code == 200
+    content = response.body.decode("utf-8")
+    assert 'data-contextual-autofocus="autofill-url"' in content
+    assert 'data-contextual-autofocus="manual-primary"' in content
+    assert 'data-form-mode="create"' in content
 
 
 def test_dashboard_abre_formulario_da_variante_manual_correta(tmp_path: Path) -> None:

@@ -18,6 +18,8 @@
         value="{{ filters.q }}"
         placeholder="Buscar por nome do produto, marca ou código"
         aria-label="Buscar produto"
+        data-contextual-autofocus="search"
+        data-autofocus-enabled="{{ 'true' if not filters.q else 'false' }}"
       />
       <div class="search-entry-form__actions">
         <button class="button" type="submit">Buscar</button>

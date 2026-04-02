@@ -65,6 +65,10 @@
         {% block content %}{% endblock %}
       </main>
 
+      <div class="app-toast-region" aria-live="polite" aria-atomic="true" data-app-toast-region>
+        <div class="app-toast" hidden data-app-toast></div>
+      </div>
+
       {% if not hide_app_chrome %}
       <nav class="bottom-nav" aria-label="Navegação principal">
         <a class="bottom-nav__item {% if active_tab == 'home' %}bottom-nav__item--active{% endif %}" href="/dashboard">

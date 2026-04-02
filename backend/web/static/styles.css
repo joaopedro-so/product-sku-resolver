@@ -115,6 +115,40 @@ form {
   margin: 0 auto;
 }
 
+.app-toast-region {
+  position: fixed;
+  top: calc(4.65rem + env(safe-area-inset-top, 0px));
+  left: 50%;
+  z-index: 50;
+  width: min(calc(100% - 1.4rem), 23rem);
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.app-toast {
+  padding: 0.82rem 0.95rem;
+  border: 1px solid rgba(39, 31, 24, 0.08);
+  border-radius: 0.95rem;
+  background: rgba(252, 250, 247, 0.96);
+  color: var(--color-panel);
+  font-size: 0.84rem;
+  font-weight: 700;
+  line-height: 1.35;
+  box-shadow: var(--shadow-float);
+}
+
+.app-toast--success {
+  border-color: rgba(18, 139, 87, 0.18);
+  background: rgba(241, 251, 246, 0.98);
+  color: #0d6d46;
+}
+
+.app-toast--error {
+  border-color: rgba(215, 38, 56, 0.2);
+  background: rgba(255, 245, 246, 0.98);
+  color: var(--color-accent-strong);
+}
+
 .app-header__row {
   display: flex;
   align-items: center;
@@ -1072,7 +1106,7 @@ form {
 }
 
 .detail-hero__badges {
-  margin-bottom: 0.65rem;
+  margin-bottom: 0.55rem;
 }
 
 .detail-hero__badges--stacked {
@@ -1166,6 +1200,10 @@ form {
   gap: 0.5rem;
   margin-top: 0.08rem;
   min-width: 0;
+}
+
+.detail-summary--compact {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .product-card__sku,
@@ -1857,6 +1895,10 @@ form {
   box-shadow: var(--shadow-float);
 }
 
+.sticky-action-bar--detail {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
 .sticky-action-bar > * {
   min-width: 0;
 }
@@ -2124,6 +2166,11 @@ form {
 }
 
 @media (max-width: 520px) {
+  .app-toast-region {
+    top: calc(4.35rem + env(safe-area-inset-top, 0px));
+    width: min(calc(100% - 1rem), 21rem);
+  }
+
   .app-header__row,
   .app-main {
     width: min(var(--max-content), calc(100% - 1rem));
