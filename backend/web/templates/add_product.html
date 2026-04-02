@@ -320,6 +320,16 @@
               <input type="text" name="manual_variant_code" value="{{ row.get('code', '') }}" placeholder="ex.: 123456789" />
             </label>
 
+            <label class="form-field form-field--full" data-site-variant-field {% if supports_manual_fields %}hidden{% endif %}>
+              <span>URL da variante no site</span>
+              <input
+                type="url"
+                name="manual_variant_site_url"
+                value="{{ row.get('site_url', '') }}"
+                placeholder="https://www.lojasrenner.com.br/p/produto?sku=..."
+              />
+            </label>
+
             <label class="form-field">
               <span>Estoque</span>
               <input type="number" min="0" name="manual_variant_stock_qty" value="{{ row.get('stock_qty', '0') }}" placeholder="0" />
@@ -383,6 +393,16 @@
             <label class="form-field">
               <span>Código</span>
               <input type="text" name="manual_variant_code" value="" placeholder="ex.: 123456789" />
+            </label>
+
+            <label class="form-field form-field--full" data-site-variant-field {% if supports_manual_fields %}hidden{% endif %}>
+              <span>URL da variante no site</span>
+              <input
+                type="url"
+                name="manual_variant_site_url"
+                value=""
+                placeholder="https://www.lojasrenner.com.br/p/produto?sku=..."
+              />
             </label>
 
             <label class="form-field">

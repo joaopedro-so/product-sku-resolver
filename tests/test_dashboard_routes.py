@@ -1061,11 +1061,13 @@ def test_dashboard_cria_lote_de_variantes_no_cadastro_importado_do_site(tmp_path
             ("stock_qty", "0"),
             ("manual_variant_label", "100ml"),
             ("manual_variant_code", "546583640"),
+            ("manual_variant_site_url", "https://example.com/power-of-seduction-100ml"),
             ("manual_variant_stock_qty", "0"),
             ("manual_variant_notes", ""),
             ("manual_variant_alias", ""),
             ("manual_variant_label", "200ml"),
             ("manual_variant_code", "549040085"),
+            ("manual_variant_site_url", "https://example.com/power-of-seduction-200ml"),
             ("manual_variant_stock_qty", "1"),
             ("manual_variant_notes", "frasco maior"),
             ("manual_variant_alias", ""),
@@ -1089,9 +1091,10 @@ def test_dashboard_cria_lote_de_variantes_no_cadastro_importado_do_site(tmp_path
     assert additional_variant is not None
     assert primary_variant.variant == "100ml"
     assert primary_variant.last_known_sku == "546583640"
+    assert primary_variant.last_known_url == "https://example.com/power-of-seduction"
     assert additional_variant.variant == "200ml"
     assert additional_variant.last_known_sku == "549040085"
-    assert additional_variant.last_known_url == "https://example.com/power-of-seduction"
+    assert additional_variant.last_known_url == "https://example.com/power-of-seduction-200ml"
     assert primary_variant.parent_reference == additional_variant.parent_reference
 
 
@@ -2043,16 +2046,19 @@ def test_dashboard_edita_grupo_de_variantes_e_adiciona_nova_linha(tmp_path: Path
             ("manual_variant_alias", "power_of_seduction_100ml"),
             ("manual_variant_label", "100ml"),
             ("manual_variant_code", "546583640"),
+            ("manual_variant_site_url", "https://example.com/power-of-seduction-100ml"),
             ("manual_variant_stock_qty", "2"),
             ("manual_variant_notes", "estoque revisado"),
             ("manual_variant_alias", "power_of_seduction_200ml"),
             ("manual_variant_label", "200ml"),
             ("manual_variant_code", "549040085"),
+            ("manual_variant_site_url", "https://example.com/power-of-seduction-200ml"),
             ("manual_variant_stock_qty", "1"),
             ("manual_variant_notes", "frasco maior"),
             ("manual_variant_alias", ""),
             ("manual_variant_label", "50ml"),
             ("manual_variant_code", "536814854"),
+            ("manual_variant_site_url", "https://example.com/power-of-seduction-50ml"),
             ("manual_variant_stock_qty", "3"),
             ("manual_variant_notes", "nova variante"),
         ],
@@ -2076,6 +2082,9 @@ def test_dashboard_edita_grupo_de_variantes_e_adiciona_nova_linha(tmp_path: Path
     assert variant_100ml is not None
     assert variant_200ml is not None
     assert variant_50ml is not None
+    assert variant_100ml.last_known_url == "https://example.com/power-of-seduction-100ml"
+    assert variant_200ml.last_known_url == "https://example.com/power-of-seduction-200ml"
+    assert variant_50ml.last_known_url == "https://example.com/power-of-seduction-50ml"
     assert variant_100ml.stock_qty == 2
     assert variant_100ml.variant_notes == "estoque revisado"
     assert variant_200ml.stock_qty == 1

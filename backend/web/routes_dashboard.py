@@ -693,6 +693,7 @@ def _build_new_product_form_context(
                 "alias": "",
                 "label": "",
                 "code": "",
+                "site_url": "",
                 "stock_qty": "0",
                 "notes": "",
             }
@@ -884,6 +885,7 @@ def _extract_manual_variant_submissions(form_data: Any) -> List[Dict[str, Any]]:
 
     variant_labels = [str(item).strip() for item in form_data.getlist("manual_variant_label")]
     variant_codes = [str(item).strip() for item in form_data.getlist("manual_variant_code")]
+    variant_site_urls = [str(item).strip() for item in form_data.getlist("manual_variant_site_url")]
     variant_stocks = [str(item).strip() for item in form_data.getlist("manual_variant_stock_qty")]
     variant_notes = [str(item).strip() for item in form_data.getlist("manual_variant_notes")]
     variant_aliases = [str(item).strip() for item in form_data.getlist("manual_variant_alias")]
@@ -892,6 +894,7 @@ def _extract_manual_variant_submissions(form_data: Any) -> List[Dict[str, Any]]:
     max_row_count = max(
         len(variant_labels),
         len(variant_codes),
+        len(variant_site_urls),
         len(variant_stocks),
         len(variant_notes),
         len(variant_aliases),
@@ -903,18 +906,20 @@ def _extract_manual_variant_submissions(form_data: Any) -> List[Dict[str, Any]]:
     for row_index in range(max_row_count):
         row_label = variant_labels[row_index] if row_index < len(variant_labels) else ""
         row_code = variant_codes[row_index] if row_index < len(variant_codes) else ""
+        row_site_url = variant_site_urls[row_index] if row_index < len(variant_site_urls) else ""
         row_stock_qty = variant_stocks[row_index] if row_index < len(variant_stocks) else ""
         row_notes = variant_notes[row_index] if row_index < len(variant_notes) else ""
         row_alias = variant_aliases[row_index] if row_index < len(variant_aliases) else ""
         row_file = raw_variant_files[row_index] if row_index < len(raw_variant_files) else None
 
-        if not any([row_label, row_code, row_stock_qty, row_notes, row_alias, _normalize_uploaded_file(row_file)]):
+        if not any([row_label, row_code, row_site_url, row_stock_qty, row_notes, row_alias, _normalize_uploaded_file(row_file)]):
             continue
 
         variant_rows.append(
             {
                 "label": row_label,
                 "code": row_code,
+                "site_url": row_site_url,
                 "stock_qty": row_stock_qty,
                 "notes": row_notes,
                 "alias": row_alias,
@@ -958,6 +963,7 @@ def _normalize_single_manual_variant_for_edit(
             "alias": submitted_data.get("alias", fallback_alias),
             "label": submitted_data.get("variant", ""),
             "code": submitted_data.get("last_known_sku", ""),
+            "site_url": submitted_data.get("last_known_url", ""),
             "stock_qty": submitted_data.get("stock_qty", "0"),
             "notes": submitted_data.get("variant_notes", ""),
             "image_file": None,
@@ -969,6 +975,7 @@ def _normalize_single_manual_variant_for_edit(
         "alias": str(primary_variant_row.get("alias") or submitted_data.get("alias") or fallback_alias).strip(),
         "label": str(primary_variant_row.get("label", "")).strip(),
         "code": str(primary_variant_row.get("code", "")).strip(),
+        "site_url": str(primary_variant_row.get("site_url", "")).strip(),
         "stock_qty": _normalize_optional_numeric_text(primary_variant_row.get("stock_qty")) or "0",
         "notes": str(primary_variant_row.get("notes", "")).strip(),
         "image_file": primary_variant_row.get("image_file"),
@@ -1010,6 +1017,7 @@ def _build_single_manual_variant_row(
             "alias": submitted_data.get("alias", fallback_alias),
             "label": submitted_data.get("variant", ""),
             "code": submitted_data.get("last_known_sku", ""),
+            "site_url": submitted_data.get("last_known_url", ""),
             "stock_qty": submitted_data.get("stock_qty", "0"),
             "notes": submitted_data.get("variant_notes", ""),
         }
@@ -1039,11 +1047,46 @@ def _build_manual_variant_rows_from_group(
             "alias": grouped_variant.alias,
             "label": grouped_variant.product.variant,
             "code": grouped_variant.product.last_known_sku,
+            "site_url": grouped_variant.product.last_known_url,
             "stock_qty": str(grouped_variant.product.stock_qty),
             "notes": grouped_variant.product.variant_notes,
         }
         for grouped_variant in grouped_product.variants
     ]
+
+
+def _resolve_variant_site_url(
+    submitted_data: Dict[str, str],
+    variant_row: Dict[str, Any],
+    current_variant_product: ProductRecord | None = None,
+) -> str:
+    """
+    Responsabilidade:
+        Resolver a URL efetiva de sincronizacao para uma variante do site.
+
+    Parametros:
+        submitted_data: Dados principais do formulario, usados como fallback.
+        variant_row: Linha atual de variante preenchida pelo operador.
+        current_variant_product: Produto ja persistido da mesma variante em
+            cenarios de edicao, usado para preservar a URL anterior.
+
+    Retorno:
+        URL final que deve ficar vinculada a variante.
+
+    Contexto de uso:
+        Alguns perfumes da Renner possuem cada ml em paginas separadas. Ao
+        persistir a URL por linha, o botao `Atualizar agora` deixa de puxar a
+        pagina errada e de quebrar as outras variantes do grupo.
+    """
+
+    row_level_site_url = str(variant_row.get("site_url", "")).strip()
+    if row_level_site_url:
+        return row_level_site_url
+
+    if current_variant_product is not None and current_variant_product.last_known_url.strip():
+        return current_variant_product.last_known_url.strip()
+
+    return str(submitted_data.get("last_known_url", "")).strip()
 
 
 def _resolve_group_products_for_alias(
@@ -1271,6 +1314,7 @@ def _build_group_products_for_edit_submission(
             "alias": anchor_product.alias,
             "label": submitted_data.get("variant", ""),
             "code": submitted_data.get("last_known_sku", ""),
+            "site_url": submitted_data.get("last_known_url", ""),
             "stock_qty": submitted_data.get("stock_qty", "0"),
             "notes": submitted_data.get("variant_notes", ""),
             "image_file": None,
@@ -1305,6 +1349,11 @@ def _build_group_products_for_edit_submission(
             "stock_qty": _normalize_optional_numeric_text(variant_row.get("stock_qty")) or "0",
             "variant_notes": str(variant_row.get("notes", "")).strip(),
             "image_url": variant_image_url,
+            "last_known_url": _resolve_variant_site_url(
+                submitted_data=submitted_data,
+                variant_row=variant_row,
+                current_variant_product=current_variant_product,
+            ),
             "parent_reference": group_parent_reference,
         }
         products_to_persist.append(_build_product_record_from_submission(variant_submission))
@@ -1668,7 +1717,10 @@ def _build_product_records_from_submission(
                 "stock_qty": _normalize_optional_numeric_text(variant_row.get("stock_qty")) or "0",
                 "variant_notes": str(variant_row.get("notes", "")).strip(),
                 "image_url": variant_image_url,
-                "last_known_url": submitted_data.get("last_known_url", ""),
+                "last_known_url": _resolve_variant_site_url(
+                    submitted_data=submitted_data,
+                    variant_row=variant_row,
+                ),
                 "parent_reference": parent_reference,
             }
             variant_products.append(_build_product_record_from_submission(variant_submission))
@@ -1716,7 +1768,10 @@ def _build_product_records_from_submission(
                 "stock_qty": _normalize_optional_numeric_text(variant_row.get("stock_qty")) or "0",
                 "variant_notes": str(variant_row.get("notes", "")).strip(),
                 "image_url": variant_image_url,
-                "last_known_url": submitted_data.get("last_known_url", ""),
+                "last_known_url": _resolve_variant_site_url(
+                    submitted_data=submitted_data,
+                    variant_row=variant_row,
+                ),
                 "parent_reference": parent_reference,
             }
             site_variant_products.append(_build_product_record_from_submission(variant_submission))
@@ -3552,7 +3607,7 @@ async def dashboard_autofill_product_form(request: Request) -> Any:
     if fetcher is None:
         context = _build_new_product_form_context(
             submitted_data={"last_known_url": submitted_url},
-            manual_variant_rows=[{"alias": "", "label": "", "code": "", "stock_qty": "0", "notes": ""}],
+            manual_variant_rows=[{"alias": "", "label": "", "code": "", "site_url": submitted_url, "stock_qty": "0", "notes": ""}],
             autofill_error_message="O ambiente atual nao possui fetcher configurado para auto-preenchimento.",
         )
         return templates.TemplateResponse(
@@ -3570,7 +3625,7 @@ async def dashboard_autofill_product_form(request: Request) -> Any:
     if not draft_result.success or draft_result.draft is None:
         context = _build_new_product_form_context(
             submitted_data={"last_known_url": submitted_url},
-            manual_variant_rows=[{"alias": "", "label": "", "code": "", "stock_qty": "0", "notes": ""}],
+            manual_variant_rows=[{"alias": "", "label": "", "code": "", "site_url": submitted_url, "stock_qty": "0", "notes": ""}],
             autofill_error_message=draft_result.message,
             autofill_preview={
                 "title": draft_result.page_data.title if draft_result.page_data else None,
@@ -3609,6 +3664,7 @@ async def dashboard_autofill_product_form(request: Request) -> Any:
                 "alias": submitted_data["alias"],
                 "label": submitted_data["variant"],
                 "code": submitted_data["last_known_sku"],
+                "site_url": submitted_data["last_known_url"],
                 "stock_qty": "0",
                 "notes": "",
             }

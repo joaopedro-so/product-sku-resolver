@@ -285,6 +285,12 @@ function syncSourceTypeFields(formRoot) {
     toggleSectionFieldAvailability(element, shouldStayVisible);
   });
 
+  formRoot.querySelectorAll("[data-site-variant-field]").forEach((element) => {
+    const shouldStayVisible = !supportsManualFields;
+    element.hidden = !shouldStayVisible;
+    toggleSectionFieldAvailability(element, shouldStayVisible);
+  });
+
   formRoot.querySelectorAll("[data-manual-variants-section]").forEach((element) => {
     const shouldStayVisible = supportsVariantBatch;
     element.hidden = !shouldStayVisible;
