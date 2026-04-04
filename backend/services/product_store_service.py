@@ -403,22 +403,26 @@ class ProductStoreService:
         product_alias: str,
         new_sku: str,
         new_url: str,
+        site_variant_id: str = "",
     ) -> ProductRecord:
         """
         Responsabilidade:
-            Atualizar SKU e URL de um produto já existente no armazenamento.
+            Atualizar SKU, URL e vínculo de variante de um produto existente.
 
         Parâmetros:
             product_alias: Alias do produto alvo da atualização.
             new_sku: SKU recém-extraído e validado pela camada de resolução.
             new_url: URL onde o SKU válido foi encontrado.
+            site_variant_id: Identificador estável da variante no site quando
+                disponível no HTML, como `data-aggkey`.
 
         Retorno:
             ProductRecord atualizado e persistido.
 
         Contexto de uso:
             Chamado após validação de identidade e extração de SKU no pipeline
-            de resolução, mantendo dados mutáveis sempre sincronizados.
+            de resolução, mantendo dados mutáveis e o vínculo da variante
+            sincronizados sem perder a identidade interna do alias.
         """
 
         existing_product = self.get_by_alias(product_alias)
@@ -452,13 +456,13 @@ class ProductStoreService:
             site_candidate_id="",
             match_confidence=existing_product.match_confidence,
             match_signals=existing_product.match_signals,
-            last_matched_at=existing_product.last_matched_at,
-            site_variant_id=existing_product.site_variant_id,
             site_candidate_url="",
             site_candidate_code="",
             site_candidate_variant_id="",
             current_site_code=new_sku.strip(),
             current_barcode_value=new_sku.strip(),
+            last_matched_at=_build_site_link_timestamp(),
+            site_variant_id=site_variant_id.strip() or existing_product.site_variant_id,
         )
 
         return self.upsert_product(updated_product)
@@ -723,6 +727,7 @@ class ProductStoreService:
                 "site_candidate_code": "",
                 "site_candidate_variant_id": "",
                 "site_variant_id": incoming_site_product.site_variant_id,
+                "last_matched_at": _build_site_link_timestamp(),
                 "current_site_code": incoming_site_product.last_known_sku,
                 "current_barcode_value": incoming_site_product.variant_code,
             },

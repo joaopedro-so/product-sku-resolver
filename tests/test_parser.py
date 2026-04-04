@@ -167,6 +167,60 @@ def test_parse_page_data_prefers_title_variant_when_og_title_is_stale() -> None:
     assert page_data.variant == "200ml"
 
 
+def test_parse_page_data_extracts_available_variants_from_same_page() -> None:
+    """
+    Responsabilidade:
+        Garantir que o parser extraia todas as variantes publicadas no HTML.
+
+    Parâmetros:
+        Nenhum.
+
+    Retorno:
+        Nenhum.
+
+    Contexto de uso:
+        Reproduz páginas agrupadas da Renner, como Fame In Love, em que 30ml,
+        50ml e 80ml compartilham a mesma página pai e precisam ser resolvidos
+        individualmente no sync por variante.
+    """
+
+    html = """
+    <html>
+      <head>
+        <title>Rabanne Fame In Love Parfum Elixir 30ml</title>
+        <meta property="product:brand" content="Rabanne" />
+        <meta property="og:title" content="Rabanne Fame In Love Parfum Elixir 30ml" />
+      </head>
+      <body>
+        <div class="ProductAttributes_contentMain__6Ci0T">
+          <label>
+            <input type="radio" name="size" data-name="30ml" data-sku="931259416" data-aggkey="TAM30ML" data-type="size" />
+          </label>
+          <label>
+            <input type="radio" name="size" data-name="50ml" data-sku="931259424" data-aggkey="TAM50ML" data-type="size" />
+          </label>
+          <label>
+            <input type="radio" name="size" data-name="80ml" data-sku="931259408" data-aggkey="TAM80ML" data-type="size" />
+          </label>
+        </div>
+        <form id="js-product-form" class="hide">
+          <input type="hidden" name="product" value="931259395" />
+          <input type="hidden" name="sku" value="931259416" />
+        </form>
+      </body>
+    </html>
+    """
+
+    page_data = parse_page_data(
+        "https://www.lojasrenner.com.br/p/rabanne-fame-in-love-parfum-elixir/-/A-931259395-br.lr",
+        html,
+    )
+
+    assert [variant.label for variant in page_data.available_variants] == ["30ml", "50ml", "80ml"]
+    assert [variant.sku for variant in page_data.available_variants] == ["931259416", "931259424", "931259408"]
+    assert page_data.available_variants[2].site_variant_id == "TAM80ML"
+
+
 def test_extract_product_image_url_normalizes_protocol_relative_path() -> None:
     """
     Responsabilidade:

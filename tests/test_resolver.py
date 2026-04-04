@@ -482,3 +482,145 @@ def test_resolver_returns_timeout_failure_without_provider(tmp_path: Path) -> No
     assert result.success is False
     assert result.error_code == "FETCH_FAILED"
     assert "Timeout" in result.message
+
+
+def test_resolver_syncs_specific_variant_from_grouped_parent_page(tmp_path: Path) -> None:
+    """
+    Responsabilidade:
+        Garantir sync correto quando a página pai expõe várias variantes no HTML.
+
+    Parâmetros:
+        tmp_path: Diretório temporário para storage isolado do teste.
+
+    Retorno:
+        Nenhum.
+
+    Contexto de uso:
+        Reproduz o caso do Fame In Love, em que a página abre no 30ml, mas a
+        variante 80ml precisa ser resolvida pelo mapa de variantes do HTML.
+    """
+
+    html_grouped_page = """
+    <html>
+      <head>
+        <title>Rabanne Fame In Love Parfum Elixir 30ml - Lojas Renner</title>
+        <meta property="product:brand" content="Rabanne" />
+        <meta property="og:title" content="Rabanne Fame In Love Parfum Elixir 30ml - Lojas Renner" />
+      </head>
+      <body>
+        <div class="ProductAttributes_contentMain__6Ci0T">
+          <label><input type="radio" name="size" data-name="30ml" data-sku="931259416" data-aggkey="TAM30ML" data-type="size" /></label>
+          <label><input type="radio" name="size" data-name="50ml" data-sku="931259424" data-aggkey="TAM50ML" data-type="size" /></label>
+          <label><input type="radio" name="size" data-name="80ml" data-sku="931259408" data-aggkey="TAM80ML" data-type="size" /></label>
+        </div>
+        <form id="js-product-form" class="hide">
+          <input type="hidden" name="product" value="931259395" />
+          <input type="hidden" name="sku" value="931259416" />
+        </form>
+      </body>
+    </html>
+    """
+
+    store = ProductStoreService(tmp_path / "products.json")
+    store.upsert_product(
+        ProductRecord(
+            alias="fame_in_love_80ml",
+            brand="Rabanne",
+            name="Fame In Love",
+            match_name="Rabanne Fame In Love Parfum Elixir 80ml",
+            concentration="Parfum Elixir",
+            variant="80ml",
+            last_known_url="https://www.lojasrenner.com.br/p/rabanne-fame-in-love-parfum-elixir/-/A-931259395-br.lr",
+            last_known_sku="old-80",
+            source_type="site",
+            page_family_sku="931259395",
+        )
+    )
+
+    fetcher = FakeFetcherMap(
+        {
+            "https://www.lojasrenner.com.br/p/rabanne-fame-in-love-parfum-elixir/-/A-931259395-br.lr": html_grouped_page
+        }
+    )
+    resolver = ProductResolver(store, fetcher)
+
+    result = resolver.resolve_sku_for_alias("fame_in_love_80ml")
+
+    assert result.success is True
+    assert result.product is not None
+    assert result.product.last_known_sku == "931259408"
+    assert result.product.current_site_code == "931259408"
+    assert result.product.current_barcode_value == "931259408"
+    assert result.product.last_known_url.endswith("?sku=931259408")
+    assert result.product.site_variant_id == "TAM80ML"
+    assert result.page_data is not None
+    assert result.page_data.variant == "80ml"
+    assert result.page_data.sku == "931259408"
+
+
+def test_resolver_reports_partial_sync_when_variant_is_absent_from_grouped_page(tmp_path: Path) -> None:
+    """
+    Responsabilidade:
+        Garantir feedback honesto quando a página pai não traz a variante esperada.
+
+    Parâmetros:
+        tmp_path: Diretório temporário para storage isolado do teste.
+
+    Retorno:
+        Nenhum.
+
+    Contexto de uso:
+        Protege a UX de sync parcial: o produto pai pode existir no site, mas a
+        variante específica do alias não deve ser tratada como sincronizada.
+    """
+
+    html_grouped_page = """
+    <html>
+      <head>
+        <title>Rabanne Fame In Love Parfum Elixir 30ml - Lojas Renner</title>
+        <meta property="product:brand" content="Rabanne" />
+        <meta property="og:title" content="Rabanne Fame In Love Parfum Elixir 30ml - Lojas Renner" />
+      </head>
+      <body>
+        <div class="ProductAttributes_contentMain__6Ci0T">
+          <label><input type="radio" name="size" data-name="30ml" data-sku="931259416" data-aggkey="TAM30ML" data-type="size" /></label>
+          <label><input type="radio" name="size" data-name="50ml" data-sku="931259424" data-aggkey="TAM50ML" data-type="size" /></label>
+        </div>
+        <form id="js-product-form" class="hide">
+          <input type="hidden" name="product" value="931259395" />
+          <input type="hidden" name="sku" value="931259416" />
+        </form>
+      </body>
+    </html>
+    """
+
+    store = ProductStoreService(tmp_path / "products.json")
+    store.upsert_product(
+        ProductRecord(
+            alias="fame_in_love_80ml",
+            brand="Rabanne",
+            name="Fame In Love",
+            match_name="Rabanne Fame In Love Parfum Elixir 80ml",
+            concentration="Parfum Elixir",
+            variant="80ml",
+            last_known_url="https://www.lojasrenner.com.br/p/rabanne-fame-in-love-parfum-elixir/-/A-931259395-br.lr",
+            last_known_sku="old-80",
+            source_type="site",
+            page_family_sku="931259395",
+        )
+    )
+
+    fetcher = FakeFetcherMap(
+        {
+            "https://www.lojasrenner.com.br/p/rabanne-fame-in-love-parfum-elixir/-/A-931259395-br.lr": html_grouped_page
+        }
+    )
+    resolver = ProductResolver(store, fetcher)
+
+    result = resolver.resolve_sku_for_alias("fame_in_love_80ml")
+
+    assert result.success is False
+    assert result.error_code == "VARIANT_NOT_FOUND_ON_PAGE"
+    unchanged_product = store.get_by_alias("fame_in_love_80ml")
+    assert unchanged_product is not None
+    assert unchanged_product.last_known_sku == "old-80"

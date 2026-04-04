@@ -12,10 +12,36 @@ from __future__ import annotations
 
 import json
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from html import unescape
 from typing import Iterable, Optional
 from urllib.parse import parse_qs, urljoin, urlparse
+
+
+@dataclass(slots=True)
+class PageVariantOption:
+    """
+    Responsabilidade:
+        Representar uma variante publicada dentro da mesma pagina de produto.
+
+    Parâmetros:
+        label: Rótulo visível da variante, como 30ml ou 80ml.
+        sku: Código operacional exposto pela página para essa variante.
+        site_variant_id: Identificador estável da variante na vitrine, quando
+            disponível em atributos como `data-aggkey`.
+
+    Retorno:
+        Estrutura leve usada pelo resolver para escolher a variante correta.
+
+    Contexto de uso:
+        Páginas da Renner frequentemente exibem todos os volumes do perfume no
+        mesmo HTML. Esse modelo permite resolver o SKU certo sem depender
+        apenas da variante ativa/default da página.
+    """
+
+    label: str
+    sku: str
+    site_variant_id: str = ""
 
 
 @dataclass(slots=True)
@@ -32,6 +58,7 @@ class PageData:
         variant: Variante inferida (ex.: 200ml) para reforçar validação.
         sku: SKU extraído pela estratégia de fallback configurada.
         image_url: URL absoluta da imagem principal do produto quando disponível.
+        available_variants: Lista de variantes publicadas no mesmo HTML.
 
     Retorno:
         Instância de PageData com campos opcionais em caso de ausência de sinais.
@@ -49,6 +76,7 @@ class PageData:
     sku: Optional[str]
     image_url: Optional[str] = None
     description: Optional[str] = None
+    available_variants: list[PageVariantOption] = field(default_factory=list)
 
 
 def _normalize_spaces(text: str) -> str:
@@ -69,6 +97,34 @@ def _normalize_spaces(text: str) -> str:
 
     decoded_text = unescape(text)
     return re.sub(r"\s+", " ", decoded_text).strip()
+
+
+def _extract_html_attribute(html_fragment: str, attribute_name: str) -> str:
+    """
+    Responsabilidade:
+        Extrair o valor de um atributo específico de um fragmento HTML simples.
+
+    Parâmetros:
+        html_fragment: Trecho pequeno de HTML contendo atributos inline.
+        attribute_name: Nome do atributo procurado dentro do fragmento.
+
+    Retorno:
+        Valor do atributo quando encontrado; caso contrário, string vazia.
+
+    Contexto de uso:
+        Evita introduzir um parser HTML pesado apenas para ler atributos
+        utilitários como `data-sku`, `data-name` e `data-aggkey`.
+    """
+
+    attribute_pattern = re.compile(
+        rf'{re.escape(attribute_name)}\s*=\s*["\'](.*?)["\']',
+        re.IGNORECASE | re.DOTALL,
+    )
+    matched_attribute = attribute_pattern.search(html_fragment)
+    if not matched_attribute:
+        return ""
+
+    return _normalize_spaces(matched_attribute.group(1))
 
 
 def _extract_html_head(html_content: str, max_fallback_chars: int = 50000) -> str:
@@ -437,6 +493,54 @@ def _extract_variant_from_text(text: str) -> Optional[str]:
     return f"{numeric_part}{unit_part}"
 
 
+def extract_available_variants(html_content: str) -> list[PageVariantOption]:
+    """
+    Responsabilidade:
+        Extrair todas as variantes publicadas no HTML da página do produto.
+
+    Parâmetros:
+        html_content: Documento HTML bruto completo da página.
+
+    Retorno:
+        Lista ordenada de variantes encontradas com label, SKU e id estável.
+
+    Contexto de uso:
+        Produtos agrupados da Renner podem expor vários volumes na mesma página.
+        Esse helper permite ao resolver sincronizar cada ml individualmente,
+        mesmo quando a página abre com outra variante ativa por padrão.
+    """
+
+    variant_input_pattern = re.compile(r"<input[^>]+data-sku=[\"'].*?[\"'][^>]*>", re.IGNORECASE | re.DOTALL)
+    extracted_variants: list[PageVariantOption] = []
+    seen_variant_keys: set[tuple[str, str]] = set()
+
+    for matched_input in variant_input_pattern.finditer(html_content):
+        input_fragment = matched_input.group(0)
+        raw_sku = _extract_html_attribute(input_fragment, "data-sku")
+        raw_label = _extract_html_attribute(input_fragment, "data-name")
+        raw_variant_id = _extract_html_attribute(input_fragment, "data-aggkey")
+
+        normalized_sku = raw_sku.strip()
+        normalized_label = _extract_variant_from_text(raw_label) or raw_label.strip()
+        if not normalized_sku or not normalized_label:
+            continue
+
+        deduplication_key = (normalized_label.lower(), normalized_sku)
+        if deduplication_key in seen_variant_keys:
+            continue
+
+        seen_variant_keys.add(deduplication_key)
+        extracted_variants.append(
+            PageVariantOption(
+                label=normalized_label,
+                sku=normalized_sku,
+                site_variant_id=raw_variant_id.strip(),
+            )
+        )
+
+    return extracted_variants
+
+
 def parse_page_data(
     page_url: str,
     html_content: str,
@@ -497,6 +601,7 @@ def parse_page_data(
         page_url=page_url,
         html_content=html_content,
     )
+    extracted_available_variants = extract_available_variants(html_content)
 
     return PageData(
         url=page_url.strip(),
@@ -507,4 +612,5 @@ def parse_page_data(
         variant=extracted_variant,
         sku=extracted_sku,
         image_url=extracted_image_url,
+        available_variants=extracted_available_variants,
     )

@@ -103,6 +103,7 @@ def test_update_product_sku_and_url(tmp_path: Path) -> None:
         product_alias="example",
         new_sku="999",
         new_url="https://nova",
+        site_variant_id="TAM999",
     )
 
     assert updated_product.brand == "Marca"
@@ -110,6 +111,10 @@ def test_update_product_sku_and_url(tmp_path: Path) -> None:
     assert updated_product.variant == "Variante"
     assert updated_product.last_known_sku == "999"
     assert updated_product.last_known_url == "https://nova"
+    assert updated_product.site_variant_id == "TAM999"
+    assert updated_product.current_site_code == "999"
+    assert updated_product.current_barcode_value == "999"
+    assert updated_product.last_matched_at
 
 
 def test_upsert_deriva_page_family_sku_a_partir_da_url(tmp_path: Path) -> None:
