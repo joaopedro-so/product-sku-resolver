@@ -783,7 +783,10 @@ def _build_submitted_data_from_product(product: ProductRecord) -> Dict[str, str]
     return {
         "alias": product.alias,
         "brand": product.brand,
-        "name": product.name,
+        "name": product.display_name,
+        "display_name": product.display_name,
+        "match_name": product.effective_match_name,
+        "line_name": product.line_name,
         "variant": product.variant,
         "last_known_url": product.last_known_url,
         "last_known_sku": product.last_known_sku,
@@ -843,11 +846,60 @@ def _build_default_parent_reference(submitted_data: Dict[str, str]) -> str:
     composed_reference = " ".join(
         [
             submitted_data.get("brand", ""),
-            submitted_data.get("name", ""),
+            submitted_data.get("display_name", "") or submitted_data.get("name", ""),
             submitted_data.get("concentration", ""),
         ]
     )
     return _build_safe_alias_fragment(composed_reference) or "produto-manual"
+
+
+def _compose_match_name_from_submission(submitted_data: Dict[str, str]) -> str:
+    """
+    Responsabilidade:
+        Sugerir um nome técnico de correspondência a partir dos campos principais.
+
+    Parametros:
+        submitted_data: Payload principal já normalizado do formulário.
+
+    Retorno:
+        Nome técnico composto com marca, nome de exibição, tipo e variante.
+
+    Contexto de uso:
+        Mantém o formulário amigável para a operação diária sem obrigar o
+        operador a digitar duas vezes a mesma identidade quando o dado técnico
+        ainda pode ser inferido com segurança razoável.
+    """
+
+    candidate_parts = [
+        submitted_data.get("brand", ""),
+        submitted_data.get("display_name", "") or submitted_data.get("name", ""),
+        submitted_data.get("concentration", ""),
+        submitted_data.get("variant", ""),
+    ]
+    return " ".join(str(part).strip() for part in candidate_parts if str(part).strip()).strip()
+
+
+def _resolve_submitted_match_name(submitted_data: Dict[str, str]) -> str:
+    """
+    Responsabilidade:
+        Consolidar o nome técnico final antes da persistência do produto.
+
+    Parametros:
+        submitted_data: Payload principal do formulário com campos já limpos.
+
+    Retorno:
+        Nome técnico explícito do cadastro ou fallback composto automaticamente.
+
+    Contexto de uso:
+        Separa a semântica do formulário entre nome visual e nome de matching,
+        preservando compatibilidade com registros antigos e cadastros rápidos.
+    """
+
+    explicit_match_name = str(submitted_data.get("match_name", "")).strip()
+    if explicit_match_name:
+        return explicit_match_name
+
+    return _compose_match_name_from_submission(submitted_data)
 
 
 def _normalize_uploaded_file(raw_value: Any) -> UploadFile | None:
@@ -1194,6 +1246,9 @@ def _extract_product_form_submission(form_data: Any) -> Dict[str, str]:
         for field in [
             "alias",
             "brand",
+            "display_name",
+            "match_name",
+            "line_name",
             "name",
             "variant",
             "last_known_url",
@@ -1207,12 +1262,15 @@ def _extract_product_form_submission(form_data: Any) -> Dict[str, str]:
             "variant_notes",
         ]
     }
+    submitted_data["display_name"] = submitted_data["display_name"] or submitted_data["name"]
+    submitted_data["name"] = submitted_data["display_name"]
     submitted_data["shelf_number"] = _normalize_optional_numeric_text(form_data.get("shelf_number"))
     submitted_data["display_order"] = _normalize_optional_numeric_text(form_data.get("display_order"))
     submitted_data["source_type"] = submitted_data["source_type"] or "site"
     submitted_data["stock_qty"] = _normalize_optional_numeric_text(form_data.get("stock_qty")) or "0"
     submitted_data["is_active"] = "1" if str(form_data.get("is_active", "1")).strip() not in {"0", "false", "off"} else "0"
     submitted_data["last_known_sku"] = submitted_data["last_known_sku"] or "unknown"
+    submitted_data["match_name"] = _resolve_submitted_match_name(submitted_data)
     return submitted_data
 
 
@@ -1456,7 +1514,7 @@ def _validate_product_submission(
     required_fields = {
         "alias": "Informe um alias para identificar o produto.",
         "brand": "Informe a marca do produto.",
-        "name": "Informe o nome do produto.",
+        "display_name": "Informe o nome de exibição do produto.",
     }
     for field_name, error_message in required_fields.items():
         if not str(submitted_data.get(field_name, "")).strip():
@@ -1576,14 +1634,18 @@ def _build_product_record_from_submission(submitted_data: Dict[str, str]) -> Pro
     normalized_source_type = str(submitted_data.get("source_type", "site")).strip().lower() or "site"
     normalized_site_link_status = "linked_to_site" if normalized_source_type == "site" else "manual_unlinked"
     normalized_current_code = submitted_data["last_known_sku"]
+    normalized_display_name = submitted_data.get("display_name", "") or submitted_data.get("name", "")
+    normalized_match_name = _resolve_submitted_match_name(submitted_data)
 
     return ProductRecord(
         alias=submitted_data["alias"],
         brand=submitted_data["brand"],
-        name=submitted_data["name"],
+        name=normalized_display_name,
         variant=submitted_data["variant"],
         last_known_url=submitted_data["last_known_url"],
         last_known_sku=submitted_data["last_known_sku"],
+        match_name=normalized_match_name,
+        line_name=submitted_data.get("line_name", ""),
         parent_reference=parent_reference,
         source_type=normalized_source_type,
         concentration=submitted_data["concentration"],
@@ -1885,7 +1947,7 @@ def _build_preview_map(
             preview_map[product.alias] = ProductPreview(
                 alias=product.alias,
                 source_url=product.last_known_url,
-                title=product.name,
+                title=product.display_name,
                 image_url=product.image_url,
                 cached_at="",
             )
@@ -2077,7 +2139,7 @@ def _build_product_card(
     )
     return {
         "alias": product.alias,
-        "name": product.name,
+        "name": product.display_name,
         "brand": product.brand,
         "variant": product.variant,
         "concentration": product.concentration,
@@ -2717,7 +2779,8 @@ def _build_group_search_text(grouped_product: GroupedParentProduct) -> str:
                 variant.label,
                 variant.product.variant_code,
                 variant.product.alias,
-                variant.product.name,
+                variant.product.display_name,
+                variant.product.effective_match_name,
             ]
         )
 
@@ -4036,6 +4099,16 @@ async def dashboard_autofill_product_form(request: Request) -> Any:
         "alias": draft_result.draft.alias,
         "brand": draft_result.draft.brand,
         "name": draft_result.draft.name,
+        "display_name": draft_result.draft.name,
+        "match_name": _compose_match_name_from_submission(
+            {
+                "brand": draft_result.draft.brand,
+                "display_name": draft_result.draft.name,
+                "concentration": "",
+                "variant": draft_result.draft.variant,
+            }
+        ),
+        "line_name": "",
         "variant": draft_result.draft.variant,
         "last_known_url": draft_result.draft.last_known_url,
         "last_known_sku": draft_result.draft.last_known_sku,

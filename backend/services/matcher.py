@@ -336,7 +336,8 @@ def match_product_with_page(
     conflicts: List[str] = []
 
     normalized_expected_brand = normalize_text(expected_product.brand)
-    normalized_expected_name = normalize_text(expected_product.name)
+    normalized_expected_name = normalize_text(expected_product.effective_match_name)
+    normalized_expected_display_name = normalize_text(expected_product.display_name)
     normalized_expected_variant = normalize_variant(expected_product.variant)
 
     normalized_observed_brand = normalize_text(observed_page_data.brand)
@@ -345,7 +346,7 @@ def match_product_with_page(
     normalized_observed_identity_text = _build_observed_identity_text(observed_page_data)
     brand_aliases = _build_brand_aliases(expected_product.brand)
     normalized_expected_name_core = _strip_brand_aliases(
-        normalized_expected_name,
+        normalized_expected_name or normalized_expected_display_name,
         brand_aliases,
     )
     normalized_observed_name_core = _strip_brand_aliases(
@@ -369,6 +370,12 @@ def match_product_with_page(
         normalized_observed_name,
     ) or _contains_or_equals(
         normalized_expected_name,
+        normalized_observed_identity_text,
+    ) or _contains_or_equals(
+        normalized_expected_display_name,
+        normalized_observed_name,
+    ) or _contains_or_equals(
+        normalized_expected_display_name,
         normalized_observed_identity_text,
     ) or (
         _is_informative_core_name(normalized_expected_name_core)

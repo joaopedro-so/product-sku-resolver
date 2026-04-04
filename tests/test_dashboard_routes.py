@@ -2637,6 +2637,62 @@ def test_dashboard_preenche_produto_automaticamente_por_url(tmp_path: Path) -> N
     assert "paco_rabanne_one_million_200ml" in content
 
 
+def test_dashboard_cadastro_manual_persiste_display_name_e_match_name_separados(tmp_path: Path) -> None:
+    """
+    Responsabilidade:
+        Garantir que o formulário manual persista nome visual e técnico separadamente.
+
+    Parametros:
+        tmp_path: Diretório temporário para isolamento do storage.
+
+    Retorno:
+        Nenhum; valida redirect e campos persistidos no produto criado.
+
+    Contexto de uso:
+        Protege a principal mudança semântica desta refatoração, evitando que
+        o app volte a tratar o mesmo campo como nome visual e nome de matching.
+    """
+
+    app = _build_app_with_temp_storage(tmp_path)
+    payload = urlencode(
+        {
+            "source_type": "manual",
+            "alias": "the_icon_manual_100ml",
+            "brand": "Antonio Banderas",
+            "display_name": "The Icon",
+            "match_name": "Antonio Banderas The Icon Eau de Toilette 100ml",
+            "line_name": "The Icon",
+            "concentration": "EDT",
+            "variant": "100ml",
+            "last_known_sku": "100100",
+            "stock_qty": "0",
+            "variant_notes": "",
+            "image_url": "",
+            "notes": "",
+            "shelf_reference_label": "",
+            "shelf_number": "",
+            "display_order": "",
+        }
+    ).encode("utf-8")
+    request = _build_request(
+        app,
+        method="POST",
+        path="/dashboard/products",
+        body=payload,
+        content_type="application/x-www-form-urlencoded",
+    )
+
+    response = asyncio.run(routes_dashboard.dashboard_create_product(request))
+    created_product = app.state.product_store_service.get_by_alias("the_icon_manual_100ml")
+
+    assert isinstance(response, RedirectResponse)
+    assert response.status_code == 303
+    assert created_product is not None
+    assert created_product.display_name == "The Icon"
+    assert created_product.effective_match_name == "Antonio Banderas The Icon Eau de Toilette 100ml"
+    assert created_product.line_name == "The Icon"
+
+
 def test_dashboard_prateleira_respeita_agrupamento_manual_de_variantes(tmp_path: Path) -> None:
     """
     Responsabilidade:

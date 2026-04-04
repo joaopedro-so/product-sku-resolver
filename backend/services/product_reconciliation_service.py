@@ -229,10 +229,13 @@ class ProductReconciliationService:
         return ProductRecord(
             alias=current_product.alias,
             brand=current_product.brand or incoming_site_product.brand,
-            name=current_product.name or incoming_site_product.name,
+            name=current_product.display_name or incoming_site_product.display_name,
             variant=current_product.variant or incoming_site_product.variant,
             last_known_url=incoming_site_product.last_known_url,
             last_known_sku=incoming_site_product.last_known_sku,
+            match_name=current_product.match_name or incoming_site_product.effective_match_name,
+            line_name=current_product.line_name or incoming_site_product.line_name,
+            normalized_match_name=current_product.normalized_match_name or incoming_site_product.normalized_match_name,
             page_family_sku=incoming_site_product.page_family_sku,
             parent_reference=current_product.parent_reference or incoming_site_product.parent_reference,
             source_type=current_product.source_type,
@@ -287,10 +290,13 @@ class ProductReconciliationService:
         return ProductRecord(
             alias=current_product.alias,
             brand=current_product.brand,
-            name=current_product.name,
+            name=current_product.display_name,
             variant=current_product.variant,
             last_known_url=current_product.last_known_url,
             last_known_sku=current_product.last_known_sku,
+            match_name=current_product.match_name,
+            line_name=current_product.line_name,
+            normalized_match_name=current_product.normalized_match_name,
             page_family_sku=current_product.page_family_sku,
             parent_reference=current_product.parent_reference,
             source_type=current_product.source_type,
@@ -473,6 +479,14 @@ class ProductReconciliationService:
             score += 0.1
             signals.append("Sem conflito de concentração")
 
+        if (
+            site_identity["line_name"]
+            and existing_identity["line_name"]
+            and site_identity["line_name"] == existing_identity["line_name"]
+        ):
+            score += 0.08
+            signals.append("Linha compatível")
+
         if site_identity["variant"] and existing_identity["variant"] and site_identity["variant"] == existing_identity["variant"]:
             score += 0.14
             signals.append("Variante compatível")
@@ -559,7 +573,7 @@ def _build_identity_signature(product: ProductRecord) -> dict[str, str]:
     """
 
     brand_aliases = _build_brand_aliases(product.brand)
-    normalized_name = normalize_text(product.name)
+    normalized_name = normalize_text(product.effective_match_name)
     name_without_brand = _strip_brand_aliases(normalized_name, brand_aliases)
     name_without_variant = re.sub(r"\b\d+[\.,]?\d*\s*(ml|g|kg|l)\b", " ", name_without_brand)
     normalized_name_core = re.sub(r"\s+", " ", name_without_variant).strip()
@@ -572,7 +586,8 @@ def _build_identity_signature(product: ProductRecord) -> dict[str, str]:
     return {
         "brand": normalize_text(product.brand),
         "name_core": normalized_name_core,
-        "product_type": _normalize_product_type(product.concentration or product.name),
+        "line_name": normalize_text(product.line_name),
+        "product_type": _normalize_product_type(product.concentration or product.effective_match_name),
         "variant": normalize_variant(product.variant),
     }
 

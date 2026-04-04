@@ -851,12 +851,33 @@ function initializeManualProductForm() {
   }
 
   syncSourceTypeFields(formRoot);
+  syncSuggestedMatchName(formRoot);
 
   formRoot.querySelectorAll("[data-source-type-field]").forEach((field) => {
     field.addEventListener("change", () => {
       syncSourceTypeFields(formRoot);
     });
   });
+
+  formRoot.querySelectorAll("[data-match-part]").forEach((field) => {
+    field.addEventListener("input", () => {
+      syncSuggestedMatchName(formRoot);
+    });
+    field.addEventListener("change", () => {
+      syncSuggestedMatchName(formRoot);
+    });
+  });
+
+  const matchNameField = formRoot.querySelector("[data-match-name-field]");
+  if (matchNameField instanceof HTMLInputElement) {
+    matchNameField.addEventListener("input", () => {
+      const suggestedValue = composeSuggestedMatchName(formRoot);
+      const currentValue = matchNameField.value.trim();
+      const lastSuggestedValue = matchNameField.dataset.lastSuggestedValue || "";
+      const matchesSuggestedValue = currentValue === suggestedValue || currentValue === lastSuggestedValue;
+      matchNameField.dataset.userEdited = currentValue && !matchesSuggestedValue ? "true" : "false";
+    });
+  }
 
   const variantList = formRoot.querySelector("[data-manual-variant-list]");
   const variantTemplate = formRoot.querySelector("[data-manual-variant-template]");
@@ -1031,6 +1052,83 @@ function initializeContextualAutofocus() {
   if (manualPrimaryField instanceof HTMLInputElement) {
     focusFieldWithoutScroll(manualPrimaryField, true);
   }
+}
+
+function composeSuggestedMatchName(formRoot) {
+  /*
+    Responsabilidade:
+      Montar um nome técnico sugerido a partir dos campos estruturados do formulário.
+
+    Parametros:
+      formRoot: Elemento raiz do formulário manual atualmente em edição.
+
+    Retorno:
+      String composta com marca, nome de exibição, tipo e variante principal.
+
+    Contexto de uso:
+      A operação precisa separar nome visual de nome técnico sem transformar o
+      cadastro em trabalho duplicado. Esta sugestão cria um ponto de partida
+      editável para busca e correspondência futura com o site.
+  */
+
+  if (!(formRoot instanceof HTMLElement)) {
+    return "";
+  }
+
+  const readFieldValue = (selector) => {
+    const field = formRoot.querySelector(selector);
+    return field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement || field instanceof HTMLSelectElement
+      ? String(field.value || "").trim()
+      : "";
+  };
+
+  const candidateParts = [
+    readFieldValue('[data-match-part="brand"]'),
+    readFieldValue('[data-match-part="display-name"]'),
+    readFieldValue('[data-match-part="concentration"]'),
+    readFieldValue('[data-match-part="variant"]'),
+  ];
+
+  return candidateParts.filter(Boolean).join(" ").trim();
+}
+
+function syncSuggestedMatchName(formRoot) {
+  /*
+    Responsabilidade:
+      Preencher ou atualizar o nome técnico sugerido sem apagar edição manual.
+
+    Parametros:
+      formRoot: Elemento raiz do formulário manual atualmente em edição.
+
+    Retorno:
+      Nenhum.
+
+    Contexto de uso:
+      Mantém o formulário semanticamente correto: o nome de exibição continua
+      humano, enquanto o nome de correspondência ganha uma sugestão útil para
+      matching e religação com o site.
+  */
+
+  if (!(formRoot instanceof HTMLElement)) {
+    return;
+  }
+
+  const matchNameField = formRoot.querySelector("[data-match-name-field]");
+  if (!(matchNameField instanceof HTMLInputElement)) {
+    return;
+  }
+
+  const suggestedValue = composeSuggestedMatchName(formRoot);
+  const currentValue = matchNameField.value.trim();
+  const lastSuggestedValue = matchNameField.dataset.lastSuggestedValue || "";
+  const isUserEdited = matchNameField.dataset.userEdited === "true";
+
+  if (!isUserEdited || !currentValue || currentValue === lastSuggestedValue) {
+    matchNameField.value = suggestedValue;
+    matchNameField.dataset.userEdited = "false";
+  }
+
+  matchNameField.dataset.lastSuggestedValue = suggestedValue;
 }
 
 function resolveSubmitBusyLabel(originalLabel) {

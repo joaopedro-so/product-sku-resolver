@@ -79,9 +79,13 @@ class RennerSearchProvider(SearchProvider):
         # Regra de negócio:
         # Priorizamos identidade estável (marca, nome e variante) para reduzir
         # links genéricos de categoria e aumentar chance de página correta.
+        technical_query = str(product_record.match_name).strip()
+        if technical_query:
+            return f"site:lojasrenner.com.br {technical_query}".strip()
+
         return (
             f"site:lojasrenner.com.br "
-            f"{product_record.brand} {product_record.name} {product_record.variant}"
+            f"{product_record.brand} {product_record.display_name} {product_record.variant}"
         ).strip()
 
     def search(self, product_record: ProductRecord) -> List[SearchResult]:

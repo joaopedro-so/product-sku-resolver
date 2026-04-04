@@ -41,6 +41,38 @@ def test_upsert_and_get_by_alias(tmp_path: Path) -> None:
     assert found_product.last_known_sku == "123"
 
 
+def test_from_dict_legado_reaproveita_nome_unico_como_display_e_match() -> None:
+    """
+    Responsabilidade:
+        Garantir retrocompatibilidade de registros antigos com apenas um nome.
+
+    Parâmetros:
+        Nenhum.
+
+    Retorno:
+        Nenhum; valida o fallback seguro de display e correspondência.
+
+    Contexto de uso:
+        Protege o catálogo já persistido, permitindo evoluir o modelo sem
+        exigir migração destrutiva imediata dos arquivos existentes.
+    """
+
+    product = ProductRecord.from_dict(
+        {
+            "alias": "produto_legado",
+            "brand": "Marca",
+            "name": "Produto Legado",
+            "variant": "100ml",
+            "last_known_url": "https://example.com/produto",
+            "last_known_sku": "123",
+        }
+    )
+
+    assert product.display_name == "Produto Legado"
+    assert product.effective_match_name == "Produto Legado"
+    assert product.normalized_match_name == "produto legado"
+
+
 def test_update_product_sku_and_url(tmp_path: Path) -> None:
     """
     Responsabilidade:

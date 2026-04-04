@@ -8,6 +8,7 @@ camadas de serviço, mantendo validações simples, explícitas e estáveis.
 from __future__ import annotations
 
 import re
+import unicodedata
 from dataclasses import dataclass
 from typing import Any, Dict, List
 
@@ -21,7 +22,10 @@ class ProductRecord:
     Parâmetros:
         alias: Identificador interno amigável para API e armazenamento.
         brand: Marca estável usada em validações e agrupamento.
-        name: Nome estável do produto usado em validações e agrupamento.
+        name: Nome de exibição persistido para retrocompatibilidade.
+        match_name: Nome técnico usado para busca/correspondência no site.
+        line_name: Nome opcional de linha/família do produto.
+        normalized_match_name: Versão derivada do nome técnico para matching.
         variant: Variante estável da linha, como volume ou tamanho.
         last_known_url: URL mais recente considerada válida para o produto.
         last_known_sku: Código operacional mais recente da variante.
@@ -50,6 +54,9 @@ class ProductRecord:
     variant: str
     last_known_url: str
     last_known_sku: str
+    match_name: str = ""
+    line_name: str = ""
+    normalized_match_name: str = ""
     page_family_sku: str = ""
     parent_reference: str = ""
     source_type: str = "site"
@@ -92,13 +99,7 @@ class ProductRecord:
             não tipados em estrutura confiável antes das regras de negócio.
         """
 
-        required_keys = [
-            "alias",
-            "brand",
-            "name",
-            "variant",
-            "last_known_sku",
-        ]
+        required_keys = ["alias", "brand", "variant", "last_known_sku"]
 
         missing_keys = [key for key in required_keys if key not in source]
         if missing_keys:
@@ -107,14 +108,36 @@ class ProductRecord:
                 f"Registro de produto inválido: campos ausentes: {missing_description}"
             )
 
+        normalized_display_name = str(source.get("display_name", source.get("name", ""))).strip()
+        if not normalized_display_name:
+            raise ValueError("Registro de produto inválido: campo ausente: display_name/name")
+
+        normalized_alias = str(source["alias"]).strip()
+        normalized_brand = str(source["brand"]).strip()
+        normalized_variant = str(source["variant"]).strip()
         normalized_url = str(source.get("last_known_url", "")).strip()
         normalized_source_type = _normalize_source_type(source.get("source_type"))
         normalized_parent_reference = str(source.get("parent_reference", "")).strip()
+        normalized_concentration = str(source.get("concentration", "")).strip()
+        normalized_match_name = _resolve_match_name(
+            raw_match_name=source.get("match_name"),
+            display_name=normalized_display_name,
+            brand=normalized_brand,
+            concentration=normalized_concentration,
+            variant=normalized_variant,
+        )
+        normalized_line_name = str(source.get("line_name", "")).strip()
+        normalized_normalized_match_name = _resolve_normalized_match_name(
+            raw_normalized_match_name=source.get("normalized_match_name"),
+            match_name=normalized_match_name,
+        )
         normalized_page_family_sku = _resolve_page_family_sku(
             raw_page_family_sku=source.get("page_family_sku"),
             last_known_url=normalized_url,
         )
-        normalized_site_product_id = str(source.get("site_product_id", "")).strip() or normalized_page_family_sku
+        normalized_site_product_id = (
+            str(source.get("site_product_id", "")).strip() or normalized_page_family_sku
+        )
         normalized_site_link_status = _normalize_site_link_status(
             raw_site_link_status=source.get("site_link_status"),
             source_type=normalized_source_type,
@@ -128,16 +151,19 @@ class ProductRecord:
         # Forçamos string para reduzir inconsistência de tipos vindos de JSON
         # ou payloads externos, simplificando as camadas seguintes.
         return cls(
-            alias=str(source["alias"]).strip(),
-            brand=str(source["brand"]).strip(),
-            name=str(source["name"]).strip(),
-            variant=str(source["variant"]).strip(),
+            alias=normalized_alias,
+            brand=normalized_brand,
+            name=normalized_display_name,
+            variant=normalized_variant,
             last_known_url=normalized_url,
             last_known_sku=str(source["last_known_sku"]).strip(),
+            match_name=normalized_match_name,
+            line_name=normalized_line_name,
+            normalized_match_name=normalized_normalized_match_name,
             page_family_sku=normalized_page_family_sku,
             parent_reference=normalized_parent_reference,
             source_type=normalized_source_type,
-            concentration=str(source.get("concentration", "")).strip(),
+            concentration=normalized_concentration,
             shelf_reference_label=str(source.get("shelf_reference_label", "")).strip(),
             notes=str(source.get("notes", "")).strip(),
             image_url=str(source.get("image_url", "")).strip(),
@@ -157,7 +183,8 @@ class ProductRecord:
             last_matched_at=str(source.get("last_matched_at", "")).strip(),
             site_variant_id=str(source.get("site_variant_id", "")).strip(),
             current_site_code=normalized_current_site_code,
-            current_barcode_value=normalized_current_barcode_value or str(source["last_known_sku"]).strip(),
+            current_barcode_value=normalized_current_barcode_value
+            or str(source["last_known_sku"]).strip(),
         )
 
     def to_dict(self) -> Dict[str, Any]:
@@ -180,6 +207,11 @@ class ProductRecord:
             "alias": self.alias,
             "brand": self.brand,
             "name": self.name,
+            "display_name": self.display_name,
+            "match_name": self.effective_match_name,
+            "line_name": self.line_name,
+            "normalized_match_name": self.normalized_match_name
+            or _normalize_match_name(self.effective_match_name),
             "variant": self.variant,
             "last_known_url": self.last_known_url,
             "last_known_sku": self.last_known_sku,
@@ -211,6 +243,45 @@ class ProductRecord:
         if self.display_order is not None:
             payload["display_order"] = self.display_order
         return payload
+
+    @property
+    def display_name(self) -> str:
+        """
+        Responsabilidade:
+            Expor explicitamente o nome de exibição usado pela interface.
+
+        Parâmetros:
+            Nenhum.
+
+        Retorno:
+            Nome amigável do produto mostrado em listas, cards e detalhe.
+
+        Contexto de uso:
+            Mantém a semântica correta do domínio sem quebrar a compatibilidade
+            com código legado que ainda acessa o campo `name` diretamente.
+        """
+
+        return self.name
+
+    @property
+    def effective_match_name(self) -> str:
+        """
+        Responsabilidade:
+            Fornecer o nome técnico final usado por busca e reconciliação.
+
+        Parâmetros:
+            Nenhum.
+
+        Retorno:
+            Nome de correspondência já preenchido ou, em fallback seguro,
+            o nome de exibição.
+
+        Contexto de uso:
+            Centraliza a retrocompatibilidade dos registros antigos, evitando
+            espalhar `or display_name` nas camadas de matching e busca.
+        """
+
+        return self.match_name or self.display_name
 
     @property
     def variant_code(self) -> str:
@@ -534,3 +605,161 @@ def _resolve_page_family_sku(raw_page_family_sku: Any, last_known_url: str) -> s
         return url_match.group(1).strip()
 
     return ""
+
+
+def _resolve_match_name(
+    raw_match_name: Any,
+    display_name: str,
+    brand: str,
+    concentration: str,
+    variant: str,
+) -> str:
+    """
+    Responsabilidade:
+        Definir o nome técnico de correspondência com fallback seguro.
+
+    Parâmetros:
+        raw_match_name: Valor bruto eventualmente persistido no storage.
+        display_name: Nome amigável que já foi validado para exibição.
+        brand: Marca estável do produto.
+        concentration: Concentração ou tipo principal do perfume.
+        variant: Variante da linha, como volume ou tamanho.
+
+    Retorno:
+        Nome técnico final para busca e reconciliação com o site.
+
+    Contexto de uso:
+        Registros legados ainda podem ter apenas um nome. Nesses casos, o app
+        reaproveita esse mesmo valor como `match_name` para não quebrar dados
+        existentes, enquanto cadastros novos podem gravar um nome mais técnico.
+    """
+
+    normalized_match_name = str(raw_match_name or "").strip()
+    if normalized_match_name:
+        return normalized_match_name
+
+    normalized_display_name = str(display_name).strip()
+    if normalized_display_name:
+        return normalized_display_name
+
+    return _compose_default_match_name(
+        brand=brand,
+        display_name=display_name,
+        concentration=concentration,
+        variant=variant,
+    )
+
+
+def _resolve_normalized_match_name(
+    raw_normalized_match_name: Any,
+    match_name: str,
+) -> str:
+    """
+    Responsabilidade:
+        Consolidar a versão normalizada do nome técnico de correspondência.
+
+    Parâmetros:
+        raw_normalized_match_name: Valor eventualmente persistido no storage.
+        match_name: Nome técnico final resolvido para o produto.
+
+    Retorno:
+        Texto normalizado usado internamente por matching e busca técnica.
+
+    Contexto de uso:
+        Mantém o storage autoexplicativo e também permite recalcular o valor
+        quando o dado vier vazio ou de versões antigas do catálogo.
+    """
+
+    normalized_value = str(raw_normalized_match_name or "").strip()
+    if normalized_value:
+        return normalized_value
+
+    return _normalize_match_name(match_name)
+
+
+def _compose_default_match_name(
+    brand: str,
+    display_name: str,
+    concentration: str,
+    variant: str,
+) -> str:
+    """
+    Responsabilidade:
+        Montar um nome técnico sugestivo a partir dos campos estruturados.
+
+    Parâmetros:
+        brand: Marca principal do produto.
+        display_name: Nome amigável mostrado ao operador.
+        concentration: Concentração/tipo do perfume.
+        variant: Variante ou volume da linha.
+
+    Retorno:
+        Nome mais completo e apropriado para busca/correspondência.
+
+    Contexto de uso:
+        Serve como fallback para formulários e migrações em que o operador
+        ainda não tenha separado explicitamente o nome técnico do nome visual.
+    """
+
+    candidate_parts = [
+        str(brand).strip(),
+        str(display_name).strip(),
+        str(concentration).strip(),
+        str(variant).strip(),
+    ]
+    return " ".join(part for part in candidate_parts if part).strip()
+
+
+def _normalize_match_name(raw_match_name: str) -> str:
+    """
+    Responsabilidade:
+        Normalizar o nome técnico para comparação semântica estável.
+
+    Parâmetros:
+        raw_match_name: Nome técnico ainda em formato humano.
+
+    Retorno:
+        Texto em caixa baixa, sem acentos e com espaços/volumes padronizados.
+
+    Contexto de uso:
+        O matching com o site não pode depender da grafia literal digitada no
+        cadastro. Essa normalização reduz ruído sem confundir nomes distintos.
+    """
+
+    normalized_text = _normalize_free_text(raw_match_name)
+    if not normalized_text:
+        return ""
+
+    normalized_text = re.sub(r"\b(\d+[\.,]?\d*)\s+(ml|g|kg|l)\b", r"\1\2", normalized_text)
+    normalized_text = re.sub(r"\beau de toilette\b", "edt", normalized_text)
+    normalized_text = re.sub(r"\beau de parfum\b", "edp", normalized_text)
+    return re.sub(r"\s+", " ", normalized_text).strip()
+
+
+def _normalize_free_text(raw_text: str) -> str:
+    """
+    Responsabilidade:
+        Limpar texto livre para comparação tolerante entre fontes diferentes.
+
+    Parâmetros:
+        raw_text: Texto original vindo do storage ou formulário.
+
+    Retorno:
+        Texto sem acentos, em caixa baixa e com pontuação simplificada.
+
+    Contexto de uso:
+        Reaproveitado internamente pela normalização do `match_name` sem criar
+        dependência circular com o módulo de matcher.
+    """
+
+    normalized_value = str(raw_text or "").strip()
+    if not normalized_value:
+        return ""
+
+    decomposed_text = unicodedata.normalize("NFKD", normalized_value)
+    without_accents = "".join(
+        character for character in decomposed_text if not unicodedata.combining(character)
+    )
+    lowered_text = without_accents.lower()
+    alphanumeric_text = re.sub(r"[^a-z0-9\s]", " ", lowered_text)
+    return re.sub(r"\s+", " ", alphanumeric_text).strip()

@@ -269,6 +269,48 @@ def test_match_accepts_brand_alias_inside_expected_name_core() -> None:
     assert result.variant_matched is True
 
 
+def test_match_prioriza_nome_tecnico_quando_display_name_for_resumido() -> None:
+    """
+    Responsabilidade:
+        Garantir que o matching use o nome técnico como identidade principal.
+
+    Parâmetros:
+        Nenhum.
+
+    Retorno:
+        Nenhum; valida matching mesmo quando o nome visual é mais curto.
+
+    Contexto de uso:
+        Protege o novo modelo semântico em que `displayName` fica limpo para
+        a UI, enquanto `matchName` concentra o texto técnico usado no site.
+    """
+
+    expected_product = ProductRecord(
+        alias="the_icon_edt_100ml",
+        brand="Antonio Banderas",
+        name="The Icon",
+        match_name="Antonio Banderas The Icon Eau de Toilette 100ml",
+        variant="100ml",
+        last_known_url="https://loja.exemplo/the-icon",
+        last_known_sku="100",
+        concentration="EDT",
+    )
+
+    observed_page = PageData(
+        url="https://loja.exemplo/the-icon?sku=100",
+        title="Perfume Antonio Banderas The Icon Eau de Toilette 100ml",
+        brand="Antonio Banderas",
+        name="Antonio Banderas The Icon Eau de Toilette 100ml",
+        variant="100ml",
+        sku="100",
+    )
+
+    result = match_product_with_page(expected_product, observed_page)
+
+    assert result.matched is True
+    assert result.name_matched is True
+
+
 def test_match_accepts_kit_page_with_exact_code_and_contextual_variant() -> None:
     """
     Responsabilidade:

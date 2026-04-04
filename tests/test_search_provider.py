@@ -61,3 +61,35 @@ def test_renner_provider_builds_expected_query() -> None:
     query = provider.build_query(product)
 
     assert query == "site:lojasrenner.com.br Paco Rabanne One Million 200ml"
+
+
+def test_renner_provider_prioriza_nome_tecnico_na_query() -> None:
+    """
+    Responsabilidade:
+        Garantir que a busca externa use o nome técnico quando ele existir.
+
+    Parâmetros:
+        Nenhum.
+
+    Retorno:
+        Nenhum; valida a composição da query focada em matching com o site.
+
+    Contexto de uso:
+        Evita que um `displayName` curto ou comercial enfraqueça a qualidade
+        da redescoberta de URL em produtos manuais ou religados.
+    """
+
+    product = ProductRecord(
+        alias="the_icon_edt_100ml",
+        brand="Antonio Banderas",
+        name="The Icon",
+        match_name="Antonio Banderas The Icon Eau de Toilette 100ml",
+        variant="100ml",
+        last_known_url="https://lojasrenner.com.br/p/antigo",
+        last_known_sku="SKU-OLD",
+    )
+    provider = RennerSearchProvider()
+
+    query = provider.build_query(product)
+
+    assert query == "site:lojasrenner.com.br Antonio Banderas The Icon Eau de Toilette 100ml"

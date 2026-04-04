@@ -159,17 +159,61 @@
 
         <label class="form-field">
           <span>Marca</span>
-          <input type="text" name="brand" required value="{{ submitted_data.get('brand', '') }}" placeholder="ex.: Carolina Herrera" />
+          <input
+            type="text"
+            name="brand"
+            required
+            value="{{ submitted_data.get('brand', '') }}"
+            placeholder="ex.: Carolina Herrera"
+            data-match-part="brand"
+          />
         </label>
 
         <label class="form-field">
-          <span>Nome do produto</span>
-          <input type="text" name="name" required value="{{ submitted_data.get('name', '') }}" placeholder="ex.: Good Girl" />
+          <span>Nome de exibição</span>
+          <input
+            type="text"
+            name="display_name"
+            required
+            value="{{ submitted_data.get('display_name', submitted_data.get('name', '')) }}"
+            placeholder="ex.: Good Girl"
+            data-match-part="display-name"
+          />
         </label>
 
         <label class="form-field">
           <span>Concentração / tipo</span>
-          <input type="text" name="concentration" value="{{ submitted_data.get('concentration', '') }}" placeholder="ex.: EDP, EDT, Elixir" />
+          <input
+            type="text"
+            name="concentration"
+            value="{{ submitted_data.get('concentration', '') }}"
+            placeholder="ex.: EDP, EDT, Elixir"
+            data-match-part="concentration"
+          />
+        </label>
+
+        <label class="form-field form-field--full">
+          <span>Nome para busca/correspondência no site</span>
+          <input
+            type="text"
+            name="match_name"
+            value="{{ submitted_data.get('match_name', '') }}"
+            placeholder="ex.: Carolina Herrera Good Girl Eau de Parfum 80ml"
+            data-match-name-field
+          />
+          <small class="form-help">
+            Esse nome é técnico e ajuda na busca, reconciliação e religação com o site. O app sugere um valor padrão, mas você pode ajustar.
+          </small>
+        </label>
+
+        <label class="form-field">
+          <span>Linha / família</span>
+          <input
+            type="text"
+            name="line_name"
+            value="{{ submitted_data.get('line_name', '') }}"
+            placeholder="ex.: Good Girl, The Icon, CK One"
+          />
         </label>
 
         <label class="form-field">
@@ -261,7 +305,13 @@
       <div class="form-grid form-grid--split">
         <label class="form-field">
           <span>Variante</span>
-          <input type="text" name="variant" value="{{ submitted_data.get('variant', '') }}" placeholder="ex.: 100ml" />
+          <input
+            type="text"
+            name="variant"
+            value="{{ submitted_data.get('variant', '') }}"
+            placeholder="ex.: 100ml"
+            data-match-part="variant"
+          />
         </label>
 
         <label class="form-field">

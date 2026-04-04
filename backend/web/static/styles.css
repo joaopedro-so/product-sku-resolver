@@ -596,6 +596,12 @@ form {
   text-transform: uppercase;
 }
 
+.form-help {
+  color: var(--color-text-soft);
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
 .form-field--full {
   grid-column: 1 / -1;
 }
