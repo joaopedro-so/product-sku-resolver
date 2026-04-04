@@ -14,6 +14,7 @@ from fastapi import FastAPI
 from fastapi.responses import RedirectResponse
 
 from api.routes_products import router as products_router
+from backend.services.datetime_service import ensure_process_timezone_environment
 from backend.services.runtime_context import RuntimeServices, build_runtime_services
 from backend.web.routes_dashboard import router as dashboard_router
 from backend.web.static_files import DashboardStaticFiles
@@ -42,6 +43,8 @@ def create_app(services: RuntimeServices | None = None) -> FastAPI:
         level=logging.INFO,
         format="%(asctime)s [%(levelname)s] %(name)s - %(message)s",
     )
+
+    ensure_process_timezone_environment()
 
     runtime_services = services or build_runtime_services()
 

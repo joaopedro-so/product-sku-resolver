@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import asdict
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
 from urllib.parse import urlencode
@@ -25,6 +25,13 @@ from backend.models.sku_event import SkuEvent
 from backend.services.curated_renner_import_service import (
     CuratedRennerImportService,
     resolve_builtin_curated_seed_file,
+)
+from backend.services.datetime_service import (
+    UTC_TIMEZONE,
+    format_operational_timestamp_label,
+    get_current_utc_isoformat,
+    is_timestamp_in_display_today,
+    parse_persisted_timestamp,
 )
 from backend.services.internal_catalog_seed_service import (
     InternalCatalogSeedService,
@@ -449,14 +456,7 @@ def _parse_iso_timestamp(raw_timestamp: Optional[str]) -> Optional[datetime]:
         Usado para ordenacao, badges de recencia e resumos da tela Updates.
     """
 
-    normalized_timestamp = str(raw_timestamp or "").strip()
-    if not normalized_timestamp:
-        return None
-
-    try:
-        return datetime.fromisoformat(normalized_timestamp.replace("Z", "+00:00"))
-    except ValueError:
-        return None
+    return parse_persisted_timestamp(raw_timestamp)
 
 
 def _format_timestamp_label(raw_timestamp: Optional[str]) -> str:
@@ -474,19 +474,7 @@ def _format_timestamp_label(raw_timestamp: Optional[str]) -> str:
         Reforca leitura rapida de status em listas e detalhe.
     """
 
-    parsed_timestamp = _parse_iso_timestamp(raw_timestamp)
-    if parsed_timestamp is None:
-        return "Sem sincronização recente"
-
-    localized_timestamp = parsed_timestamp.astimezone()
-    now = datetime.now(localized_timestamp.tzinfo)
-    if localized_timestamp.date() == now.date():
-        return f"Hoje {localized_timestamp:%H:%M}"
-
-    if (now.date() - localized_timestamp.date()).days == 1:
-        return f"Ontem {localized_timestamp:%H:%M}"
-
-    return localized_timestamp.strftime("%d/%m %H:%M")
+    return format_operational_timestamp_label(raw_timestamp)
 
 
 def _humanize_alias(product_alias: str) -> str:
@@ -546,12 +534,7 @@ def _is_today(raw_timestamp: Optional[str]) -> bool:
         Utilizado em filtros rapidos e contadores da Home/Updates.
     """
 
-    parsed_timestamp = _parse_iso_timestamp(raw_timestamp)
-    if parsed_timestamp is None:
-        return False
-
-    localized_timestamp = parsed_timestamp.astimezone()
-    return localized_timestamp.date() == datetime.now(localized_timestamp.tzinfo).date()
+    return is_timestamp_in_display_today(raw_timestamp)
 
 
 def _build_update_snapshot(resolve_result: ResolveResult) -> Dict[str, Any]:
@@ -575,7 +558,7 @@ def _build_update_snapshot(resolve_result: ResolveResult) -> Dict[str, Any]:
         "error_code": resolve_result.error_code,
         "page_data": asdict(resolve_result.page_data) if resolve_result.page_data else None,
         "match_result": asdict(resolve_result.match_result) if resolve_result.match_result else None,
-        "recorded_at": datetime.now(timezone.utc).isoformat(),
+        "recorded_at": get_current_utc_isoformat(),
     }
 
 
@@ -1867,7 +1850,7 @@ def _build_latest_event_map(events: Iterable[SkuEvent]) -> Dict[str, SkuEvent]:
     latest_event_by_alias: Dict[str, SkuEvent] = {}
     for event in sorted(
         events,
-        key=lambda item: _parse_iso_timestamp(item.timestamp) or datetime.min.replace(tzinfo=timezone.utc),
+        key=lambda item: _parse_iso_timestamp(item.timestamp) or datetime.min.replace(tzinfo=UTC_TIMEZONE),
     ):
         latest_event_by_alias[event.alias] = event
     return latest_event_by_alias
@@ -2141,7 +2124,7 @@ def _sort_product_cards(cards: List[Dict[str, Any]], sort_key: str) -> List[Dict
     return sorted(
         sortable_cards,
         key=lambda card: _parse_iso_timestamp(card["activity"].get("timestamp"))
-        or datetime.min.replace(tzinfo=timezone.utc),
+        or datetime.min.replace(tzinfo=UTC_TIMEZONE),
         reverse=True,
     )
 
@@ -3357,7 +3340,7 @@ def _build_updates_context(request: Request) -> Dict[str, Any]:
     products_by_alias = {product.alias: product for product in product_store.list_products()}
     history_events = sorted(
         _get_history_store(request).list_events(),
-        key=lambda item: _parse_iso_timestamp(item.timestamp) or datetime.min.replace(tzinfo=timezone.utc),
+        key=lambda item: _parse_iso_timestamp(item.timestamp) or datetime.min.replace(tzinfo=UTC_TIMEZONE),
         reverse=True,
     )
     last_monitor_snapshot = getattr(request.app.state, "last_monitor_snapshot", None) or {}
@@ -3439,7 +3422,7 @@ def _run_monitor_cycle(request: Request) -> Dict[str, Any]:
         ]
     )
     snapshot = {
-        "recorded_at": datetime.now(timezone.utc).isoformat(),
+        "recorded_at": get_current_utc_isoformat(),
         "processed_count": monitor_summary.processed_count,
         "success_count": monitor_summary.success_count,
         "error_count": monitor_summary.error_count,
@@ -3498,7 +3481,7 @@ def _build_product_detail_context(request: Request, alias: str) -> Dict[str, Any
     history_events = _get_history_store(request).list_events_by_alias(selected_variant.alias)
     history_events = sorted(
         history_events,
-        key=lambda item: _parse_iso_timestamp(item.timestamp) or datetime.min.replace(tzinfo=timezone.utc),
+        key=lambda item: _parse_iso_timestamp(item.timestamp) or datetime.min.replace(tzinfo=UTC_TIMEZONE),
         reverse=True,
     )
     latest_event = history_events[0] if history_events else None
@@ -3527,7 +3510,7 @@ def _build_product_detail_context(request: Request, alias: str) -> Dict[str, Any
     for grouped_variant in grouped_product.variants:
         variant_history_events = sorted(
             _get_history_store(request).list_events_by_alias(grouped_variant.alias),
-            key=lambda item: _parse_iso_timestamp(item.timestamp) or datetime.min.replace(tzinfo=timezone.utc),
+            key=lambda item: _parse_iso_timestamp(item.timestamp) or datetime.min.replace(tzinfo=UTC_TIMEZONE),
             reverse=True,
         )
         latest_history_event_by_alias[grouped_variant.alias] = variant_history_events[0] if variant_history_events else None

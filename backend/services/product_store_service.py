@@ -9,11 +9,11 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Optional
 
 from backend.models.product import ProductRecord
+from backend.services.datetime_service import get_current_utc_isoformat
 from backend.services.matcher import normalize_variant
 from backend.services.product_reconciliation_service import (
     ProductReconciliationService,
@@ -877,4 +877,4 @@ def _build_site_link_timestamp() -> str:
         vinculacao manual confirmada pelo operador.
     """
 
-    return datetime.now(timezone.utc).isoformat()
+    return get_current_utc_isoformat()

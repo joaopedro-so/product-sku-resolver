@@ -15,6 +15,7 @@ from config import MATCH_THRESHOLD, MAX_SEARCH_RESULTS
 from history.history_store import HistoryStore
 from monitoring.monitor_service import MonitorService
 from backend.search.renner_provider import RennerSearchProvider
+from backend.services.datetime_service import ensure_process_timezone_environment
 from backend.services.product_store_service import ProductStoreService
 from backend.services.resolver import ProductResolver
 from backend.services.storage_path_service import resolve_default_data_file
@@ -114,6 +115,8 @@ def build_runtime_services(
     Contexto de uso:
         Chamada de bootstrap central para padronizar runtime da aplicação.
     """
+
+    ensure_process_timezone_environment()
 
     storage_path = _resolve_storage_path(configured_storage_path)
     history_path = _resolve_history_path(configured_history_path)

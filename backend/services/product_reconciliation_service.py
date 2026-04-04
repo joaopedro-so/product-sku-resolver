@@ -10,10 +10,10 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from datetime import datetime, timezone
 from typing import List, Optional
 
 from backend.models.product import ProductRecord
+from backend.services.datetime_service import get_current_utc_isoformat
 from backend.services.matcher import normalize_text, normalize_variant
 from backend.services.site_link_override_service import (
     SiteLinkOverrideDefinition,
@@ -744,4 +744,4 @@ def _build_match_timestamp() -> str:
         observabilidade e futuras telas de revisão manual.
     """
 
-    return datetime.now(timezone.utc).isoformat()
+    return get_current_utc_isoformat()

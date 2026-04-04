@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from fastapi import FastAPI
 
+from backend.services.datetime_service import ensure_process_timezone_environment
 from backend.services.product_store_service import ProductStoreService
 from backend.services.resolver import ProductResolver
 from backend.services.storage_path_service import resolve_default_data_file
@@ -31,6 +32,8 @@ def create_app() -> FastAPI:
     Contexto de uso:
         Função factory para facilitar testes e bootstrap de produção.
     """
+
+    ensure_process_timezone_environment()
 
     app = FastAPI(title="Product SKU Resolver")
 

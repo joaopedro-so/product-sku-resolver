@@ -10,10 +10,10 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, Optional
 
+from backend.services.datetime_service import get_current_utc_isoformat
 from backend.models.product import ProductRecord
 from backend.utils.fetcher import FetchResult, Fetcher
 from backend.utils.parser import PageData, parse_page_data
@@ -274,7 +274,7 @@ class ProductPreviewService:
             source_url=product.last_known_url.strip(),
             title=page_data.title or page_data.name,
             image_url=page_data.image_url,
-            cached_at=datetime.now(timezone.utc).isoformat(),
+            cached_at=get_current_utc_isoformat(),
         )
 
         preview_map = self._read_all()

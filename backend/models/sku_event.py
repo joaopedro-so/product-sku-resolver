@@ -8,8 +8,9 @@ para rastrear decisões e evolução de estado dos produtos.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
 from typing import Any, Dict, Optional
+
+from backend.services.datetime_service import get_current_utc_isoformat
 
 
 @dataclass(slots=True)
@@ -75,7 +76,7 @@ class SkuEvent:
             Atalho usado pelo monitor_service para criação consistente.
         """
 
-        generated_timestamp = datetime.now(timezone.utc).isoformat()
+        generated_timestamp = get_current_utc_isoformat()
         return cls(
             timestamp=generated_timestamp,
             alias=alias,
