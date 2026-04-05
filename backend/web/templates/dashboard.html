@@ -3,89 +3,91 @@
 {% block title %}Prateleiras{% endblock %}
 
 {% block content %}
-<section class="page-section">
-  <div class="search-entry-card search-entry-card--hero">
-    <div class="hero-heading-block hero-heading-block--compact">
-      <h1 class="page-title">Perfumaria Prestígio</h1>
-      <p class="section-text">Busque um perfume ou entre na prateleira.</p>
-    </div>
+<div class="dashboard-home-layout">
+  <section class="page-section dashboard-home-layout__search">
+    <div class="search-entry-card search-entry-card--hero dashboard-home-panel">
+      <div class="hero-heading-block hero-heading-block--compact">
+        <h1 class="page-title">Perfumaria Prestígio</h1>
+        <p class="section-text">Busque um perfume ou entre na prateleira.</p>
+      </div>
 
-    {% if import_feedback %}
-    <div class="alert-box alert-box--{{ import_feedback.type }}">
-      <p>{{ import_feedback.message }}</p>
-    </div>
-    {% endif %}
-
-    <form class="search-entry-form" method="get" action="/dashboard/search">
-      <input
-        type="search"
-        name="q"
-        placeholder="Buscar produto, marca ou SKU"
-        aria-label="Buscar produto, marca ou SKU"
-      />
-      <button class="button" type="submit">Buscar</button>
-    </form>
-  </div>
-</section>
-
-<section class="page-section">
-  <div class="section-heading">
-    <div>
-      <h2 class="section-title">Prateleiras</h2>
-    </div>
-  </div>
-  <div class="shelf-list">
-    {% for shelf in shelves %}
-    <article
-      class="shelf-card"
-      aria-label="{{ shelf.full_title }}"
-      {% if shelf.legacy_title %}
-      data-legacy-title="Prateleira {{ '%02d'|format(shelf.shelf_number) }} — {{ shelf.legacy_title }}"
+      {% if import_feedback %}
+      <div class="alert-box alert-box--{{ import_feedback.type }}">
+        <p>{{ import_feedback.message }}</p>
+      </div>
       {% endif %}
-    >
-      <div class="shelf-card__banner shelf-card__banner--{{ shelf.banner_variant }}">
-        {% if shelf.banner_image_url %}
-        <img
-          class="shelf-card__banner-image"
-          src="{{ shelf.banner_image_url }}"
-          alt=""
-          loading="eager"
-          aria-hidden="true"
+
+      <form class="search-entry-form" method="get" action="/dashboard/search">
+        <input
+          type="search"
+          name="q"
+          placeholder="Buscar produto, marca ou SKU"
+          aria-label="Buscar produto, marca ou SKU"
         />
-        {% endif %}
-        <div class="shelf-card__banner-overlay"></div>
-        <strong class="shelf-card__wordmark">{{ shelf.banner_wordmark }}</strong>
-        {% if shelf.banner_sublabel %}
-        <span class="shelf-card__subwordmark">{{ shelf.banner_sublabel }}</span>
-        {% endif %}
+        <button class="button" type="submit">Buscar</button>
+      </form>
+    </div>
+  </section>
+
+  <section class="page-section dashboard-home-layout__shelves">
+    <div class="section-heading dashboard-home-layout__heading">
+      <div>
+        <h2 class="section-title">Prateleiras</h2>
       </div>
-      <div class="shelf-card__body">
-        <div class="shelf-card__meta">
-          <p class="section-kicker">Prateleira {{ "%02d"|format(shelf.shelf_number) }}</p>
-          {% if shelf.body_label %}
-          <p class="shelf-card__body-label">{{ shelf.body_label }}</p>
+    </div>
+    <div class="shelf-list shelf-list--dashboard">
+      {% for shelf in shelves %}
+      <article
+        class="shelf-card"
+        aria-label="{{ shelf.full_title }}"
+        {% if shelf.legacy_title %}
+        data-legacy-title="Prateleira {{ '%02d'|format(shelf.shelf_number) }} — {{ shelf.legacy_title }}"
+        {% endif %}
+      >
+        <div class="shelf-card__banner shelf-card__banner--{{ shelf.banner_variant }}">
+          {% if shelf.banner_image_url %}
+          <img
+            class="shelf-card__banner-image"
+            src="{{ shelf.banner_image_url }}"
+            alt=""
+            loading="eager"
+            aria-hidden="true"
+          />
           {% endif %}
-          <div
-            class="shelf-card__count"
-            aria-label="{{ 'Sem itens' if shelf.product_count == 0 else shelf.product_count ~ ' itens na prateleira' }}"
-          >
-            <span class="shelf-card__count-icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24" focusable="false">
-                <path d="M9.25 4.75h5.5c1.8 0 3.25 1.45 3.25 3.25v9.25A2.75 2.75 0 0 1 15.25 20h-6.5A2.75 2.75 0 0 1 6 17.25V8c0-1.8 1.45-3.25 3.25-3.25Z" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6"/>
-                <path d="M10.25 4.75V3.9A1.9 1.9 0 0 1 12.15 2h-.3a1.9 1.9 0 0 1 1.9 1.9v.85" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6"/>
-                <path d="M9.5 10.75c.9-.55 1.67-.83 2.5-.83s1.6.28 2.5.83" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.6"/>
-              </svg>
-            </span>
-            <strong class="shelf-card__count-value">{{ shelf.product_count }}</strong>
-            {% if shelf.product_count == 0 %}
-            <span class="shelf-card__count-label">Sem itens</span>
-            {% endif %}
-          </div>
+          <div class="shelf-card__banner-overlay"></div>
+          <strong class="shelf-card__wordmark">{{ shelf.banner_wordmark }}</strong>
+          {% if shelf.banner_sublabel %}
+          <span class="shelf-card__subwordmark">{{ shelf.banner_sublabel }}</span>
+          {% endif %}
         </div>
-        <a class="button button--secondary" href="{{ shelf.href }}">Acessar</a>
-      </div>
-    </article>
-    {% endfor %}
-  </div>
-</section>
+        <div class="shelf-card__body">
+          <div class="shelf-card__meta">
+            <p class="section-kicker">Prateleira {{ "%02d"|format(shelf.shelf_number) }}</p>
+            {% if shelf.body_label %}
+            <p class="shelf-card__body-label">{{ shelf.body_label }}</p>
+            {% endif %}
+            <div
+              class="shelf-card__count"
+              aria-label="{{ 'Sem itens' if shelf.product_count == 0 else shelf.product_count ~ ' itens na prateleira' }}"
+            >
+              <span class="shelf-card__count-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" focusable="false">
+                  <path d="M9.25 4.75h5.5c1.8 0 3.25 1.45 3.25 3.25v9.25A2.75 2.75 0 0 1 15.25 20h-6.5A2.75 2.75 0 0 1 6 17.25V8c0-1.8 1.45-3.25 3.25-3.25Z" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6"/>
+                  <path d="M10.25 4.75V3.9A1.9 1.9 0 0 1 12.15 2h-.3a1.9 1.9 0 0 1 1.9 1.9v.85" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6"/>
+                  <path d="M9.5 10.75c.9-.55 1.67-.83 2.5-.83s1.6.28 2.5.83" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.6"/>
+                </svg>
+              </span>
+              <strong class="shelf-card__count-value">{{ shelf.product_count }}</strong>
+              {% if shelf.product_count == 0 %}
+              <span class="shelf-card__count-label">Sem itens</span>
+              {% endif %}
+            </div>
+          </div>
+          <a class="button button--secondary" href="{{ shelf.href }}">Acessar</a>
+        </div>
+      </article>
+      {% endfor %}
+    </div>
+  </section>
+</div>
 {% endblock %}

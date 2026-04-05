@@ -3,108 +3,110 @@
 {% block title %}Buscar{% endblock %}
 
 {% block content %}
-<section class="page-section">
-  <div class="search-screen-header">
-    <div class="search-screen-header__copy">
-      <p class="section-kicker">Busca</p>
-      <h1 class="section-title">Encontre o perfume</h1>
-      <p class="section-text">Busque por nome, marca ou código e abra o barcode sem perder o contexto.</p>
-    </div>
-
-    <form class="search-entry-form search-entry-form--stacked" method="get" action="/dashboard/search">
-      <input
-        type="search"
-        name="q"
-        value="{{ filters.q }}"
-        placeholder="Buscar por nome do produto, marca ou código"
-        aria-label="Buscar produto"
-        data-contextual-autofocus="search"
-        data-autofocus-enabled="{{ 'true' if not filters.q else 'false' }}"
-      />
-      <div class="search-entry-form__actions">
-        <button class="button" type="submit">Buscar</button>
-        <a class="button button--secondary" href="/dashboard/search">Limpar</a>
+<div class="search-page-layout">
+  <section class="page-section search-page-layout__filters">
+    <div class="search-screen-header search-page-panel">
+      <div class="search-screen-header__copy">
+        <p class="section-kicker">Busca</p>
+        <h1 class="section-title">Encontre o perfume</h1>
+        <p class="section-text">Busque por nome, marca ou código e abra o barcode sem perder o contexto.</p>
       </div>
-    </form>
 
-    <details class="filter-sheet" {% if filters.brand or filters.sync_status or filters.updated_scope or filters.saved_only or filters.image_only or filters.sort != 'recent' %}open{% endif %}>
-      <summary>Filtros</summary>
-      <form class="filter-form" method="get" action="/dashboard/search">
-        <input type="hidden" name="q" value="{{ filters.q }}" />
-
-        <label class="form-field">
-          <span>Marca</span>
-          <select name="brand">
-            <option value="">Todas</option>
-            {% for chip in brand_chips %}
-            <option value="{{ chip.label }}" {% if filters.brand == chip.label %}selected{% endif %}>{{ chip.label }}</option>
-            {% endfor %}
-          </select>
-        </label>
-
-        <label class="form-field">
-          <span>Status</span>
-          <select name="sync_status">
-            <option value="">Todos</option>
-            {% for option in available_statuses %}
-            <option value="{{ option.value }}" {% if filters.sync_status == option.value %}selected{% endif %}>{{ option.label }}</option>
-            {% endfor %}
-          </select>
-        </label>
-
-        <label class="form-field">
-          <span>Atualização</span>
-          <select name="updated_scope">
-            <option value="">Qualquer período</option>
-            <option value="today" {% if filters.updated_scope == 'today' %}selected{% endif %}>Hoje</option>
-            <option value="recent" {% if filters.updated_scope == 'recent' %}selected{% endif %}>Com histórico</option>
-          </select>
-        </label>
-
-        <label class="form-field">
-          <span>Ordenar</span>
-          <select name="sort">
-            <option value="recent" {% if filters.sort == 'recent' %}selected{% endif %}>Mais recentes</option>
-            <option value="name" {% if filters.sort == 'name' %}selected{% endif %}>Nome</option>
-            <option value="sku" {% if filters.sort == 'sku' %}selected{% endif %}>Código</option>
-          </select>
-        </label>
-
-        <label class="check-field">
-          <input type="checkbox" name="saved_only" value="1" {% if filters.saved_only %}checked{% endif %} />
-          <span>Somente salvos</span>
-        </label>
-
-        <label class="check-field">
-          <input type="checkbox" name="image_only" value="1" {% if filters.image_only %}checked{% endif %} />
-          <span>Somente com imagem</span>
-        </label>
-
-        <div class="filter-form__actions">
-          <button class="button" type="submit">Aplicar filtros</button>
+      <form class="search-entry-form search-entry-form--stacked" method="get" action="/dashboard/search">
+        <input
+          type="search"
+          name="q"
+          value="{{ filters.q }}"
+          placeholder="Buscar por nome do produto, marca ou código"
+          aria-label="Buscar produto"
+          data-contextual-autofocus="search"
+          data-autofocus-enabled="{{ 'true' if not filters.q else 'false' }}"
+        />
+        <div class="search-entry-form__actions">
+          <button class="button" type="submit">Buscar</button>
+          <a class="button button--secondary" href="/dashboard/search">Limpar</a>
         </div>
       </form>
-    </details>
-  </div>
-</section>
 
-<section class="page-section">
-  <div class="section-heading">
-    <div>
-      <p class="section-kicker">Resultados</p>
-      <h2 class="section-title">{{ results_count }} perfume(s)</h2>
+      <details class="filter-sheet" {% if filters.brand or filters.sync_status or filters.updated_scope or filters.saved_only or filters.image_only or filters.sort != 'recent' %}open{% endif %}>
+        <summary>Filtros</summary>
+        <form class="filter-form" method="get" action="/dashboard/search">
+          <input type="hidden" name="q" value="{{ filters.q }}" />
+
+          <label class="form-field">
+            <span>Marca</span>
+            <select name="brand">
+              <option value="">Todas</option>
+              {% for chip in brand_chips %}
+              <option value="{{ chip.label }}" {% if filters.brand == chip.label %}selected{% endif %}>{{ chip.label }}</option>
+              {% endfor %}
+            </select>
+          </label>
+
+          <label class="form-field">
+            <span>Status</span>
+            <select name="sync_status">
+              <option value="">Todos</option>
+              {% for option in available_statuses %}
+              <option value="{{ option.value }}" {% if filters.sync_status == option.value %}selected{% endif %}>{{ option.label }}</option>
+              {% endfor %}
+            </select>
+          </label>
+
+          <label class="form-field">
+            <span>Atualização</span>
+            <select name="updated_scope">
+              <option value="">Qualquer período</option>
+              <option value="today" {% if filters.updated_scope == 'today' %}selected{% endif %}>Hoje</option>
+              <option value="recent" {% if filters.updated_scope == 'recent' %}selected{% endif %}>Com histórico</option>
+            </select>
+          </label>
+
+          <label class="form-field">
+            <span>Ordenar</span>
+            <select name="sort">
+              <option value="recent" {% if filters.sort == 'recent' %}selected{% endif %}>Mais recentes</option>
+              <option value="name" {% if filters.sort == 'name' %}selected{% endif %}>Nome</option>
+              <option value="sku" {% if filters.sort == 'sku' %}selected{% endif %}>Código</option>
+            </select>
+          </label>
+
+          <label class="check-field">
+            <input type="checkbox" name="saved_only" value="1" {% if filters.saved_only %}checked{% endif %} />
+            <span>Somente salvos</span>
+          </label>
+
+          <label class="check-field">
+            <input type="checkbox" name="image_only" value="1" {% if filters.image_only %}checked{% endif %} />
+            <span>Somente com imagem</span>
+          </label>
+
+          <div class="filter-form__actions">
+            <button class="button" type="submit">Aplicar filtros</button>
+          </div>
+        </form>
+      </details>
     </div>
-  </div>
+  </section>
 
-  <div class="shelf-product-list">
-    {% for card in products %}
-      {% include "partials/grouped_scanning_card.html" %}
-    {% else %}
-    <article class="empty-card">
-      <h3>Nenhum item encontrado.</h3>
-      <p>Ajuste os filtros ou faça uma busca mais ampla.</p>
-    </article>
-    {% endfor %}
-  </div>
-</section>
+  <section class="page-section search-page-layout__results">
+    <div class="section-heading">
+      <div>
+        <p class="section-kicker">Resultados</p>
+        <h2 class="section-title">{{ results_count }} perfume(s)</h2>
+      </div>
+    </div>
+
+    <div class="shelf-product-list shelf-product-list--adaptive">
+      {% for card in products %}
+        {% include "partials/grouped_scanning_card.html" %}
+      {% else %}
+      <article class="empty-card">
+        <h3>Nenhum item encontrado.</h3>
+        <p>Ajuste os filtros ou faça uma busca mais ampla.</p>
+      </article>
+      {% endfor %}
+    </div>
+  </section>
+</div>
 {% endblock %}

@@ -94,9 +94,110 @@ form {
   margin: 0;
 }
 
-.mobile-shell {
+.mobile-shell,
+.app-shell {
   min-height: 100vh;
   min-height: 100dvh;
+}
+
+.app-shell {
+  position: relative;
+}
+
+.app-shell__main {
+  min-width: 0;
+}
+
+/*
+  Decisão arquitetural:
+  A sidebar desktop existe no mesmo shell da versão mobile. Ela nasce
+  escondida e só é ativada em telas amplas para evitar duplicar páginas ou
+  componentes inteiros entre os modos de uso.
+*/
+.desktop-sidebar {
+  display: none;
+}
+
+.desktop-sidebar__inner {
+  display: grid;
+  gap: 1.15rem;
+}
+
+.brand--sidebar {
+  padding: 0.9rem 1rem;
+  border: 1px solid rgba(39, 31, 24, 0.08);
+  border-radius: 1.2rem;
+  background: rgba(252, 250, 247, 0.96);
+  box-shadow: var(--shadow-panel);
+}
+
+.brand--sidebar .brand__copy {
+  display: grid;
+  gap: 0.18rem;
+}
+
+.brand--sidebar .brand__subtitle {
+  color: var(--color-text-soft);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.desktop-sidebar__nav {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.desktop-nav-link {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.72rem;
+  min-height: 3.25rem;
+  padding: 0.78rem 0.95rem;
+  border: 1px solid transparent;
+  border-radius: 1rem;
+  color: var(--color-text-soft);
+  background: rgba(252, 250, 247, 0.7);
+  transition: background 160ms ease, border-color 160ms ease, color 160ms ease, transform 160ms ease;
+}
+
+.desktop-nav-link__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.4rem;
+  height: 1.4rem;
+}
+
+.desktop-nav-link__icon svg {
+  width: 1.22rem;
+  height: 1.22rem;
+}
+
+.desktop-nav-link__label {
+  min-width: 0;
+  font-size: 0.88rem;
+  font-weight: 800;
+}
+
+.desktop-nav-link__count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.45rem;
+  height: 1.45rem;
+  padding: 0 0.38rem;
+  border-radius: 999px;
+  background: rgba(215, 38, 56, 0.12);
+  color: var(--color-accent-strong);
+  font-size: 0.7rem;
+  font-weight: 800;
+}
+
+.desktop-nav-link--active {
+  border-color: rgba(215, 38, 56, 0.14);
+  background: rgba(215, 38, 56, 0.08);
+  color: var(--color-accent-strong);
 }
 
 .app-header {
@@ -544,6 +645,21 @@ form {
 .search-screen-header {
   display: grid;
   gap: 0.9rem;
+}
+
+.dashboard-home-layout,
+.shelf-page-layout,
+.search-page-layout,
+.product-detail-layout {
+  display: grid;
+  gap: 0;
+}
+
+.dashboard-home-panel,
+.search-page-panel,
+.shelf-page-toolbar {
+  display: grid;
+  gap: 0.95rem;
 }
 
 .search-screen-header__copy {
@@ -1928,6 +2044,10 @@ form {
   background: rgba(243, 238, 232, 0.76);
 }
 
+.section-heading--shelf-results {
+  margin-bottom: 0.95rem;
+}
+
 .fullscreen-barcode {
   display: grid;
   gap: 1rem;
@@ -2486,6 +2606,13 @@ form {
     width: min(var(--max-content), calc(100% - 2.4rem));
   }
 
+  .dashboard-home-layout,
+  .shelf-page-layout,
+  .search-page-layout,
+  .product-detail-layout {
+    gap: 0.2rem;
+  }
+
   .search-entry-form {
     grid-template-columns: minmax(0, 1fr) auto;
   }
@@ -2511,7 +2638,187 @@ form {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .shelf-product-list--adaptive,
+  .shelf-list--dashboard {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .metric-strip {
     grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1024px) {
+  :root {
+    --max-content: 74rem;
+  }
+
+  body {
+    padding: 1.15rem 1.15rem 0;
+  }
+
+  .app-shell {
+    display: grid;
+    grid-template-columns: minmax(16.5rem, 18rem) minmax(0, 1fr);
+    gap: 1.4rem;
+    width: min(100%, 112rem);
+    margin: 0 auto;
+    align-items: start;
+  }
+
+  .desktop-sidebar {
+    display: block;
+    position: sticky;
+    top: 1.15rem;
+  }
+
+  .app-header {
+    top: 1.15rem;
+    border-radius: 1.2rem;
+  }
+
+  .app-header__row,
+  .app-main {
+    width: min(100%, 100%);
+  }
+
+  .app-header__row {
+    min-height: 4rem;
+    padding: 0.35rem 1rem;
+    justify-content: flex-end;
+  }
+
+  .app-header .brand--minimal {
+    display: none;
+  }
+
+  .app-main {
+    padding: 1rem 0 2rem;
+    scroll-padding-bottom: 2rem;
+  }
+
+  .app-toast-region {
+    top: 1.65rem;
+    right: 1.5rem;
+    left: auto;
+    transform: none;
+  }
+
+  .bottom-nav {
+    display: none;
+  }
+
+  .dashboard-home-layout {
+    grid-template-columns: minmax(18rem, 22rem) minmax(0, 1fr);
+    gap: 1.2rem;
+    align-items: start;
+  }
+
+  .dashboard-home-layout__search,
+  .shelf-page-layout__filters,
+  .search-page-layout__filters {
+    position: sticky;
+    top: 6.15rem;
+    align-self: start;
+  }
+
+  .dashboard-home-layout__heading {
+    margin-bottom: 1rem;
+  }
+
+  .shelf-list--dashboard {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1rem;
+  }
+
+  .search-page-layout,
+  .shelf-page-layout {
+    grid-template-columns: minmax(18rem, 22rem) minmax(0, 1fr);
+    gap: 1.2rem;
+    align-items: start;
+  }
+
+  .search-page-layout__results .section-heading,
+  .section-heading--shelf-results {
+    margin-bottom: 1rem;
+  }
+
+  .shelf-product-list--adaptive {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1rem;
+  }
+
+  .product-detail-layout {
+    grid-template-columns: minmax(0, 1.2fr) minmax(19rem, 0.8fr);
+    gap: 1.2rem;
+    align-items: start;
+  }
+
+  .product-detail-layout__primary,
+  .product-detail-layout__secondary {
+    min-width: 0;
+  }
+
+  .detail-hero {
+    grid-template-columns: minmax(20rem, 26rem) minmax(0, 1fr);
+  }
+
+  .detail-hero__media {
+    min-height: 25rem;
+    padding: 1.6rem;
+  }
+
+  .detail-hero__media img {
+    max-height: 21rem;
+  }
+
+  .detail-hero__content {
+    padding: 1.35rem;
+  }
+
+  .detail-technical-sheet {
+    position: sticky;
+    top: 6.15rem;
+  }
+
+  .sticky-action-bar--detail {
+    position: static;
+    bottom: auto;
+    margin-top: 1rem;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    backdrop-filter: none;
+    box-shadow: none;
+  }
+
+  .sticky-action-bar--detail .button {
+    min-height: 2.9rem;
+  }
+}
+
+@media (min-width: 1280px) {
+  .shelf-list--dashboard {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .shelf-product-list--adaptive {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .desktop-nav-link:hover,
+  .desktop-nav-link:focus-visible {
+    border-color: rgba(39, 31, 24, 0.08);
+    background: rgba(252, 250, 247, 0.96);
+    color: var(--color-panel);
+    transform: translateY(-1px);
+  }
+
+  .shelf-card:hover,
+  .shelf-product-card:hover {
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-float);
   }
 }

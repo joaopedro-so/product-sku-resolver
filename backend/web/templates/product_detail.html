@@ -19,306 +19,307 @@
 {% endif %}
 
 <div data-variant-switcher data-variant-storage-key="detail-{{ parent_product.group_id }}">
-  <section class="page-section">
-    {% if back_navigation %}
-    <a class="context-back-link" href="{{ back_navigation.href }}" aria-label="{{ back_navigation.label }}">
-      <span class="context-back-link__icon" aria-hidden="true">←</span>
-      <span>{{ back_navigation.label }}</span>
-    </a>
-    {% endif %}
+  <div class="product-detail-layout">
+    <section class="page-section product-detail-layout__primary">
+      {% if back_navigation %}
+      <a class="context-back-link" href="{{ back_navigation.href }}" aria-label="{{ back_navigation.label }}">
+        <span class="context-back-link__icon" aria-hidden="true">←</span>
+        <span>{{ back_navigation.label }}</span>
+      </a>
+      {% endif %}
 
-    <div class="detail-hero">
-      <div class="detail-hero__media">
-        {% if product.image_url %}
-        <img src="{{ product.image_url }}" alt="Imagem do produto {{ parent_product.parent_name }}" data-variant-image />
-        {% elif product_preview and product_preview.image_url %}
-        <img src="{{ product_preview.image_url }}" alt="Imagem do produto {{ parent_product.parent_name }}" data-variant-image />
-        {% elif visual_snapshot and visual_snapshot.image_url %}
-        <img src="{{ visual_snapshot.image_url }}" alt="Imagem do produto {{ parent_product.parent_name }}" data-variant-image />
-        {% else %}
-        <div class="detail-hero__placeholder">Imagem do produto indisponível</div>
-        {% endif %}
-      </div>
-
-      <div class="detail-hero__content">
-        <div class="detail-hero__badges detail-hero__badges--stacked">
-          <span class="status-badge status-badge--{{ activity.status_tone }}" data-variant-status-badge>{{ activity.badge_label }}</span>
-          <span
-            class="status-badge {% if selected_variant and selected_variant.source_type == 'legacy' %}status-badge--warning{% else %}status-badge--neutral{% endif %}"
-            data-variant-source-badge
-          >
-            {{ selected_variant.source_label if selected_variant else product.source_label }}
-          </span>
-        </div>
-
-        <h1 class="page-title">{{ parent_product.parent_name }}</h1>
-        <p class="detail-subtitle">
-          {{ parent_product.brand }}
-          {% if product.concentration %}
-          <span>• {{ product.concentration }}</span>
-          {% endif %}
-          {% if selected_variant %}
-          <span data-variant-label-display>• {{ selected_variant.label }}</span>
-          {% endif %}
-        </p>
-        {% if shelf_placement %}
-        <p class="detail-location">Prateleira {{ "%02d"|format(shelf_placement.shelf_number) }} — {{ shelf_placement.shelf_title }}</p>
-        {% endif %}
-
-        <div class="variant-selector-card">
-          <p class="section-kicker">Variantes</p>
-          <div class="variant-chip-list" role="list" aria-label="Variantes disponíveis de {{ parent_product.parent_name }}">
-            {% for variant in variant_options %}
-            <button
-              class="variant-chip {% if selected_variant and variant.alias == selected_variant.alias %}variant-chip--active{% endif %}"
-              type="button"
-              data-variant-option
-              data-variant-alias="{{ variant.alias }}"
-              data-variant-label="{{ variant.label }}"
-              data-variant-code="{{ variant.variant_code }}"
-              data-variant-detail-href="{{ variant.detail_href }}"
-              data-variant-barcode-href="{{ variant.barcode_href }}"
-              data-variant-update-href="{{ variant.update_href }}"
-              data-variant-edit-href="{{ variant.edit_href }}"
-              data-variant-delete-href="{{ variant.delete_href }}"
-              data-variant-save-href="{{ variant.save_href }}"
-              data-variant-is-saved="{{ '1' if variant.is_saved else '0' }}"
-              data-variant-save-label="{{ variant.save_button_label }}"
-              data-variant-product-url="{{ variant.last_known_url }}"
-              data-variant-image-url="{{ variant.image_url or '' }}"
-              data-variant-status-value="{{ variant.status_label }}"
-              data-variant-status-tone-value="{{ variant.status_tone }}"
-              data-variant-timestamp-value="{{ variant.timestamp_label }}"
-              data-variant-barcode-data-uri="{{ variant.barcode_data_uri or '' }}"
-              data-variant-source-value="{{ variant.source_label }}"
-              data-variant-source-type="{{ variant.source_type }}"
-              data-variant-site-link-status-value="{{ variant.site_link_status_label }}"
-              data-variant-has-site-candidate="{{ '1' if variant.has_site_candidate else '0' }}"
-              data-variant-candidate-confirm-href="{{ variant.candidate_confirm_href }}"
-              data-variant-candidate-ignore-href="{{ variant.candidate_ignore_href }}"
-              data-variant-candidate-code="{{ variant.candidate_code }}"
-              data-variant-candidate-product-id="{{ variant.candidate_product_id }}"
-              data-variant-candidate-confidence="{{ variant.candidate_confidence_label }}"
-              data-variant-candidate-signals="{{ variant.candidate_signals_text }}"
-              data-variant-stock-qty="{{ variant.stock_qty }}"
-              data-variant-is-syncable="{{ '1' if variant.is_syncable else '0' }}"
-              aria-label="Selecionar variante {{ variant.label }}"
-            >
-              <span data-variant-option-label>{{ variant.label }}</span>
-            </button>
-            {% endfor %}
-          </div>
-        </div>
-
-        <div class="detail-summary detail-summary--compact">
-          <div>
-            <span class="detail-summary__label">Código da variante</span>
-            <strong class="detail-summary__sku" title="{{ product.variant_code }}" data-variant-code-label>{{ product.variant_code }}</strong>
-          </div>
-          <div>
-            <span class="detail-summary__label">Estoque</span>
-            <strong class="detail-summary__value" data-variant-stock-label>{{ selected_variant.stock_qty if selected_variant else product.stock_qty }}</strong>
-          </div>
-        </div>
-
-        <article class="barcode-panel barcode-panel--inline">
-          {# Cabeçalho reduzido para o bloco do código não perder espaço útil no mobile. #}
-          <div class="section-heading section-heading--tight section-heading--barcode">
-            <div>
-              <p class="section-kicker">Código de barras</p>
-              <p class="barcode-panel__lead">Pronto para leitura imediata</p>
-            </div>
-          </div>
-
-          {% if barcode_data_uri %}
-          <img
-            class="barcode-panel__image"
-            src="{{ barcode_data_uri }}"
-            alt="Código de barras do código {{ product.variant_code }}"
-            data-variant-barcode-image
-          />
+      <div class="detail-hero">
+        <div class="detail-hero__media">
+          {% if product.image_url %}
+          <img src="{{ product.image_url }}" alt="Imagem do produto {{ parent_product.parent_name }}" data-variant-image />
+          {% elif product_preview and product_preview.image_url %}
+          <img src="{{ product_preview.image_url }}" alt="Imagem do produto {{ parent_product.parent_name }}" data-variant-image />
+          {% elif visual_snapshot and visual_snapshot.image_url %}
+          <img src="{{ visual_snapshot.image_url }}" alt="Imagem do produto {{ parent_product.parent_name }}" data-variant-image />
           {% else %}
-          <div class="barcode-panel__empty">Código de barras indisponível para o código atual.</div>
+          <div class="detail-hero__placeholder">Imagem do produto indisponível</div>
+          {% endif %}
+        </div>
+
+        <div class="detail-hero__content">
+          <div class="detail-hero__badges detail-hero__badges--stacked">
+            <span class="status-badge status-badge--{{ activity.status_tone }}" data-variant-status-badge>{{ activity.badge_label }}</span>
+            <span
+              class="status-badge {% if selected_variant and selected_variant.source_type == 'legacy' %}status-badge--warning{% else %}status-badge--neutral{% endif %}"
+              data-variant-source-badge
+            >
+              {{ selected_variant.source_label if selected_variant else product.source_label }}
+            </span>
+          </div>
+
+          <h1 class="page-title">{{ parent_product.parent_name }}</h1>
+          <p class="detail-subtitle">
+            {{ parent_product.brand }}
+            {% if product.concentration %}
+            <span>• {{ product.concentration }}</span>
+            {% endif %}
+            {% if selected_variant %}
+            <span data-variant-label-display>• {{ selected_variant.label }}</span>
+            {% endif %}
+          </p>
+          {% if shelf_placement %}
+          <p class="detail-location">Prateleira {{ "%02d"|format(shelf_placement.shelf_number) }} — {{ shelf_placement.shelf_title }}</p>
           {% endif %}
 
-          <strong class="barcode-panel__sku" title="{{ product.variant_code }}" data-variant-code-label>{{ product.variant_code }}</strong>
-        </article>
-      </div>
-    </div>
-  </section>
-
-  <section class="page-section">
-    <details class="detail-technical-sheet">
-      <summary class="detail-technical-sheet__summary">
-        <span>
-          <span class="section-kicker">Detalhes técnicos</span>
-          <strong class="detail-technical-sheet__title">Gestão, vínculo e histórico</strong>
-        </span>
-        <span class="detail-technical-sheet__status" data-variant-site-link-status-label>{{ selected_variant.site_link_status_label if selected_variant else product.site_link_status_label }}</span>
-      </summary>
-
-      <div class="detail-block-grid detail-block-grid--technical">
-        <article class="info-card" data-variant-candidate-panel {% if not selected_variant or not selected_variant.has_site_candidate %}hidden{% endif %}>
-          <p class="section-kicker">Vínculo com o site</p>
-          <h2 class="section-title">Possível correspondência encontrada</h2>
-          <p class="empty-inline">Esse item manual pode ser o mesmo produto que voltou ao site.</p>
-          <dl class="detail-meta-grid">
-            <div>
-              <dt>Status do vínculo</dt>
-              <dd data-variant-site-link-status-label>{{ selected_variant.site_link_status_label if selected_variant else product.site_link_status_label }}</dd>
+          <div class="variant-selector-card">
+            <p class="section-kicker">Variantes</p>
+            <div class="variant-chip-list" role="list" aria-label="Variantes disponíveis de {{ parent_product.parent_name }}">
+              {% for variant in variant_options %}
+              <button
+                class="variant-chip {% if selected_variant and variant.alias == selected_variant.alias %}variant-chip--active{% endif %}"
+                type="button"
+                data-variant-option
+                data-variant-alias="{{ variant.alias }}"
+                data-variant-label="{{ variant.label }}"
+                data-variant-code="{{ variant.variant_code }}"
+                data-variant-detail-href="{{ variant.detail_href }}"
+                data-variant-barcode-href="{{ variant.barcode_href }}"
+                data-variant-update-href="{{ variant.update_href }}"
+                data-variant-edit-href="{{ variant.edit_href }}"
+                data-variant-delete-href="{{ variant.delete_href }}"
+                data-variant-save-href="{{ variant.save_href }}"
+                data-variant-is-saved="{{ '1' if variant.is_saved else '0' }}"
+                data-variant-save-label="{{ variant.save_button_label }}"
+                data-variant-product-url="{{ variant.last_known_url }}"
+                data-variant-image-url="{{ variant.image_url or '' }}"
+                data-variant-status-value="{{ variant.status_label }}"
+                data-variant-status-tone-value="{{ variant.status_tone }}"
+                data-variant-timestamp-value="{{ variant.timestamp_label }}"
+                data-variant-barcode-data-uri="{{ variant.barcode_data_uri or '' }}"
+                data-variant-source-value="{{ variant.source_label }}"
+                data-variant-source-type="{{ variant.source_type }}"
+                data-variant-site-link-status-value="{{ variant.site_link_status_label }}"
+                data-variant-has-site-candidate="{{ '1' if variant.has_site_candidate else '0' }}"
+                data-variant-candidate-confirm-href="{{ variant.candidate_confirm_href }}"
+                data-variant-candidate-ignore-href="{{ variant.candidate_ignore_href }}"
+                data-variant-candidate-code="{{ variant.candidate_code }}"
+                data-variant-candidate-product-id="{{ variant.candidate_product_id }}"
+                data-variant-candidate-confidence="{{ variant.candidate_confidence_label }}"
+                data-variant-candidate-signals="{{ variant.candidate_signals_text }}"
+                data-variant-stock-qty="{{ variant.stock_qty }}"
+                data-variant-is-syncable="{{ '1' if variant.is_syncable else '0' }}"
+                aria-label="Selecionar variante {{ variant.label }}"
+              >
+                <span data-variant-option-label>{{ variant.label }}</span>
+              </button>
+              {% endfor %}
             </div>
-            <div data-variant-candidate-product-id-row {% if not selected_variant or not selected_variant.candidate_product_id %}hidden{% endif %}>
-              <dt>Produto do site</dt>
-              <dd data-variant-candidate-product-id>{{ selected_variant.candidate_product_id if selected_variant else product.site_candidate_id }}</dd>
-            </div>
-            <div data-variant-candidate-code-row {% if not selected_variant or not selected_variant.candidate_code %}hidden{% endif %}>
-              <dt>Código encontrado</dt>
-              <dd data-variant-candidate-code>{{ selected_variant.candidate_code if selected_variant else product.site_candidate_code }}</dd>
-            </div>
-            <div data-variant-candidate-confidence-row {% if not selected_variant or not selected_variant.candidate_confidence_label %}hidden{% endif %}>
-              <dt>Confiança</dt>
-              <dd data-variant-candidate-confidence>{{ selected_variant.candidate_confidence_label if selected_variant else '' }}</dd>
-            </div>
-            <div data-variant-candidate-signals-row {% if not selected_variant or not selected_variant.candidate_signals_text %}hidden{% endif %}>
-              <dt>Sinais</dt>
-              <dd data-variant-candidate-signals>{{ selected_variant.candidate_signals_text if selected_variant else '' }}</dd>
-            </div>
-          </dl>
-
-          <div class="detail-inline-actions">
-            <form method="post" action="{{ selected_variant.candidate_confirm_href if selected_variant else '' }}" data-variant-confirm-link-form>
-              <button class="button button--small" type="submit">Vincular item</button>
-            </form>
-            <form method="post" action="{{ selected_variant.candidate_ignore_href if selected_variant else '' }}" data-variant-ignore-link-form>
-              <button class="button button--secondary button--small" type="submit">Ignorar</button>
-            </form>
           </div>
-        </article>
 
-        <article class="info-card">
-          <p class="section-kicker">Gestão do item</p>
-          <dl class="detail-meta-grid">
+          <div class="detail-summary detail-summary--compact">
             <div>
-              <dt>Nome de exibição</dt>
-              <dd>{{ product.display_name }}</dd>
+              <span class="detail-summary__label">Código da variante</span>
+              <strong class="detail-summary__sku" title="{{ product.variant_code }}" data-variant-code-label>{{ product.variant_code }}</strong>
             </div>
             <div>
-              <dt>Nome para correspondência</dt>
-              <dd>{{ product.effective_match_name or 'Não definido' }}</dd>
+              <span class="detail-summary__label">Estoque</span>
+              <strong class="detail-summary__value" data-variant-stock-label>{{ selected_variant.stock_qty if selected_variant else product.stock_qty }}</strong>
             </div>
-            <div>
-              <dt>Nome normalizado</dt>
-              <dd>{{ product.normalized_match_name or 'Não definido' }}</dd>
-            </div>
-            <div>
-              <dt>Marca</dt>
-              <dd>{{ parent_product.brand }}</dd>
-            </div>
-            {% if product.line_name %}
-            <div>
-              <dt>Linha / família</dt>
-              <dd>{{ product.line_name }}</dd>
-            </div>
-            {% endif %}
-            <div>
-              <dt>Variante</dt>
-              <dd data-variant-label-only>{{ selected_variant.label if selected_variant else product.variant or 'Sem variante informada' }}</dd>
-            </div>
-            <div>
-              <dt>Origem</dt>
-              <dd data-variant-source-label>{{ selected_variant.source_label if selected_variant else product.source_label }}</dd>
-            </div>
-            <div>
-              <dt>Última referência</dt>
-              <dd data-variant-timestamp-label>{{ activity.timestamp_label }}</dd>
-            </div>
-            <div>
-              <dt>SKU da página</dt>
-              <dd>{{ parent_product.parent_page_sku or 'Não disponível' }}</dd>
-            </div>
-            <div>
-              <dt>Localização</dt>
-              <dd>
-                {% if shelf_placement %}
-                Prateleira {{ "%02d"|format(shelf_placement.shelf_number) }} — {{ shelf_placement.shelf_title }}
-                {% else %}
-                Não mapeada
-                {% endif %}
-              </dd>
-            </div>
-            {% if product.last_known_url %}
-            <div data-variant-product-link-wrapper>
-              <dt>Página atual</dt>
-              <dd><a href="{{ product.last_known_url }}" target="_blank" rel="noreferrer" data-variant-product-link>Abrir produto</a></dd>
-            </div>
-            {% endif %}
-            {% if product.shelf_reference_label %}
-            <div>
-              <dt>Referência interna</dt>
-              <dd>{{ product.shelf_reference_label }}</dd>
-            </div>
-            {% endif %}
-            {% if product.notes %}
-            <div>
-              <dt>Notas</dt>
-              <dd>{{ product.notes }}</dd>
-            </div>
-            {% endif %}
-          </dl>
-
-          <div class="detail-inline-actions">
-            <form method="post" action="{{ selected_variant.update_href if selected_variant else '' }}" data-variant-update-form data-variant-sync-action {% if not selected_variant or not selected_variant.is_syncable %}hidden{% endif %}>
-              <button class="button button--small" type="submit">Atualizar agora</button>
-            </form>
-            <a class="button button--secondary button--small" href="/dashboard/products/{{ product.alias }}/edit" data-variant-edit-link>Editar cadastro</a>
-            <form method="post" action="/dashboard/products/{{ product.alias }}/toggle-saved" data-variant-save-form>
-              <input type="hidden" name="next" value="{{ request.url }}" />
-              <button class="button button--ghost button--small" type="submit" data-variant-save-button aria-pressed="{{ 'true' if is_saved else 'false' }}">{{ 'Remover dos salvos' if is_saved else 'Salvar' }}</button>
-            </form>
-            <form method="post" action="/dashboard/products/{{ product.alias }}/delete" data-variant-delete-form onsubmit="return confirm('Deseja excluir esta variante do catálogo?');">
-              <button class="button button--danger button--small" type="submit">Excluir variante</button>
-            </form>
           </div>
-        </article>
 
-        <article class="info-card">
-          <p class="section-kicker">Histórico curto</p>
-          <div class="history-list">
-            {% for item in history_cards %}
-            <div class="history-item">
-              <strong>{{ item.timestamp_label }}</strong>
-              <span>{{ item.event_type }}</span>
-              <small>{{ item.old_sku or 'sem código' }} → {{ item.new_sku or 'sem código' }}</small>
+          <article class="barcode-panel barcode-panel--inline">
+            <div class="section-heading section-heading--tight section-heading--barcode">
+              <div>
+                <p class="section-kicker">Código de barras</p>
+                <p class="barcode-panel__lead">Pronto para leitura imediata</p>
+              </div>
             </div>
+
+            {% if barcode_data_uri %}
+            <img
+              class="barcode-panel__image"
+              src="{{ barcode_data_uri }}"
+              alt="Código de barras do código {{ product.variant_code }}"
+              data-variant-barcode-image
+            />
             {% else %}
-            <p class="empty-inline">Sem eventos persistidos para esta variante.</p>
-            {% endfor %}
-          </div>
-        </article>
+            <div class="barcode-panel__empty">Código de barras indisponível para o código atual.</div>
+            {% endif %}
 
-        {% if related_products %}
-        <article class="info-card">
-          <p class="section-kicker">Relacionados</p>
-          <div class="related-list">
-            {% for item in related_products %}
-            <a class="related-item" href="/dashboard/products/{{ item.alias }}">
-              <strong>{{ item.name }}</strong>
-              <span>{{ item.variant or 'Sem variante' }}</span>
-              <small>{{ item.sku }}</small>
-            </a>
-            {% endfor %}
-          </div>
-        </article>
+            <strong class="barcode-panel__sku" title="{{ product.variant_code }}" data-variant-code-label>{{ product.variant_code }}</strong>
+          </article>
+        </div>
+      </div>
+
+      <div class="sticky-action-bar sticky-action-bar--detail">
+        {% if selected_variant %}
+        <a class="button button--secondary" href="{{ selected_variant.barcode_href }}" data-variant-barcode-link>Código em tela cheia</a>
+        <button class="button button--ghost" type="button" data-copy-text="{{ selected_variant.variant_code }}" data-variant-copy-trigger>Copiar código</button>
         {% endif %}
       </div>
-    </details>
-  </section>
+    </section>
 
-  <div class="sticky-action-bar sticky-action-bar--detail">
-    {% if selected_variant %}
-    <a class="button button--secondary" href="{{ selected_variant.barcode_href }}" data-variant-barcode-link>Código em tela cheia</a>
-    <button class="button button--ghost" type="button" data-copy-text="{{ selected_variant.variant_code }}" data-variant-copy-trigger>Copiar código</button>
-    {% endif %}
+    <section class="page-section product-detail-layout__secondary">
+      <details class="detail-technical-sheet">
+        <summary class="detail-technical-sheet__summary">
+          <span>
+            <span class="section-kicker">Detalhes técnicos</span>
+            <strong class="detail-technical-sheet__title">Gestão, vínculo e histórico</strong>
+          </span>
+          <span class="detail-technical-sheet__status" data-variant-site-link-status-label>{{ selected_variant.site_link_status_label if selected_variant else product.site_link_status_label }}</span>
+        </summary>
+
+        <div class="detail-block-grid detail-block-grid--technical">
+          <article class="info-card" data-variant-candidate-panel {% if not selected_variant or not selected_variant.has_site_candidate %}hidden{% endif %}>
+            <p class="section-kicker">Vínculo com o site</p>
+            <h2 class="section-title">Possível correspondência encontrada</h2>
+            <p class="empty-inline">Esse item manual pode ser o mesmo produto que voltou ao site.</p>
+            <dl class="detail-meta-grid">
+              <div>
+                <dt>Status do vínculo</dt>
+                <dd data-variant-site-link-status-label>{{ selected_variant.site_link_status_label if selected_variant else product.site_link_status_label }}</dd>
+              </div>
+              <div data-variant-candidate-product-id-row {% if not selected_variant or not selected_variant.candidate_product_id %}hidden{% endif %}>
+                <dt>Produto do site</dt>
+                <dd data-variant-candidate-product-id>{{ selected_variant.candidate_product_id if selected_variant else product.site_candidate_id }}</dd>
+              </div>
+              <div data-variant-candidate-code-row {% if not selected_variant or not selected_variant.candidate_code %}hidden{% endif %}>
+                <dt>Código encontrado</dt>
+                <dd data-variant-candidate-code>{{ selected_variant.candidate_code if selected_variant else product.site_candidate_code }}</dd>
+              </div>
+              <div data-variant-candidate-confidence-row {% if not selected_variant or not selected_variant.candidate_confidence_label %}hidden{% endif %}>
+                <dt>Confiança</dt>
+                <dd data-variant-candidate-confidence>{{ selected_variant.candidate_confidence_label if selected_variant else '' }}</dd>
+              </div>
+              <div data-variant-candidate-signals-row {% if not selected_variant or not selected_variant.candidate_signals_text %}hidden{% endif %}>
+                <dt>Sinais</dt>
+                <dd data-variant-candidate-signals>{{ selected_variant.candidate_signals_text if selected_variant else '' }}</dd>
+              </div>
+            </dl>
+
+            <div class="detail-inline-actions">
+              <form method="post" action="{{ selected_variant.candidate_confirm_href if selected_variant else '' }}" data-variant-confirm-link-form>
+                <button class="button button--small" type="submit">Vincular item</button>
+              </form>
+              <form method="post" action="{{ selected_variant.candidate_ignore_href if selected_variant else '' }}" data-variant-ignore-link-form>
+                <button class="button button--secondary button--small" type="submit">Ignorar</button>
+              </form>
+            </div>
+          </article>
+
+          <article class="info-card">
+            <p class="section-kicker">Gestão do item</p>
+            <dl class="detail-meta-grid">
+              <div>
+                <dt>Nome de exibição</dt>
+                <dd>{{ product.display_name }}</dd>
+              </div>
+              <div>
+                <dt>Nome para correspondência</dt>
+                <dd>{{ product.effective_match_name or 'Não definido' }}</dd>
+              </div>
+              <div>
+                <dt>Nome normalizado</dt>
+                <dd>{{ product.normalized_match_name or 'Não definido' }}</dd>
+              </div>
+              <div>
+                <dt>Marca</dt>
+                <dd>{{ parent_product.brand }}</dd>
+              </div>
+              {% if product.line_name %}
+              <div>
+                <dt>Linha / família</dt>
+                <dd>{{ product.line_name }}</dd>
+              </div>
+              {% endif %}
+              <div>
+                <dt>Variante</dt>
+                <dd data-variant-label-only>{{ selected_variant.label if selected_variant else product.variant or 'Sem variante informada' }}</dd>
+              </div>
+              <div>
+                <dt>Origem</dt>
+                <dd data-variant-source-label>{{ selected_variant.source_label if selected_variant else product.source_label }}</dd>
+              </div>
+              <div>
+                <dt>Última referência</dt>
+                <dd data-variant-timestamp-label>{{ activity.timestamp_label }}</dd>
+              </div>
+              <div>
+                <dt>SKU da página</dt>
+                <dd>{{ parent_product.parent_page_sku or 'Não disponível' }}</dd>
+              </div>
+              <div>
+                <dt>Localização</dt>
+                <dd>
+                  {% if shelf_placement %}
+                  Prateleira {{ "%02d"|format(shelf_placement.shelf_number) }} — {{ shelf_placement.shelf_title }}
+                  {% else %}
+                  Não mapeada
+                  {% endif %}
+                </dd>
+              </div>
+              {% if product.last_known_url %}
+              <div data-variant-product-link-wrapper>
+                <dt>Página atual</dt>
+                <dd><a href="{{ product.last_known_url }}" target="_blank" rel="noreferrer" data-variant-product-link>Abrir produto</a></dd>
+              </div>
+              {% endif %}
+              {% if product.shelf_reference_label %}
+              <div>
+                <dt>Referência interna</dt>
+                <dd>{{ product.shelf_reference_label }}</dd>
+              </div>
+              {% endif %}
+              {% if product.notes %}
+              <div>
+                <dt>Notas</dt>
+                <dd>{{ product.notes }}</dd>
+              </div>
+              {% endif %}
+            </dl>
+
+            <div class="detail-inline-actions">
+              <form method="post" action="{{ selected_variant.update_href if selected_variant else '' }}" data-variant-update-form data-variant-sync-action {% if not selected_variant or not selected_variant.is_syncable %}hidden{% endif %}>
+                <button class="button button--small" type="submit">Atualizar agora</button>
+              </form>
+              <a class="button button--secondary button--small" href="/dashboard/products/{{ product.alias }}/edit" data-variant-edit-link>Editar cadastro</a>
+              <form method="post" action="/dashboard/products/{{ product.alias }}/toggle-saved" data-variant-save-form>
+                <input type="hidden" name="next" value="{{ request.url }}" />
+                <button class="button button--ghost button--small" type="submit" data-variant-save-button aria-pressed="{{ 'true' if is_saved else 'false' }}">{{ 'Remover dos salvos' if is_saved else 'Salvar' }}</button>
+              </form>
+              <form method="post" action="/dashboard/products/{{ product.alias }}/delete" data-variant-delete-form onsubmit="return confirm('Deseja excluir esta variante do catálogo?');">
+                <button class="button button--danger button--small" type="submit">Excluir variante</button>
+              </form>
+            </div>
+          </article>
+
+          <article class="info-card">
+            <p class="section-kicker">Histórico curto</p>
+            <div class="history-list">
+              {% for item in history_cards %}
+              <div class="history-item">
+                <strong>{{ item.timestamp_label }}</strong>
+                <span>{{ item.event_type }}</span>
+                <small>{{ item.old_sku or 'sem código' }} → {{ item.new_sku or 'sem código' }}</small>
+              </div>
+              {% else %}
+              <p class="empty-inline">Sem eventos persistidos para esta variante.</p>
+              {% endfor %}
+            </div>
+          </article>
+
+          {% if related_products %}
+          <article class="info-card">
+            <p class="section-kicker">Relacionados</p>
+            <div class="related-list">
+              {% for item in related_products %}
+              <a class="related-item" href="/dashboard/products/{{ item.alias }}">
+                <strong>{{ item.name }}</strong>
+                <span>{{ item.variant or 'Sem variante' }}</span>
+                <small>{{ item.sku }}</small>
+              </a>
+              {% endfor %}
+            </div>
+          </article>
+          {% endif %}
+        </div>
+      </details>
+    </section>
   </div>
 </div>
 {% endif %}

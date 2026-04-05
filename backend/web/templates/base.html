@@ -16,7 +16,64 @@
     <link rel="stylesheet" href="/dashboard/static/styles.css" />
   </head>
   <body class="{{ body_class or '' }}">
-    <div class="mobile-shell">
+    <div class="app-shell">
+      {% if not hide_app_chrome %}
+      <aside class="desktop-sidebar" aria-label="Navegação principal desktop">
+        <div class="desktop-sidebar__inner">
+          <a class="brand brand--sidebar" href="/dashboard" aria-label="Prestígio 394">
+            <img class="brand__symbol" src="/dashboard/static/brand/prestigio-394-mark.svg" alt="Símbolo Prestígio 394" />
+            <span class="brand__copy">
+              <strong class="brand__name">Prestígio 394</strong>
+              <span class="brand__subtitle">Ferramenta de consulta rápida</span>
+            </span>
+          </a>
+
+          <nav class="desktop-sidebar__nav" aria-label="Navegação principal">
+            <a class="desktop-nav-link {% if active_tab == 'home' %}desktop-nav-link--active{% endif %}" href="/dashboard">
+              <span class="desktop-nav-link__icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" focusable="false">
+                  <path d="M4.75 10.25 12 4.5l7.25 5.75V19a1.75 1.75 0 0 1-1.75 1.75h-11A1.75 1.75 0 0 1 4.75 19v-8.75Z" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8"/>
+                  <path d="M9.25 20.75v-5.5h5.5v5.5" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8"/>
+                </svg>
+              </span>
+              <span class="desktop-nav-link__label">Início</span>
+            </a>
+            <a class="desktop-nav-link {% if active_tab == 'search' %}desktop-nav-link--active{% endif %}" href="/dashboard/search">
+              <span class="desktop-nav-link__icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" focusable="false">
+                  <circle cx="11" cy="11" r="5.75" fill="none" stroke="currentColor" stroke-width="1.8"/>
+                  <path d="m16 16 3.75 3.75" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.8"/>
+                </svg>
+              </span>
+              <span class="desktop-nav-link__label">Buscar</span>
+            </a>
+            <a class="desktop-nav-link {% if active_tab == 'updates' %}desktop-nav-link--active{% endif %}" href="/dashboard/updates">
+              <span class="desktop-nav-link__icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" focusable="false">
+                  <path d="M18.25 8.5V4.75H14.5" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8"/>
+                  <path d="M5.75 15.5v3.75H9.5" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8"/>
+                  <path d="M18 10a6.75 6.75 0 0 0-11.38-2.97L5.75 7.9M6 14a6.75 6.75 0 0 0 11.38 2.97l.87-.87" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8"/>
+                </svg>
+              </span>
+              <span class="desktop-nav-link__label">Sync</span>
+            </a>
+            <a class="desktop-nav-link {% if active_tab == 'saved' %}desktop-nav-link--active{% endif %}" href="/dashboard/saved">
+              <span class="desktop-nav-link__icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" focusable="false">
+                  <path d="M7.25 4.75h9.5A1.75 1.75 0 0 1 18.5 6.5v13.25L12 16l-6.5 3.75V6.5a1.75 1.75 0 0 1 1.75-1.75Z" fill="none" stroke="currentColor" stroke-linejoin="round" stroke-width="1.8"/>
+                </svg>
+              </span>
+              <span class="desktop-nav-link__label">Salvos</span>
+              {% if saved_count %}
+              <strong class="desktop-nav-link__count">{{ saved_count }}</strong>
+              {% endif %}
+            </a>
+          </nav>
+        </div>
+      </aside>
+      {% endif %}
+
+      <div class="app-shell__main">
       {% if not hide_app_chrome %}
       <header class="app-header">
         <div class="app-header__row">
@@ -112,6 +169,7 @@
         </a>
       </nav>
       {% endif %}
+      </div>
     </div>
 
     <script src="/dashboard/static/dashboard.js" defer></script>

@@ -12,73 +12,82 @@
   </article>
 </section>
 {% else %}
-<section class="page-section">
-  {% if back_navigation %}
-  <a class="context-back-link" href="{{ back_navigation.href }}" aria-label="{{ back_navigation.label }}">
-    <span class="context-back-link__icon" aria-hidden="true">←</span>
-    <span>{{ back_navigation.label }}</span>
-  </a>
-  {% endif %}
+<div class="shelf-page-layout">
+  <section class="page-section shelf-page-layout__filters">
+    {% if back_navigation %}
+    <a class="context-back-link" href="{{ back_navigation.href }}" aria-label="{{ back_navigation.label }}">
+      <span class="context-back-link__icon" aria-hidden="true">←</span>
+      <span>{{ back_navigation.label }}</span>
+    </a>
+    {% endif %}
 
-  <div class="search-entry-card search-entry-card--location">
-    <div class="shelf-hero-banner shelf-hero-banner--{{ shelf_visual.banner_variant }}">
-      {% if banner_image_url %}
-      <img
-        class="shelf-hero-banner__image"
-        src="{{ banner_image_url }}"
-        alt=""
-        loading="eager"
-        aria-hidden="true"
-      />
-      {% endif %}
-      <div class="shelf-hero-banner__overlay"></div>
-      <div class="shelf-hero-banner__content">
-        <p class="section-kicker">Localização física</p>
-        <h1 class="page-title">Prateleira {{ "%02d"|format(shelf.shelf_number) }}</h1>
-        <p class="section-text">Referência: {{ reference_label }}</p>
+    <div class="search-entry-card search-entry-card--location shelf-page-toolbar">
+      <div class="shelf-hero-banner shelf-hero-banner--{{ shelf_visual.banner_variant }}">
+        {% if banner_image_url %}
+        <img
+          class="shelf-hero-banner__image"
+          src="{{ banner_image_url }}"
+          alt=""
+          loading="eager"
+          aria-hidden="true"
+        />
+        {% endif %}
+        <div class="shelf-hero-banner__overlay"></div>
+        <div class="shelf-hero-banner__content">
+          <p class="section-kicker">Localização física</p>
+          <h1 class="page-title">Prateleira {{ "%02d"|format(shelf.shelf_number) }}</h1>
+          <p class="section-text">Referência: {{ reference_label }}</p>
+        </div>
+      </div>
+
+      <form class="search-entry-form search-entry-form--compact" method="get" action="/dashboard/prateleiras/{{ shelf.shelf_number }}">
+        <input
+          type="search"
+          name="q"
+          value="{{ query_text }}"
+          placeholder="Buscar dentro da prateleira"
+          aria-label="Buscar dentro da prateleira"
+        />
+        {% if selected_brand %}
+        <input type="hidden" name="brand" value="{{ selected_brand }}" />
+        {% endif %}
+        <div class="search-entry-form__actions">
+          <button class="button button--small" type="submit">Buscar</button>
+          {% if query_text %}
+          <a class="button button--secondary button--small" href="{{ shelf_search_reset_href }}">Limpar busca</a>
+          {% endif %}
+        </div>
+      </form>
+
+      <div class="filter-chip-row" role="list" aria-label="Filtrar por marca nesta prateleira">
+        {% for filter_chip in brand_filters %}
+        <a class="filter-chip {% if filter_chip.is_selected %}filter-chip--active{% endif %}" href="{{ filter_chip.href }}">
+          {{ filter_chip.label }}
+        </a>
+        {% endfor %}
+      </div>
+    </div>
+  </section>
+
+  <section class="page-section shelf-page-layout__results">
+    <div class="section-heading section-heading--shelf-results">
+      <div>
+        <p class="section-kicker">Catálogo da prateleira</p>
+        <h2 class="section-title">Produtos desta seleção</h2>
       </div>
     </div>
 
-    <form class="search-entry-form search-entry-form--compact" method="get" action="/dashboard/prateleiras/{{ shelf.shelf_number }}">
-      <input
-        type="search"
-        name="q"
-        value="{{ query_text }}"
-        placeholder="Buscar dentro da prateleira"
-        aria-label="Buscar dentro da prateleira"
-      />
-      {% if selected_brand %}
-      <input type="hidden" name="brand" value="{{ selected_brand }}" />
-      {% endif %}
-      <div class="search-entry-form__actions">
-        <button class="button button--small" type="submit">Buscar</button>
-        {% if query_text %}
-        <a class="button button--secondary button--small" href="{{ shelf_search_reset_href }}">Limpar busca</a>
-        {% endif %}
-      </div>
-    </form>
-
-    <div class="filter-chip-row" role="list" aria-label="Filtrar por marca nesta prateleira">
-      {% for filter_chip in brand_filters %}
-      <a class="filter-chip {% if filter_chip.is_selected %}filter-chip--active{% endif %}" href="{{ filter_chip.href }}">
-        {{ filter_chip.label }}
-      </a>
+    <div class="shelf-product-list shelf-product-list--adaptive">
+      {% for card in products %}
+        {% include "partials/grouped_scanning_card.html" %}
+      {% else %}
+      <article class="empty-card">
+        <h3>Nenhum produto encontrado nesta prateleira.</h3>
+        <p>Ajuste a busca ou o filtro de marca para encontrar outro item.</p>
+      </article>
       {% endfor %}
     </div>
-  </div>
-</section>
-
-<section class="page-section">
-  <div class="shelf-product-list">
-    {% for card in products %}
-      {% include "partials/grouped_scanning_card.html" %}
-    {% else %}
-    <article class="empty-card">
-      <h3>Nenhum produto encontrado nesta prateleira.</h3>
-      <p>Ajuste a busca ou o filtro de marca para encontrar outro item.</p>
-    </article>
-    {% endfor %}
-  </div>
-</section>
+  </section>
+</div>
 {% endif %}
 {% endblock %}
