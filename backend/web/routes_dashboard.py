@@ -2071,6 +2071,64 @@ def _build_preview_map(
     return preview_map
 
 
+def _is_timestamp_strictly_newer(candidate_timestamp: Optional[str], reference_timestamp: Optional[str]) -> bool:
+    """
+    Responsabilidade:
+        Comparar dois timestamps persistidos sem depender do timezone do processo.
+
+    Parametros:
+        candidate_timestamp: Timestamp que pode representar um sync mais recente.
+        reference_timestamp: Timestamp usado como base de comparação.
+
+    Retorno:
+        True quando o candidato for realmente mais novo; False nos demais casos.
+
+    Contexto de uso:
+        A UI de status precisa saber se `last_matched_at` já superou um erro ou
+        uma mudança antiga. Isso evita mostrar `Sem sync` ou `Falha` quando o
+        lote mais recente validou a variante sem gerar evento novo.
+    """
+
+    parsed_candidate_timestamp = parse_persisted_timestamp(candidate_timestamp)
+    if parsed_candidate_timestamp is None:
+        return False
+
+    parsed_reference_timestamp = parse_persisted_timestamp(reference_timestamp)
+    if parsed_reference_timestamp is None:
+        return True
+
+    return parsed_candidate_timestamp > parsed_reference_timestamp
+
+
+def _build_synced_activity_state(sync_timestamp: Optional[str]) -> Dict[str, Any]:
+    """
+    Responsabilidade:
+        Montar o estado visual de variante sincronizada sem mudança recente.
+
+    Parametros:
+        sync_timestamp: Timestamp UTC do último sync validado com sucesso.
+
+    Retorno:
+        Dicionario pronto para badges, textos e apoio visual da interface.
+
+    Contexto de uso:
+        O monitor em lote agora consegue validar muitas variantes sem alterar
+        código ou URL. Nesses casos, ainda precisamos mostrar que o sync foi
+        bem-sucedido e recente, em vez de cair no estado enganoso de `Sem sync`.
+    """
+
+    return {
+        "status_key": "synced",
+        "status_tone": "success",
+        "status_label": "Sincronizado",
+        "badge_label": "Sincronizado",
+        "status_message": "O último ciclo validou este item sem mudanças no código.",
+        "timestamp": sync_timestamp,
+        "timestamp_label": _format_timestamp_label(sync_timestamp),
+        "is_today": _is_today(sync_timestamp),
+    }
+
+
 def _build_product_activity(
     product: ProductRecord,
     latest_event: Optional[SkuEvent],
@@ -2152,6 +2210,12 @@ def _build_product_activity(
             "timestamp_label": _format_timestamp_label(recorded_at),
             "is_today": _is_today(recorded_at),
         }
+
+    if product.is_syncable and _is_timestamp_strictly_newer(
+        candidate_timestamp=product.last_matched_at,
+        reference_timestamp=latest_event.timestamp if latest_event is not None else None,
+    ):
+        return _build_synced_activity_state(product.last_matched_at)
 
     if latest_event is None:
         return {

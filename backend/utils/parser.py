@@ -294,6 +294,87 @@ def _find_sku_in_json(data: object) -> Optional[str]:
     return None
 
 
+def _extract_structured_brand_name(data: object) -> Optional[str]:
+    """
+    Responsabilidade:
+        Localizar o nome da marca dentro de estruturas JSON-LD arbitrárias.
+
+    Parâmetros:
+        data: Estrutura JSON já convertida para tipos Python.
+
+    Retorno:
+        Nome da marca quando encontrado; caso contrário, None.
+
+    Contexto de uso:
+        Algumas páginas da Renner não publicam `product:brand` em metatags,
+        mas mantêm `brand.name` dentro do JSON-LD principal do produto. Esse
+        fallback evita falso negativo de matching sem criar regra específica
+        por perfume ou por varejista.
+    """
+
+    if isinstance(data, dict):
+        raw_brand = data.get("brand")
+        if isinstance(raw_brand, dict):
+            candidate_name = str(raw_brand.get("name", "")).strip()
+            if candidate_name:
+                return candidate_name
+
+        if isinstance(raw_brand, str) and raw_brand.strip():
+            return raw_brand.strip()
+
+        for nested_value in data.values():
+            nested_brand_name = _extract_structured_brand_name(nested_value)
+            if nested_brand_name:
+                return nested_brand_name
+
+    if isinstance(data, list):
+        for item in data:
+            nested_brand_name = _extract_structured_brand_name(item)
+            if nested_brand_name:
+                return nested_brand_name
+
+    return None
+
+
+def extract_brand_from_structured_data(html_content: str) -> Optional[str]:
+    """
+    Responsabilidade:
+        Extrair a marca a partir de blocos JSON-LD publicados na página.
+
+    Parâmetros:
+        html_content: HTML completo da página de produto.
+
+    Retorno:
+        Marca encontrada no JSON estruturado ou None quando indisponível.
+
+    Contexto de uso:
+        Funciona como fallback semântico para páginas cujo HTML visível exibe a
+        marca corretamente, mas não publica metatags de marca compatíveis com
+        o parser atual.
+    """
+
+    script_pattern = re.compile(
+        r'<script[^>]*type=["\']application/ld\+json["\'][^>]*>(.*?)</script>',
+        re.IGNORECASE | re.DOTALL,
+    )
+
+    for matched_script in script_pattern.finditer(html_content):
+        raw_json = matched_script.group(1).strip()
+        if not raw_json:
+            continue
+
+        try:
+            parsed_data = json.loads(raw_json)
+        except json.JSONDecodeError:
+            continue
+
+        possible_brand = _extract_structured_brand_name(parsed_data)
+        if possible_brand:
+            return _normalize_spaces(possible_brand)
+
+    return None
+
+
 def extract_sku_basic(
     page_url: str,
     html_content: str,
@@ -572,6 +653,7 @@ def parse_page_data(
         _extract_meta_content(html_content, "product:brand")
         or _extract_meta_content(html_content, "brand")
         or _extract_meta_content(html_content, "og:brand")
+        or extract_brand_from_structured_data(html_content)
     )
 
     extracted_name = (

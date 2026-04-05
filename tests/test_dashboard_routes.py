@@ -2365,6 +2365,92 @@ def test_dashboard_updates_run_redireciona_para_updates_com_job_id(tmp_path: Pat
     assert "job_id=" in location_parts.query
 
 
+def test_build_product_activity_trata_sync_sem_mudanca_como_sincronizado() -> None:
+    """
+    Responsabilidade:
+        Garantir que um sync bem-sucedido sem evento novo nao volte para `Sem sync`.
+
+    Parametros:
+        Nenhum.
+
+    Retorno:
+        Nenhum; valida o estado consolidado calculado para a UI.
+
+    Contexto de uso:
+        O job em lote pode validar muitas variantes sem mudar codigo ou URL.
+        Mesmo assim, o card e a PDP precisam mostrar que o item sincronizou.
+    """
+
+    product = ProductRecord(
+        alias="produto_sync_ok",
+        brand="Marca",
+        name="Produto Sync",
+        variant="100ml",
+        last_known_url="https://example.com/produto-sync",
+        last_known_sku="SKU-SYNC",
+        source_type="site",
+        site_link_status="linked_to_site",
+        last_matched_at="2026-04-05T15:00:00+00:00",
+    )
+
+    activity = routes_dashboard._build_product_activity(
+        product=product,
+        latest_event=None,
+        manual_snapshot=None,
+    )
+
+    assert activity["status_key"] == "synced"
+    assert activity["badge_label"] == "Sincronizado"
+
+
+def test_build_product_activity_ignora_erro_antigo_quando_sync_novo_foi_concluido() -> None:
+    """
+    Responsabilidade:
+        Garantir que um erro antigo nao sobrescreva um sync posterior bem-sucedido.
+
+    Parametros:
+        Nenhum.
+
+    Retorno:
+        Nenhum; valida o estado consolidado calculado para a UI.
+
+    Contexto de uso:
+        Depois do lote novo, a interface nao deve continuar presa em `Falha`
+        quando o `last_matched_at` ja e mais novo que o ultimo evento de erro.
+    """
+
+    product = ProductRecord(
+        alias="produto_sync_recuperado",
+        brand="Marca",
+        name="Produto Recuperado",
+        variant="100ml",
+        last_known_url="https://example.com/produto-recuperado",
+        last_known_sku="SKU-RECUPERADO",
+        source_type="site",
+        site_link_status="linked_to_site",
+        last_matched_at="2026-04-05T15:00:00+00:00",
+    )
+    latest_error_event = SkuEvent(
+        timestamp="2026-04-05T14:00:00+00:00",
+        alias="produto_sync_recuperado",
+        event_type="error",
+        old_sku="SKU-RECUPERADO",
+        new_sku="SKU-RECUPERADO",
+        old_url="https://example.com/produto-recuperado",
+        new_url="https://example.com/produto-recuperado",
+        match_score=None,
+    )
+
+    activity = routes_dashboard._build_product_activity(
+        product=product,
+        latest_event=latest_error_event,
+        manual_snapshot=None,
+    )
+
+    assert activity["status_key"] == "synced"
+    assert activity["badge_label"] == "Sincronizado"
+
+
 def test_dashboard_salva_edicao_de_produto_com_novo_alias(tmp_path: Path) -> None:
     """
     Responsabilidade:
