@@ -412,6 +412,34 @@ def test_dashboard_home_carrega_lista_de_produtos(tmp_path: Path) -> None:
     assert "/dashboard/static/shelf-banners/shelf-04-paco-rabanne.png" in content
 
 
+def test_dashboard_home_renderiza_assets_estaticos_versionados(tmp_path: Path) -> None:
+    """
+    Responsabilidade:
+        Garantir que o shell da Home publique CSS e JS com versao no HTML.
+
+    Parametros:
+        tmp_path: Diretorio temporario usado para montar o app de teste.
+
+    Retorno:
+        Nenhum; valida a marcacao final retornada pela rota da Home.
+
+    Contexto de uso:
+        Cobre a regressao em que o navegador misturava HTML novo com CSS
+        antigo apos deploy, quebrando o layout adaptativo no desktop.
+    """
+
+    app = _build_app_with_temp_storage(tmp_path)
+    request = _build_request(app, method="GET", path="/dashboard")
+
+    response = routes_dashboard.dashboard_home(request)
+
+    assert isinstance(response, _TemplateResponse)
+    assert response.status_code == 200
+    content = response.body.decode("utf-8")
+    assert "/dashboard/static/styles.css?v=" in content
+    assert "/dashboard/static/dashboard.js?v=" in content
+
+
 def test_dashboard_importa_seed_interno_pela_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """
     Responsabilidade:

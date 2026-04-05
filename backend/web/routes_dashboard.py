@@ -59,9 +59,52 @@ templates = Jinja2Templates(directory="backend/web/templates")
 templates.env.globals["build_code128_svg_data_uri"] = build_code128_svg_data_uri
 
 # Decisao tecnica:
+# CSS, JS e icones do shell usam caminho publico fixo. Versionamos esses
+# assets por mtime para impedir que um deploy novo seja combinado com arquivos
+# antigos ainda presentes no cache do navegador.
+STATIC_WEB_DIRECTORY = Path("backend/web/static")
+STATIC_ASSET_VERSION_CACHE: Dict[str, str] = {}
+
+# Decisao tecnica:
 # Mantemos feedbacks recentes em memoria para exibir status imediato apos
 # interacoes manuais, sem exigir nova persistencia no contrato de dominio.
 last_update_by_alias: Dict[str, Dict[str, Any]] = {}
+
+
+def _build_versioned_static_asset_url(relative_path: str) -> str:
+    """
+    Responsabilidade:
+        Montar a URL publica de um asset estatico com uma versao previsivel.
+
+    Parametros:
+        relative_path: Caminho relativo dentro de `backend/web/static`.
+
+    Retorno:
+        URL publica com query string de versao baseada no mtime do arquivo.
+
+    Contexto de uso:
+        O template base usa esse helper para CSS, JS e icones. Assim o
+        navegador entende que o asset mudou apos deploy e deixa de reaproveitar
+        a versao antiga junto com HTML novo.
+    """
+
+    normalized_relative_path = relative_path.strip().lstrip("/").replace("\\", "/")
+    if not normalized_relative_path:
+        return "/dashboard/static/"
+
+    cached_version = STATIC_ASSET_VERSION_CACHE.get(normalized_relative_path)
+    if cached_version is None:
+        absolute_asset_path = STATIC_WEB_DIRECTORY / normalized_relative_path
+        if absolute_asset_path.exists():
+            cached_version = str(int(absolute_asset_path.stat().st_mtime))
+        else:
+            cached_version = "0"
+        STATIC_ASSET_VERSION_CACHE[normalized_relative_path] = cached_version
+
+    return f"/dashboard/static/{normalized_relative_path}?v={cached_version}"
+
+
+templates.env.globals["static_asset_url"] = _build_versioned_static_asset_url
 
 
 def _get_store_service(request: Request) -> ProductStoreService:

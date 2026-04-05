@@ -9,11 +9,11 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link rel="icon" type="image/svg+xml" href="/dashboard/static/brand/favicon.svg" />
-    <link rel="shortcut icon" type="image/svg+xml" href="/dashboard/static/brand/favicon.svg" />
-    <link rel="apple-touch-icon" href="/dashboard/static/brand/prestigio-394-mark.svg" />
-    <link rel="manifest" href="/dashboard/static/brand/manifest.webmanifest" />
-    <link rel="stylesheet" href="/dashboard/static/styles.css" />
+    <link rel="icon" type="image/svg+xml" href="{{ static_asset_url('brand/favicon.svg') }}" />
+    <link rel="shortcut icon" type="image/svg+xml" href="{{ static_asset_url('brand/favicon.svg') }}" />
+    <link rel="apple-touch-icon" href="{{ static_asset_url('brand/prestigio-394-mark.svg') }}" />
+    <link rel="manifest" href="{{ static_asset_url('brand/manifest.webmanifest') }}" />
+    <link rel="stylesheet" href="{{ static_asset_url('styles.css') }}" />
   </head>
   <body class="{{ body_class or '' }}">
     <div class="app-shell">
@@ -21,7 +21,7 @@
       <aside class="desktop-sidebar" aria-label="Navegação principal desktop">
         <div class="desktop-sidebar__inner">
           <a class="brand brand--sidebar" href="/dashboard" aria-label="Prestígio 394">
-            <img class="brand__symbol" src="/dashboard/static/brand/prestigio-394-mark.svg" alt="Símbolo Prestígio 394" />
+            <img class="brand__symbol" src="{{ static_asset_url('brand/prestigio-394-mark.svg') }}" alt="Símbolo Prestígio 394" />
             <span class="brand__copy">
               <strong class="brand__name">Prestígio 394</strong>
               <span class="brand__subtitle">Ferramenta de consulta rápida</span>
@@ -78,7 +78,7 @@
       <header class="app-header">
         <div class="app-header__row">
           <a class="brand brand--minimal" href="/dashboard" aria-label="Prestígio 394">
-            <img class="brand__symbol" src="/dashboard/static/brand/prestigio-394-mark.svg" alt="Símbolo Prestígio 394" />
+            <img class="brand__symbol" src="{{ static_asset_url('brand/prestigio-394-mark.svg') }}" alt="Símbolo Prestígio 394" />
             <span class="brand__name">Prestígio 394</span>
           </a>
 
@@ -172,6 +172,6 @@
       </div>
     </div>
 
-    <script src="/dashboard/static/dashboard.js" defer></script>
+    <script src="{{ static_asset_url('dashboard.js') }}" defer></script>
   </body>
 </html>
