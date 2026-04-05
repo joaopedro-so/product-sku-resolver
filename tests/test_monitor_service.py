@@ -5,6 +5,7 @@ Testes unitários do serviço de monitoramento automático.
 from pathlib import Path
 
 from backend.models.product import ProductRecord
+from backend.services.datetime_service import get_current_utc_isoformat
 from backend.services.product_store_service import ProductStoreService
 from history.history_store import HistoryStore
 from monitoring.monitor_service import MonitorService
@@ -249,3 +250,106 @@ def test_monitor_service_ignora_produtos_manuais_e_legados(tmp_path: Path) -> No
     assert history_store.list_events_by_alias("item_site")
     assert history_store.list_events_by_alias("item_manual") == []
     assert history_store.list_events_by_alias("item_legacy") == []
+
+
+def test_monitor_service_resumo_expoe_alterados_sem_mudanca_e_ignorados(tmp_path: Path) -> None:
+    """
+    Responsabilidade:
+        Garantir que o novo resumo do monitor diferencie os tipos de resultado.
+
+    Parametros:
+        tmp_path: Diretorio temporario para arquivos de produtos e historico.
+
+    Retorno:
+        Nenhum.
+
+    Contexto de uso:
+        A interface de progresso precisa separar alterados, sem mudanca e
+        ignorados sem quebrar os contadores antigos do monitor.
+    """
+
+    product_store = ProductStoreService(tmp_path / "products.json")
+    history_store = HistoryStore(tmp_path / "history.json")
+
+    product_store.upsert_product(
+        ProductRecord(
+            alias="item_ok",
+            brand="Marca",
+            name="Produto Site",
+            variant="100ml",
+            last_known_url="https://old.exemplo/item-site",
+            last_known_sku="SKU-SITE",
+            source_type="site",
+        )
+    )
+    product_store.upsert_product(
+        ProductRecord(
+            alias="item_manual",
+            brand="Marca",
+            name="Produto Manual",
+            variant="100ml",
+            last_known_url="",
+            last_known_sku="SKU-MANUAL",
+            source_type="manual",
+        )
+    )
+
+    monitor_service = MonitorService(
+        product_store=product_store,
+        resolver=FakeResolverMonitor(product_store),
+        history_store=history_store,
+    )
+
+    summary = monitor_service.run()
+
+    assert summary.total_count == 1
+    assert summary.processed_count == 1
+    assert summary.updated_count == 1
+    assert summary.unchanged_count == 0
+    assert summary.failed_count == 0
+    assert summary.skipped_count == 1
+
+
+def test_monitor_service_pode_pular_item_muito_recente(tmp_path: Path) -> None:
+    """
+    Responsabilidade:
+        Validar o skip opcional de itens recentemente sincronizados.
+
+    Parametros:
+        tmp_path: Diretorio temporario para arquivos de produtos e historico.
+
+    Retorno:
+        Nenhum.
+
+    Contexto de uso:
+        O job em background pode rodar varias vezes em seguida, entao precisa
+        conseguir pular itens frescos para ganhar desempenho sem retrabalho.
+    """
+
+    product_store = ProductStoreService(tmp_path / "products.json")
+    history_store = HistoryStore(tmp_path / "history.json")
+
+    product_store.upsert_product(
+        ProductRecord(
+            alias="item_recente",
+            brand="Marca",
+            name="Produto Recente",
+            variant="100ml",
+            last_known_url="https://old.exemplo/item-recente",
+            last_known_sku="SKU-RECENTE",
+            source_type="site",
+            last_matched_at=get_current_utc_isoformat(),
+        )
+    )
+
+    monitor_service = MonitorService(
+        product_store=product_store,
+        resolver=FakeResolverMonitor(product_store),
+        history_store=history_store,
+    )
+
+    summary = monitor_service.run(skip_recent_seconds=300)
+
+    assert summary.total_count == 0
+    assert summary.processed_count == 0
+    assert summary.skipped_count == 1

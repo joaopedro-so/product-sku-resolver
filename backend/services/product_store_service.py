@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import logging
 from pathlib import Path
+from threading import RLock
 from typing import List, Optional
 
 from backend.models.product import ProductRecord
@@ -63,6 +64,7 @@ class ProductStoreService:
 
         self.storage_file_path = storage_file_path
         self.reconciliation_service = reconciliation_service or ProductReconciliationService()
+        self._storage_lock = RLock()
         self._ensure_storage_exists()
 
     def _ensure_storage_exists(self) -> None:
@@ -166,7 +168,8 @@ class ProductStoreService:
             Usado por endpoints de listagem e por jobs de atualização em lote.
         """
 
-        return self._read_all()
+        with self._storage_lock:
+            return self._read_all()
 
     def get_by_alias(self, product_alias: str) -> Optional[ProductRecord]:
         """
@@ -185,13 +188,14 @@ class ProductStoreService:
         """
 
         normalized_alias = product_alias.strip()
-        products = self._read_all()
+        with self._storage_lock:
+            products = self._read_all()
 
-        for product in products:
-            if product.alias == normalized_alias:
-                return product
+            for product in products:
+                if product.alias == normalized_alias:
+                    return product
 
-        return None
+            return None
 
     def upsert_product(self, product_to_save: ProductRecord) -> ProductRecord:
         """
@@ -208,61 +212,62 @@ class ProductStoreService:
             Operação central para cadastro via API e atualizações de resolver.
         """
 
-        normalized_product = self._ensure_page_family_sku(product_to_save)
-        products = self._read_all()
-        linked_target = self._find_linked_target_for_site_product(
-            incoming_site_product=normalized_product,
-            existing_products=products,
-        )
-        if linked_target is not None:
-            linked_product = self._build_refreshed_linked_product(
-                current_product=linked_target,
+        with self._storage_lock:
+            normalized_product = self._ensure_page_family_sku(product_to_save)
+            products = self._read_all()
+            linked_target = self._find_linked_target_for_site_product(
                 incoming_site_product=normalized_product,
+                existing_products=products,
             )
-            updated_products = self._replace_product_by_alias(
-                products=products,
-                target_alias=linked_target.alias,
-                replacement_product=linked_product,
-                discarded_alias=normalized_product.alias,
+            if linked_target is not None:
+                linked_product = self._build_refreshed_linked_product(
+                    current_product=linked_target,
+                    incoming_site_product=normalized_product,
+                )
+                updated_products = self._replace_product_by_alias(
+                    products=products,
+                    target_alias=linked_target.alias,
+                    replacement_product=linked_product,
+                    discarded_alias=normalized_product.alias,
+                )
+                self._write_all(updated_products)
+                persisted_product = self._confirm_persisted_product(linked_product.alias)
+                logger.info(
+                    "Produto de site reconciliado com registro ja vinculado: alias=%s arquivo=%s",
+                    persisted_product.alias,
+                    self.storage_file_path,
+                )
+                return persisted_product
+
+            reconciliation_decision = self.reconciliation_service.decide_site_link(
+                incoming_site_product=normalized_product,
+                existing_products=products,
             )
-            self._write_all(updated_products)
-            persisted_product = self._confirm_persisted_product(linked_product.alias)
-            logger.info(
-                "Produto de site reconciliado com registro ja vinculado: alias=%s arquivo=%s",
-                persisted_product.alias,
-                self.storage_file_path,
+            reconciled_product = self._apply_reconciliation_decision(
+                current_products=products,
+                incoming_site_product=normalized_product,
+                reconciliation_decision=reconciliation_decision,
             )
-            return persisted_product
+            if reconciled_product is not None:
+                return reconciled_product
 
-        reconciliation_decision = self.reconciliation_service.decide_site_link(
-            incoming_site_product=normalized_product,
-            existing_products=products,
-        )
-        reconciled_product = self._apply_reconciliation_decision(
-            current_products=products,
-            incoming_site_product=normalized_product,
-            reconciliation_decision=reconciliation_decision,
-        )
-        if reconciled_product is not None:
-            return reconciled_product
+            updated_products: List[ProductRecord] = []
+            has_replaced_existing = False
 
-        updated_products: List[ProductRecord] = []
-        has_replaced_existing = False
+            for current_product in products:
+                if current_product.alias == normalized_product.alias:
+                    updated_products.append(normalized_product)
+                    has_replaced_existing = True
+                else:
+                    updated_products.append(current_product)
 
-        for current_product in products:
-            if current_product.alias == normalized_product.alias:
+            if not has_replaced_existing:
                 updated_products.append(normalized_product)
-                has_replaced_existing = True
-            else:
-                updated_products.append(current_product)
 
-        if not has_replaced_existing:
-            updated_products.append(normalized_product)
-
-        self._write_all(updated_products)
-        persisted_product = self._confirm_persisted_product(normalized_product.alias)
-        logger.info("Produto persistido com sucesso: alias=%s arquivo=%s", persisted_product.alias, self.storage_file_path)
-        return persisted_product
+            self._write_all(updated_products)
+            persisted_product = self._confirm_persisted_product(normalized_product.alias)
+            logger.info("Produto persistido com sucesso: alias=%s arquivo=%s", persisted_product.alias, self.storage_file_path)
+            return persisted_product
 
     def replace_product(self, current_alias: str, updated_product: ProductRecord) -> ProductRecord:
         """
@@ -285,31 +290,30 @@ class ProductStoreService:
         if not normalized_current_alias:
             raise KeyError("Alias atual nao pode ser vazio para substituir produto")
 
-        products = self._read_all()
-        current_product = self._find_product_by_alias(products, normalized_current_alias)
-        if current_product is None:
-            raise KeyError(f"Produto com alias '{normalized_current_alias}' nao encontrado")
+        with self._storage_lock:
+            products = self._read_all()
+            current_product = self._find_product_by_alias(products, normalized_current_alias)
+            if current_product is None:
+                raise KeyError(f"Produto com alias '{normalized_current_alias}' nao encontrado")
 
-        normalized_updated_product = self._ensure_page_family_sku(
-            self._preserve_existing_site_metadata(
-                current_product=current_product,
-                updated_product=updated_product,
+            normalized_updated_product = self._ensure_page_family_sku(
+                self._preserve_existing_site_metadata(
+                    current_product=current_product,
+                    updated_product=updated_product,
+                )
             )
-        )
-        updated_products: List[ProductRecord] = []
-        has_replaced_existing = False
+            updated_products: List[ProductRecord] = []
 
-        for current_product in products:
-            if current_product.alias == normalized_current_alias:
-                updated_products.append(normalized_updated_product)
-                has_replaced_existing = True
-            else:
-                updated_products.append(current_product)
+            for current_product in products:
+                if current_product.alias == normalized_current_alias:
+                    updated_products.append(normalized_updated_product)
+                else:
+                    updated_products.append(current_product)
 
-        self._write_all(updated_products)
-        persisted_product = self._confirm_persisted_product(normalized_updated_product.alias)
-        logger.info("Produto atualizado com sucesso: alias=%s arquivo=%s", persisted_product.alias, self.storage_file_path)
-        return persisted_product
+            self._write_all(updated_products)
+            persisted_product = self._confirm_persisted_product(normalized_updated_product.alias)
+            logger.info("Produto atualizado com sucesso: alias=%s arquivo=%s", persisted_product.alias, self.storage_file_path)
+            return persisted_product
 
     def _confirm_persisted_product(self, product_alias: str) -> ProductRecord:
         """
@@ -382,21 +386,22 @@ class ProductStoreService:
         if not normalized_alias:
             raise KeyError("Alias nao pode ser vazio para exclusao de produto")
 
-        products = self._read_all()
-        remaining_products: List[ProductRecord] = []
-        removed_product: Optional[ProductRecord] = None
+        with self._storage_lock:
+            products = self._read_all()
+            remaining_products: List[ProductRecord] = []
+            removed_product: Optional[ProductRecord] = None
 
-        for current_product in products:
-            if current_product.alias == normalized_alias:
-                removed_product = current_product
-                continue
-            remaining_products.append(current_product)
+            for current_product in products:
+                if current_product.alias == normalized_alias:
+                    removed_product = current_product
+                    continue
+                remaining_products.append(current_product)
 
-        if removed_product is None:
-            raise KeyError(f"Produto com alias '{normalized_alias}' nao encontrado")
+            if removed_product is None:
+                raise KeyError(f"Produto com alias '{normalized_alias}' nao encontrado")
 
-        self._write_all(remaining_products)
-        return removed_product
+            self._write_all(remaining_products)
+            return removed_product
 
     def update_product_sku_and_url(
         self,
@@ -425,47 +430,48 @@ class ProductStoreService:
             sincronizados sem perder a identidade interna do alias.
         """
 
-        existing_product = self.get_by_alias(product_alias)
-        if existing_product is None:
-            raise KeyError(f"Produto com alias '{product_alias}' não encontrado")
+        with self._storage_lock:
+            existing_product = self.get_by_alias(product_alias)
+            if existing_product is None:
+                raise KeyError(f"Produto com alias '{product_alias}' não encontrado")
 
-        updated_product = ProductRecord(
-            alias=existing_product.alias,
-            brand=existing_product.brand,
-            name=existing_product.display_name,
-            variant=existing_product.variant,
-            last_known_url=new_url.strip(),
-            last_known_sku=new_sku.strip(),
-            match_name=existing_product.match_name,
-            line_name=existing_product.line_name,
-            normalized_match_name=existing_product.normalized_match_name,
-            page_family_sku=existing_product.page_family_sku,
-            parent_reference=existing_product.parent_reference,
-            source_type=existing_product.source_type,
-            concentration=existing_product.concentration,
-            shelf_reference_label=existing_product.shelf_reference_label,
-            notes=existing_product.notes,
-            image_url=existing_product.image_url,
-            stock_qty=existing_product.stock_qty,
-            variant_notes=existing_product.variant_notes,
-            is_active=existing_product.is_active,
-            shelf_number=existing_product.shelf_number,
-            display_order=existing_product.display_order,
-            site_link_status="linked_to_site",
-            site_product_id=existing_product.site_product_id or existing_product.page_family_sku,
-            site_candidate_id="",
-            match_confidence=existing_product.match_confidence,
-            match_signals=existing_product.match_signals,
-            site_candidate_url="",
-            site_candidate_code="",
-            site_candidate_variant_id="",
-            current_site_code=new_sku.strip(),
-            current_barcode_value=new_sku.strip(),
-            last_matched_at=_build_site_link_timestamp(),
-            site_variant_id=site_variant_id.strip() or existing_product.site_variant_id,
-        )
+            updated_product = ProductRecord(
+                alias=existing_product.alias,
+                brand=existing_product.brand,
+                name=existing_product.display_name,
+                variant=existing_product.variant,
+                last_known_url=new_url.strip(),
+                last_known_sku=new_sku.strip(),
+                match_name=existing_product.match_name,
+                line_name=existing_product.line_name,
+                normalized_match_name=existing_product.normalized_match_name,
+                page_family_sku=existing_product.page_family_sku,
+                parent_reference=existing_product.parent_reference,
+                source_type=existing_product.source_type,
+                concentration=existing_product.concentration,
+                shelf_reference_label=existing_product.shelf_reference_label,
+                notes=existing_product.notes,
+                image_url=existing_product.image_url,
+                stock_qty=existing_product.stock_qty,
+                variant_notes=existing_product.variant_notes,
+                is_active=existing_product.is_active,
+                shelf_number=existing_product.shelf_number,
+                display_order=existing_product.display_order,
+                site_link_status="linked_to_site",
+                site_product_id=existing_product.site_product_id or existing_product.page_family_sku,
+                site_candidate_id="",
+                match_confidence=existing_product.match_confidence,
+                match_signals=existing_product.match_signals,
+                site_candidate_url="",
+                site_candidate_code="",
+                site_candidate_variant_id="",
+                current_site_code=new_sku.strip(),
+                current_barcode_value=new_sku.strip(),
+                last_matched_at=_build_site_link_timestamp(),
+                site_variant_id=site_variant_id.strip() or existing_product.site_variant_id,
+            )
 
-        return self.upsert_product(updated_product)
+            return self.upsert_product(updated_product)
 
     def confirm_site_candidate(self, product_alias: str) -> ProductRecord:
         """
@@ -483,41 +489,42 @@ class ProductStoreService:
             realmente voltou ao site e quer retomar a sincronizacao normal.
         """
 
-        products = self._read_all()
-        current_product = self._find_product_by_alias(products, product_alias)
-        if current_product is None:
-            raise KeyError(f"Produto com alias '{product_alias}' nao encontrado")
+        with self._storage_lock:
+            products = self._read_all()
+            current_product = self._find_product_by_alias(products, product_alias)
+            if current_product is None:
+                raise KeyError(f"Produto com alias '{product_alias}' nao encontrado")
 
-        if not current_product.has_site_candidate:
-            raise ValueError("O produto informado nao possui candidato de vinculo pendente")
+            if not current_product.has_site_candidate:
+                raise ValueError("O produto informado nao possui candidato de vinculo pendente")
 
-        updated_product = self._build_product_from_payload(
-            base_product=current_product,
-            payload_updates={
-                "last_known_url": current_product.site_candidate_url or current_product.last_known_url,
-                "last_known_sku": current_product.site_candidate_code or current_product.last_known_sku,
-                "page_family_sku": current_product.page_family_sku or current_product.site_candidate_id,
-                "site_link_status": "linked_to_site",
-                "site_product_id": current_product.site_candidate_id or current_product.site_product_id,
-                "site_candidate_id": "",
-                "site_candidate_url": "",
-                "site_candidate_code": "",
-                "site_candidate_variant_id": "",
-                "last_matched_at": _build_site_link_timestamp(),
-                "site_variant_id": current_product.site_candidate_variant_id or current_product.site_variant_id,
-                "current_site_code": current_product.site_candidate_code or current_product.current_site_code or current_product.last_known_sku,
-                "current_barcode_value": current_product.site_candidate_code or current_product.current_barcode_value or current_product.last_known_sku,
-            },
-        )
-
-        self._write_all(
-            self._replace_product_by_alias(
-                products=products,
-                target_alias=current_product.alias,
-                replacement_product=updated_product,
+            updated_product = self._build_product_from_payload(
+                base_product=current_product,
+                payload_updates={
+                    "last_known_url": current_product.site_candidate_url or current_product.last_known_url,
+                    "last_known_sku": current_product.site_candidate_code or current_product.last_known_sku,
+                    "page_family_sku": current_product.page_family_sku or current_product.site_candidate_id,
+                    "site_link_status": "linked_to_site",
+                    "site_product_id": current_product.site_candidate_id or current_product.site_product_id,
+                    "site_candidate_id": "",
+                    "site_candidate_url": "",
+                    "site_candidate_code": "",
+                    "site_candidate_variant_id": "",
+                    "last_matched_at": _build_site_link_timestamp(),
+                    "site_variant_id": current_product.site_candidate_variant_id or current_product.site_variant_id,
+                    "current_site_code": current_product.site_candidate_code or current_product.current_site_code or current_product.last_known_sku,
+                    "current_barcode_value": current_product.site_candidate_code or current_product.current_barcode_value or current_product.last_known_sku,
+                },
             )
-        )
-        return self._confirm_persisted_product(updated_product.alias)
+
+            self._write_all(
+                self._replace_product_by_alias(
+                    products=products,
+                    target_alias=current_product.alias,
+                    replacement_product=updated_product,
+                )
+            )
+            return self._confirm_persisted_product(updated_product.alias)
 
     def ignore_site_candidate(self, product_alias: str) -> ProductRecord:
         """
@@ -535,36 +542,37 @@ class ProductStoreService:
             manual existente nem deixar a interface presa em alerta eterno.
         """
 
-        products = self._read_all()
-        current_product = self._find_product_by_alias(products, product_alias)
-        if current_product is None:
-            raise KeyError(f"Produto com alias '{product_alias}' nao encontrado")
+        with self._storage_lock:
+            products = self._read_all()
+            current_product = self._find_product_by_alias(products, product_alias)
+            if current_product is None:
+                raise KeyError(f"Produto com alias '{product_alias}' nao encontrado")
 
-        if not current_product.has_site_candidate:
-            raise ValueError("O produto informado nao possui candidato de vinculo pendente")
+            if not current_product.has_site_candidate:
+                raise ValueError("O produto informado nao possui candidato de vinculo pendente")
 
-        updated_product = self._build_product_from_payload(
-            base_product=current_product,
-            payload_updates={
-                "site_link_status": "manual_unlinked",
-                "site_candidate_id": "",
-                "site_candidate_url": "",
-                "site_candidate_code": "",
-                "site_candidate_variant_id": "",
-                "match_confidence": None,
-                "match_signals": [],
-                "last_matched_at": "",
-            },
-        )
-
-        self._write_all(
-            self._replace_product_by_alias(
-                products=products,
-                target_alias=current_product.alias,
-                replacement_product=updated_product,
+            updated_product = self._build_product_from_payload(
+                base_product=current_product,
+                payload_updates={
+                    "site_link_status": "manual_unlinked",
+                    "site_candidate_id": "",
+                    "site_candidate_url": "",
+                    "site_candidate_code": "",
+                    "site_candidate_variant_id": "",
+                    "match_confidence": None,
+                    "match_signals": [],
+                    "last_matched_at": "",
+                },
             )
-        )
-        return self._confirm_persisted_product(updated_product.alias)
+
+            self._write_all(
+                self._replace_product_by_alias(
+                    products=products,
+                    target_alias=current_product.alias,
+                    replacement_product=updated_product,
+                )
+            )
+            return self._confirm_persisted_product(updated_product.alias)
 
     def _apply_reconciliation_decision(
         self,

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from threading import RLock
 from typing import List
 
 from backend.models.sku_event import SkuEvent
@@ -44,6 +45,7 @@ class HistoryStore:
         """
 
         self.history_file_path = history_file_path
+        self._history_lock = RLock()
         self._ensure_history_exists()
 
     def _ensure_history_exists(self) -> None:
@@ -141,10 +143,11 @@ class HistoryStore:
             Chamado pelo monitor_service ao detectar mudanças ou erros.
         """
 
-        events = self._read_all()
-        events.append(event)
-        self._write_all(events)
-        return event
+        with self._history_lock:
+            events = self._read_all()
+            events.append(event)
+            self._write_all(events)
+            return event
 
     def list_events(self) -> List[SkuEvent]:
         """
@@ -161,7 +164,8 @@ class HistoryStore:
             Usado por API/CLI para visualização geral de auditoria.
         """
 
-        return self._read_all()
+        with self._history_lock:
+            return self._read_all()
 
     def list_events_by_alias(self, alias: str) -> List[SkuEvent]:
         """
@@ -179,7 +183,8 @@ class HistoryStore:
         """
 
         normalized_alias = alias.strip()
-        return [event for event in self._read_all() if event.alias == normalized_alias]
+        with self._history_lock:
+            return [event for event in self._read_all() if event.alias == normalized_alias]
 
     def replace_alias(self, old_alias: str, new_alias: str) -> List[SkuEvent]:
         """
@@ -200,36 +205,38 @@ class HistoryStore:
 
         normalized_old_alias = old_alias.strip()
         normalized_new_alias = new_alias.strip()
-        events = self._read_all()
 
-        if not normalized_old_alias or not normalized_new_alias:
-            return events
+        with self._history_lock:
+            events = self._read_all()
 
-        if normalized_old_alias == normalized_new_alias:
-            return events
+            if not normalized_old_alias or not normalized_new_alias:
+                return events
 
-        updated_events: List[SkuEvent] = []
-        for current_event in events:
-            if current_event.alias == normalized_old_alias:
-                # Decisao tecnica:
-                # Criamos um novo evento equivalente com o alias atualizado
-                # para deixar explicito que apenas a identidade textual mudou,
-                # preservando os demais dados de auditoria.
-                updated_events.append(
-                    SkuEvent(
-                        timestamp=current_event.timestamp,
-                        alias=normalized_new_alias,
-                        event_type=current_event.event_type,
-                        old_sku=current_event.old_sku,
-                        new_sku=current_event.new_sku,
-                        old_url=current_event.old_url,
-                        new_url=current_event.new_url,
-                        match_score=current_event.match_score,
+            if normalized_old_alias == normalized_new_alias:
+                return events
+
+            updated_events: List[SkuEvent] = []
+            for current_event in events:
+                if current_event.alias == normalized_old_alias:
+                    # Decisao tecnica:
+                    # Criamos um novo evento equivalente com o alias atualizado
+                    # para deixar explicito que apenas a identidade textual mudou,
+                    # preservando os demais dados de auditoria.
+                    updated_events.append(
+                        SkuEvent(
+                            timestamp=current_event.timestamp,
+                            alias=normalized_new_alias,
+                            event_type=current_event.event_type,
+                            old_sku=current_event.old_sku,
+                            new_sku=current_event.new_sku,
+                            old_url=current_event.old_url,
+                            new_url=current_event.new_url,
+                            match_score=current_event.match_score,
+                        )
                     )
-                )
-                continue
+                    continue
 
-            updated_events.append(current_event)
+                updated_events.append(current_event)
 
-        self._write_all(updated_events)
-        return updated_events
+            self._write_all(updated_events)
+            return updated_events

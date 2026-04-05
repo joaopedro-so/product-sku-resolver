@@ -4,31 +4,69 @@
 
 {% block content %}
 <section class="page-section">
-  <article class="sync-card">
+  <article
+    class="sync-card"
+    data-sync-job-root
+    data-sync-job-status-url-template="/dashboard/updates/jobs/__JOB_ID__"
+  >
     <div>
       <p class="section-kicker">Atualizações</p>
       <h1 class="section-title">Resumo da sincronização</h1>
-      <p class="section-text">Último ciclo: {{ summary_metrics.last_sync_label }}</p>
+      <p class="section-text">
+        Último ciclo:
+        <span data-sync-last-cycle-label>{{ summary_metrics.last_sync_label }}</span>
+      </p>
     </div>
 
     <dl class="metric-strip">
       <div>
         <dt>Verificados</dt>
-        <dd>{{ summary_metrics.checked_items }}</dd>
+        <dd data-sync-metric-checked>{{ summary_metrics.checked_items }}</dd>
       </div>
       <div>
         <dt>Alterados</dt>
-        <dd>{{ summary_metrics.changed_codes }}</dd>
+        <dd data-sync-metric-changed>{{ summary_metrics.changed_codes }}</dd>
       </div>
       <div>
         <dt>Falhas</dt>
-        <dd>{{ summary_metrics.failed_items }}</dd>
+        <dd data-sync-metric-failed>{{ summary_metrics.failed_items }}</dd>
       </div>
     </dl>
 
-    <form method="post" action="/dashboard/updates/run">
-      <button class="button" type="submit">Atualizar todos</button>
+    <form
+      method="post"
+      action="/dashboard/updates/run"
+      data-sync-job-start-form
+      data-sync-job-start-url="/dashboard/updates/jobs/start"
+      data-skip-global-submit-feedback="true"
+    >
+      <button class="button" type="submit" data-sync-job-start-button>Atualizar todos</button>
     </form>
+
+    <section
+      class="sync-progress-card"
+      {% if not sync_job_snapshot %}hidden{% endif %}
+      data-sync-progress-panel
+    >
+      <div class="sync-progress-card__top">
+        <div>
+          <p class="section-kicker">Progresso</p>
+          <h2 class="sync-progress-card__title" data-sync-job-status-label>Sincronização</h2>
+        </div>
+        <strong class="sync-progress-card__percentage" data-sync-job-percentage>0%</strong>
+      </div>
+
+      <div class="sync-progress-bar" aria-hidden="true">
+        <span class="sync-progress-bar__fill" style="width: 0%;" data-sync-job-progress-bar></span>
+      </div>
+
+      <p class="sync-progress-card__summary" data-sync-job-summary-text>0 de 0 itens processados</p>
+      <p class="sync-progress-card__counts" data-sync-job-counts-text>0 alterados • 0 sem mudança • 0 falhas</p>
+      <p class="sync-progress-card__current" data-sync-job-current-item hidden>Preparando sincronização...</p>
+      <p class="sync-progress-card__result" data-sync-job-result-text hidden></p>
+    </section>
+
+    <script type="application/json" data-sync-job-initial-state>{{ sync_job_snapshot_json | safe }}</script>
   </article>
 </section>
 

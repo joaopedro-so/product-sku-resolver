@@ -9,6 +9,7 @@ barcode, update de SKU e preview visual.
 from __future__ import annotations
 
 import os
+import json
 from dataclasses import asdict
 from datetime import datetime
 from pathlib import Path
@@ -16,7 +17,7 @@ from typing import Any, Dict, Iterable, List, Optional
 from urllib.parse import urlencode
 
 from fastapi import APIRouter, HTTPException, Request, UploadFile, status
-from fastapi.responses import FileResponse, RedirectResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from starlette.datastructures import UploadFile as StarletteUploadFile
 
@@ -43,6 +44,11 @@ from backend.services.product_draft_service import ProductDraftService
 from backend.services.product_group_service import GroupedParentProduct, ProductGroupService
 from backend.services.product_preview_service import ProductPreview, ProductPreviewService
 from backend.services.shelf_service import ShelfPlacement, ShelfService
+from backend.services.sync_job_service import (
+    SyncJobService,
+    SyncJobSnapshot,
+    build_sync_job_service,
+)
 from backend.services.storage_path_service import resolve_default_data_file
 from backend.services.product_store_service import ProductStoreService
 from backend.services.resolver import ProductResolver, ResolveResult
@@ -286,6 +292,61 @@ def _get_monitor_service(request: Request) -> MonitorService:
     )
     request.app.state.monitor_service = initialized_monitor_service
     return initialized_monitor_service
+
+
+def _get_sync_job_service(request: Request) -> SyncJobService:
+    """
+    Responsabilidade:
+        Recuperar ou inicializar o orquestrador de jobs de sync em background.
+
+    Parametros:
+        request: Requisicao HTTP atual com acesso ao `app.state`.
+
+    Retorno:
+        SyncJobService compartilhado pelo dashboard.
+
+    Contexto de uso:
+        A tela Updates precisa iniciar jobs assíncronos e consultar progresso
+        sem reconstruir o serviço a cada request.
+    """
+
+    cached_sync_job_service = getattr(request.app.state, "sync_job_service", None)
+    if isinstance(cached_sync_job_service, SyncJobService):
+        return cached_sync_job_service
+
+    application = request.app
+
+    def persist_monitor_snapshot(
+        monitor_summary: MonitorRunSummary,
+        job_snapshot: SyncJobSnapshot,
+    ) -> None:
+        """
+        Responsabilidade:
+            Persistir no `app.state` o resumo final do último job concluído.
+
+        Parametros:
+            monitor_summary: Resumo completo retornado pelo monitor.
+            job_snapshot: Snapshot final do job em background.
+
+        Retorno:
+            Nenhum.
+
+        Contexto de uso:
+            A Home e a aba Updates reaproveitam esse snapshot para exibir o
+            último ciclo concluído mesmo depois que o polling termina.
+        """
+
+        application.state.last_monitor_snapshot = _build_monitor_snapshot_from_summary(
+            monitor_summary=monitor_summary,
+            job_snapshot=job_snapshot,
+        )
+
+    initialized_sync_job_service = build_sync_job_service(
+        monitor_service=_get_monitor_service(request),
+        on_job_finished=persist_monitor_snapshot,
+    )
+    request.app.state.sync_job_service = initialized_sync_job_service
+    return initialized_sync_job_service
 
 
 def _get_saved_service(request: Request) -> SavedProductService:
@@ -3449,6 +3510,9 @@ def _build_updates_context(request: Request) -> Dict[str, Any]:
         key=lambda item: _parse_iso_timestamp(item.timestamp) or datetime.min.replace(tzinfo=UTC_TIMEZONE),
         reverse=True,
     )
+    sync_job_snapshot = _get_sync_job_service(request).get_preferred_snapshot(
+        request.query_params.get("job_id", ""),
+    )
     last_monitor_snapshot = getattr(request.app.state, "last_monitor_snapshot", None) or {}
 
     changed_items = []
@@ -3484,11 +3548,20 @@ def _build_updates_context(request: Request) -> Dict[str, Any]:
             }
         )
 
+    summary_source = (
+        _serialize_sync_job_snapshot(sync_job_snapshot)
+        if sync_job_snapshot is not None and sync_job_snapshot.status in {"queued", "running"}
+        else last_monitor_snapshot
+    )
     summary_metrics = {
-        "checked_items": last_monitor_snapshot.get("processed_count", len(products_by_alias)),
-        "changed_codes": last_monitor_snapshot.get("changed_count", len(changed_items)),
-        "failed_items": last_monitor_snapshot.get("error_count", len(failed_items)),
-        "last_sync_label": _format_timestamp_label(last_monitor_snapshot.get("recorded_at")),
+        "checked_items": summary_source.get("processed_count", summary_source.get("processed", len(products_by_alias))),
+        "changed_codes": summary_source.get("changed_count", summary_source.get("updated", len(changed_items))),
+        "failed_items": summary_source.get("error_count", summary_source.get("failed", len(failed_items))),
+        "last_sync_label": _format_timestamp_label(
+            summary_source.get("recorded_at")
+            or summary_source.get("finished_at")
+            or summary_source.get("started_at")
+        ),
     }
 
     return _with_app_shell(
@@ -3500,42 +3573,94 @@ def _build_updates_context(request: Request) -> Dict[str, Any]:
             "summary_metrics": summary_metrics,
             "changed_items": changed_items[:30],
             "failed_items": failed_items[:20],
+            "sync_job_snapshot": _serialize_sync_job_snapshot(sync_job_snapshot),
+            "sync_job_snapshot_json": json.dumps(
+                _serialize_sync_job_snapshot(sync_job_snapshot),
+                ensure_ascii=False,
+            ),
         },
     )
 
 
-def _run_monitor_cycle(request: Request) -> Dict[str, Any]:
+def _build_monitor_snapshot_from_summary(
+    monitor_summary: MonitorRunSummary,
+    job_snapshot: Optional[SyncJobSnapshot] = None,
+) -> Dict[str, Any]:
     """
     Responsabilidade:
-        Executar monitoramento em lote e salvar um snapshot resumido da rodada.
+        Converter o resumo do monitor em snapshot simples para a UI.
 
     Parametros:
-        request: Requisicao atual para acesso ao monitor service.
+        monitor_summary: Resumo consolidado do lote executado.
+        job_snapshot: Snapshot opcional do job que originou esse resumo.
 
     Retorno:
-        Snapshot serializavel com metricas operacionais da execucao.
+        Dicionario serializavel com metricas operacionais da execucao.
 
     Contexto de uso:
-        Compartilhado pelas acoes "Update all" da Home e da aba Updates.
+        Reaproveitado pela Home e pela aba Updates depois que um job termina.
     """
 
-    monitor_summary: MonitorRunSummary = _get_monitor_service(request).run()
-    changed_count = len(
-        [
-            event
-            for event in monitor_summary.emitted_events
-            if event.event_type in {"sku_changed", "url_changed"}
-        ]
-    )
-    snapshot = {
-        "recorded_at": get_current_utc_isoformat(),
+    return {
+        "recorded_at": (
+            job_snapshot.finished_at
+            if job_snapshot is not None and job_snapshot.finished_at
+            else get_current_utc_isoformat()
+        ),
         "processed_count": monitor_summary.processed_count,
         "success_count": monitor_summary.success_count,
         "error_count": monitor_summary.error_count,
-        "changed_count": changed_count,
+        "changed_count": monitor_summary.updated_count,
+        "updated_count": monitor_summary.updated_count,
+        "unchanged_count": monitor_summary.unchanged_count,
+        "failed_count": monitor_summary.failed_count,
+        "skipped_count": monitor_summary.skipped_count,
+        "total_count": monitor_summary.total_count,
     }
-    request.app.state.last_monitor_snapshot = snapshot
-    return snapshot
+
+
+def _serialize_sync_job_snapshot(sync_job_snapshot: Optional[SyncJobSnapshot]) -> Dict[str, Any]:
+    """
+    Responsabilidade:
+        Transformar o snapshot do job em payload amigavel para template e JSON.
+
+    Parametros:
+        sync_job_snapshot: Snapshot opcional retornado pelo serviço de jobs.
+
+    Retorno:
+        Dicionario serializavel com campos prontos para a UI.
+
+    Contexto de uso:
+        Evita espalhar regras de percentual, labels e defaults entre template,
+        rotas JSON e frontend de polling.
+    """
+
+    if sync_job_snapshot is None:
+        return {}
+
+    percentage_complete = 0
+    if sync_job_snapshot.total > 0:
+        percentage_complete = int((sync_job_snapshot.processed / sync_job_snapshot.total) * 100)
+    elif sync_job_snapshot.status in {"completed", "failed", "cancelled"}:
+        percentage_complete = 100
+
+    return {
+        "job_id": sync_job_snapshot.job_id,
+        "status": sync_job_snapshot.status,
+        "total": sync_job_snapshot.total,
+        "processed": sync_job_snapshot.processed,
+        "updated": sync_job_snapshot.updated,
+        "unchanged": sync_job_snapshot.unchanged,
+        "failed": sync_job_snapshot.failed,
+        "skipped": sync_job_snapshot.skipped,
+        "current_item": sync_job_snapshot.current_item,
+        "started_at": sync_job_snapshot.started_at,
+        "finished_at": sync_job_snapshot.finished_at,
+        "error_message": sync_job_snapshot.error_message,
+        "percentage_complete": percentage_complete,
+        "is_active": sync_job_snapshot.status in {"queued", "running"},
+        "is_finished": sync_job_snapshot.status in {"completed", "failed", "cancelled"},
+    }
 
 
 def _build_product_detail_context(request: Request, alias: str) -> Dict[str, Any]:
@@ -3951,8 +4076,62 @@ def dashboard_run_updates(request: Request) -> RedirectResponse:
         Acao principal do CTA "Update all" da nova IA.
     """
 
-    _run_monitor_cycle(request)
-    return RedirectResponse(url="/dashboard/updates", status_code=status.HTTP_303_SEE_OTHER)
+    sync_job_snapshot, _ = _get_sync_job_service(request).start_job()
+    return RedirectResponse(
+        url=f"/dashboard/updates?job_id={sync_job_snapshot.job_id}",
+        status_code=status.HTTP_303_SEE_OTHER,
+    )
+
+
+@router.post("/updates/jobs/start")
+def dashboard_start_updates_job(request: Request) -> JSONResponse:
+    """
+    Responsabilidade:
+        Iniciar job assíncrono de sincronização e devolver o identificador.
+
+    Parametros:
+        request: Requisicao HTTP atual.
+
+    Retorno:
+        JSONResponse com `job_id`, snapshot inicial e flag de job reaproveitado.
+
+    Contexto de uso:
+        Consumido pelo frontend da aba Updates para transformar o sync em um
+        fluxo não bloqueante com polling e barra de progresso.
+    """
+
+    sync_job_snapshot, started_new_job = _get_sync_job_service(request).start_job()
+    return JSONResponse(
+        {
+            "job": _serialize_sync_job_snapshot(sync_job_snapshot),
+            "started_new_job": started_new_job,
+        }
+    )
+
+
+@router.get("/updates/jobs/{job_id}")
+def dashboard_get_updates_job_status(request: Request, job_id: str) -> JSONResponse:
+    """
+    Responsabilidade:
+        Consultar o progresso atual de um job de sincronização em background.
+
+    Parametros:
+        request: Requisicao HTTP atual.
+        job_id: Identificador do job consultado.
+
+    Retorno:
+        JSONResponse com o snapshot mais recente do job.
+
+    Contexto de uso:
+        Endpoint de polling usado pela aba Updates para atualizar a interface
+        sem reload completo enquanto o sync em lote está rodando.
+    """
+
+    sync_job_snapshot = _get_sync_job_service(request).get_job_snapshot(job_id)
+    if sync_job_snapshot is None:
+        raise HTTPException(status_code=404, detail="Job de sincronização não encontrado")
+
+    return JSONResponse({"job": _serialize_sync_job_snapshot(sync_job_snapshot)})
 
 
 @router.post("/update-all")
@@ -3971,8 +4150,11 @@ def dashboard_update_all_products(request: Request) -> RedirectResponse:
         Preserva links antigos e testes existentes enquanto a IA evolui.
     """
 
-    _run_monitor_cycle(request)
-    return RedirectResponse(url="/dashboard/updates", status_code=status.HTTP_303_SEE_OTHER)
+    sync_job_snapshot, _ = _get_sync_job_service(request).start_job()
+    return RedirectResponse(
+        url=f"/dashboard/updates?job_id={sync_job_snapshot.job_id}",
+        status_code=status.HTTP_303_SEE_OTHER,
+    )
 
 
 @router.get("/saved")

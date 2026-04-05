@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import time
 from io import BytesIO
 from pathlib import Path
 from urllib.parse import urlencode, urlsplit
@@ -27,9 +28,11 @@ from backend.services.product_group_service import ProductGroupService
 from backend.services.product_preview_service import ProductPreviewService
 from backend.services.saved_product_service import SavedProductService
 from backend.services.product_store_service import ProductStoreService
+from backend.services.sync_job_service import SyncJobService
 from backend.services.resolver import ResolveResult
 from backend.utils.fetcher import FetchResult
 from history.history_store import HistoryStore
+from monitoring.monitor_service import MonitorRunPlan, MonitorRunSummary
 import pytest
 
 try:
@@ -93,6 +96,118 @@ class FakeResolver:
             page_data=None,
             match_result=None,
             error_code=None,
+        )
+
+
+class FakeMonitorForSyncJob:
+    """
+    Responsabilidade:
+        Simular um monitor em lote com progresso deterministico para o dashboard.
+
+    Parametros:
+        None.
+
+    Retorno:
+        Instancia compativel com `SyncJobService`.
+
+    Contexto de uso:
+        Evita depender de rede ou do resolver real ao testar o fluxo assincrono
+        da tela de updates e suas rotas JSON.
+    """
+
+    def build_run_plan(self, skip_recent_seconds: int = 0) -> MonitorRunPlan:
+        """
+        Responsabilidade:
+            Fornecer um plano simples e previsivel de dois itens para o job.
+
+        Parametros:
+            skip_recent_seconds: Parametro aceito apenas para compatibilidade.
+
+        Retorno:
+            MonitorRunPlan com total e ignorados controlados pelo teste.
+
+        Contexto de uso:
+            O dashboard precisa de totais estaveis para desenhar a barra de
+            progresso, mesmo quando o monitor real ainda nao esta em uso.
+        """
+
+        return MonitorRunPlan(products_to_process=[], total_count=2, skipped_count=1)
+
+    def run_plan(
+        self,
+        run_plan: MonitorRunPlan,
+        max_workers: int = 1,
+        progress_callback=None,
+    ) -> MonitorRunSummary:
+        """
+        Responsabilidade:
+            Emitir progresso artificial e devolver um resumo final controlado.
+
+        Parametros:
+            run_plan: Plano previamente calculado para o job.
+            max_workers: Parametro aceito para compatibilidade com a assinatura.
+            progress_callback: Callback opcional que recebera snapshots de progresso.
+
+        Retorno:
+            MonitorRunSummary consistente com um lote que alterou um item e
+            manteve outro sem mudanca.
+
+        Contexto de uso:
+            Permite testar polling e renderizacao da tela sem depender do tempo
+            real de um sync externo.
+        """
+
+        if callable(progress_callback):
+            progress_callback(
+                type(
+                    "ProgressStarted",
+                    (),
+                    {
+                        "stage": "started",
+                        "alias": "produto_1",
+                        "product_name": "Produto 1",
+                        "total_count": run_plan.total_count,
+                        "processed_count": 0,
+                        "updated_count": 0,
+                        "unchanged_count": 0,
+                        "failed_count": 0,
+                        "current_item": "Produto 1",
+                        "item_status": "",
+                    },
+                )()
+            )
+            progress_callback(
+                type(
+                    "ProgressFinished",
+                    (),
+                    {
+                        "stage": "finished",
+                        "alias": "produto_1",
+                        "product_name": "Produto 1",
+                        "total_count": run_plan.total_count,
+                        "processed_count": 1,
+                        "updated_count": 1,
+                        "unchanged_count": 0,
+                        "failed_count": 0,
+                        "current_item": "Produto 1",
+                        "item_status": "updated",
+                    },
+                )()
+            )
+
+        time.sleep(0.02)
+
+        return MonitorRunSummary(
+            processed_count=2,
+            success_count=2,
+            error_count=0,
+            emitted_events=[],
+            total_count=2,
+            updated_count=1,
+            unchanged_count=1,
+            failed_count=0,
+            skipped_count=1,
+            item_results=[],
         )
 
 
@@ -2150,6 +2265,104 @@ def test_dashboard_updates_renderiza_resumo_operacional(tmp_path: Path) -> None:
     content = response.body.decode("utf-8")
     assert "Resumo da sincronização" in content
     assert "Atualizar todos" in content
+    assert "data-sync-job-root" in content
+    assert "data-sync-progress-panel" in content
+
+
+def test_dashboard_updates_start_job_retorna_json_com_job_id(tmp_path: Path) -> None:
+    """
+    Responsabilidade:
+        Garantir que a rota de start do sync devolva um job assincrono observavel.
+
+    Parametros:
+        tmp_path: Diretorio temporario para isolamento da base.
+
+    Retorno:
+        Nenhum; valida o payload inicial do job iniciado via rota JSON.
+
+    Contexto de uso:
+        O frontend da aba Updates depende desse contrato para iniciar o polling
+        sem bloquear a navegacao enquanto o lote roda em background.
+    """
+
+    app = _build_app_with_temp_storage(tmp_path)
+    app.state.sync_job_service = SyncJobService(FakeMonitorForSyncJob(), max_workers=1)
+    request = _build_request(app, method="POST", path="/dashboard/updates/jobs/start")
+
+    response = routes_dashboard.dashboard_start_updates_job(request)
+    payload = json.loads(response.body.decode("utf-8"))
+
+    assert response.status_code == 200
+    assert payload["job"]["job_id"]
+    assert payload["job"]["total"] == 2
+    assert payload["job"]["skipped"] == 1
+    assert "started_new_job" in payload
+
+
+def test_dashboard_updates_job_status_retorna_progresso_do_job(tmp_path: Path) -> None:
+    """
+    Responsabilidade:
+        Garantir que o endpoint de status devolva o progresso atual do lote.
+
+    Parametros:
+        tmp_path: Diretorio temporario para isolamento da base.
+
+    Retorno:
+        Nenhum; valida o snapshot do job consultado.
+
+    Contexto de uso:
+        O polling do frontend usa essa rota para atualizar barra, contadores e
+        item atual sem recarregar a pagina inteira.
+    """
+
+    app = _build_app_with_temp_storage(tmp_path)
+    app.state.sync_job_service = SyncJobService(FakeMonitorForSyncJob(), max_workers=1)
+    start_request = _build_request(app, method="POST", path="/dashboard/updates/jobs/start")
+    start_response = routes_dashboard.dashboard_start_updates_job(start_request)
+    start_payload = json.loads(start_response.body.decode("utf-8"))
+    job_id = start_payload["job"]["job_id"]
+
+    time.sleep(0.05)
+
+    status_request = _build_request(app, method="GET", path=f"/dashboard/updates/jobs/{job_id}")
+    status_response = routes_dashboard.dashboard_get_updates_job_status(status_request, job_id=job_id)
+    status_payload = json.loads(status_response.body.decode("utf-8"))
+
+    assert status_response.status_code == 200
+    assert status_payload["job"]["job_id"] == job_id
+    assert status_payload["job"]["processed"] == 2
+    assert status_payload["job"]["updated"] == 1
+    assert status_payload["job"]["unchanged"] == 1
+    assert status_payload["job"]["status"] == "completed"
+
+
+def test_dashboard_updates_run_redireciona_para_updates_com_job_id(tmp_path: Path) -> None:
+    """
+    Responsabilidade:
+        Garantir que a rota legada de update em lote passe a abrir um job.
+
+    Parametros:
+        tmp_path: Diretorio temporario para isolamento da base.
+
+    Retorno:
+        Nenhum; valida o redirecionamento para Updates com `job_id`.
+
+    Contexto de uso:
+        Preserva compatibilidade com links antigos enquanto o fluxo principal
+        migra para progresso assincrono e nao bloqueante.
+    """
+
+    app = _build_app_with_temp_storage(tmp_path)
+    app.state.sync_job_service = SyncJobService(FakeMonitorForSyncJob(), max_workers=1)
+    request = _build_request(app, method="POST", path="/dashboard/updates/run")
+
+    response = routes_dashboard.dashboard_run_updates(request)
+    location_parts = urlsplit(response.headers["location"])
+
+    assert isinstance(response, RedirectResponse)
+    assert response.status_code == 303
+    assert location_parts.path == "/dashboard/updates"
+    assert "job_id=" in location_parts.query
 
 
 def test_dashboard_salva_edicao_de_produto_com_novo_alias(tmp_path: Path) -> None:

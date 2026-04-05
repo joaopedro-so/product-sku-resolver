@@ -6,6 +6,7 @@
 */
 
 let activeToastTimeoutId = 0;
+let activeSyncJobPollerId = 0;
 
 function showAppToast(messageText, tone = "neutral") {
   /*
@@ -105,6 +106,493 @@ function focusFieldWithoutScroll(targetElement, shouldSelectText = false) {
     targetElement.focus({ preventScroll: true });
     if (shouldSelectText && typeof targetElement.select === "function") {
       targetElement.select();
+    }
+  });
+}
+
+function normalizeSyncJobSnapshot(rawSnapshot) {
+  /*
+    Responsabilidade:
+      Validar e normalizar o payload bruto de um job de sincronizacao.
+
+    Parametros:
+      rawSnapshot: Objeto vindo do HTML inicial ou do endpoint de polling.
+
+    Retorno:
+      Objeto padronizado com defaults seguros para a UI.
+
+    Contexto de uso:
+      O frontend precisa renderizar progresso mesmo quando parte dos campos
+      ainda nao chegou. Esta normalizacao evita `undefined` espalhado pelo DOM.
+  */
+
+  if (!rawSnapshot || typeof rawSnapshot !== "object") {
+    return null;
+  }
+
+  return {
+    job_id: String(rawSnapshot.job_id || ""),
+    status: String(rawSnapshot.status || ""),
+    total: Number(rawSnapshot.total || 0),
+    processed: Number(rawSnapshot.processed || 0),
+    updated: Number(rawSnapshot.updated || 0),
+    unchanged: Number(rawSnapshot.unchanged || 0),
+    failed: Number(rawSnapshot.failed || 0),
+    skipped: Number(rawSnapshot.skipped || 0),
+    current_item: String(rawSnapshot.current_item || ""),
+    started_at: String(rawSnapshot.started_at || ""),
+    finished_at: String(rawSnapshot.finished_at || ""),
+    error_message: String(rawSnapshot.error_message || ""),
+    percentage_complete: Number(rawSnapshot.percentage_complete || 0),
+    is_active: rawSnapshot.is_active === true,
+    is_finished: rawSnapshot.is_finished === true,
+  };
+}
+
+function buildSyncJobStatusLabel(syncJobSnapshot) {
+  /*
+    Responsabilidade:
+      Traduzir o status tecnico do job em um rotulo curto para o painel.
+
+    Parametros:
+      syncJobSnapshot: Snapshot normalizado do job atual.
+
+    Retorno:
+      Texto curto, como `Sincronizando agora` ou `Sincronizacao concluida`.
+
+    Contexto de uso:
+      O painel de progresso precisa comunicar estado de forma confiavel sem
+      expor termos tecnicos crus como `queued` ou `completed`.
+  */
+
+  if (!syncJobSnapshot) {
+    return "Sincronizacao";
+  }
+
+  if (syncJobSnapshot.status === "queued") {
+    return "Sincronizacao na fila";
+  }
+
+  if (syncJobSnapshot.status === "running") {
+    return "Sincronizando agora";
+  }
+
+  if (syncJobSnapshot.status === "completed") {
+    return "Sincronizacao concluida";
+  }
+
+  if (syncJobSnapshot.status === "failed") {
+    return "Falha no lote";
+  }
+
+  return "Sincronizacao";
+}
+
+function buildSyncJobSummaryText(syncJobSnapshot) {
+  /*
+    Responsabilidade:
+      Gerar o resumo principal do progresso no formato operacional esperado.
+
+    Parametros:
+      syncJobSnapshot: Snapshot normalizado do job atual.
+
+    Retorno:
+      Texto curto como `63 de 148 itens processados`.
+
+    Contexto de uso:
+      O operador precisa bater o olho e saber o quanto do lote ja andou sem
+      interpretar varias metricas separadas.
+  */
+
+  if (!syncJobSnapshot) {
+    return "0 de 0 itens processados";
+  }
+
+  return `${syncJobSnapshot.processed} de ${syncJobSnapshot.total} itens processados`;
+}
+
+function buildSyncJobCountsText(syncJobSnapshot) {
+  /*
+    Responsabilidade:
+      Montar a linha resumida com alterados, sem mudanca, falhas e ignorados.
+
+    Parametros:
+      syncJobSnapshot: Snapshot normalizado do job atual.
+
+    Retorno:
+      Texto curto com as contagens mais relevantes do lote.
+
+    Contexto de uso:
+      Complementa a barra de progresso com transparencia sobre o tipo de
+      resultado que o job esta produzindo, sem exigir abrir outra tela.
+  */
+
+  if (!syncJobSnapshot) {
+    return "0 alterados • 0 sem mudanca • 0 falhas";
+  }
+
+  const lineParts = [
+    `${syncJobSnapshot.updated} alterados`,
+    `${syncJobSnapshot.unchanged} sem mudanca`,
+    `${syncJobSnapshot.failed} falhas`,
+  ];
+
+  if (syncJobSnapshot.skipped > 0) {
+    lineParts.push(`${syncJobSnapshot.skipped} ignorados`);
+  }
+
+  return lineParts.join(" • ");
+}
+
+function buildSyncJobResultText(syncJobSnapshot) {
+  /*
+    Responsabilidade:
+      Gerar a mensagem final mostrada quando o job termina.
+
+    Parametros:
+      syncJobSnapshot: Snapshot normalizado do job atual.
+
+    Retorno:
+      Texto final de sucesso ou falha do lote.
+
+    Contexto de uso:
+      O painel de updates precisa encerrar o fluxo com um resumo claro para o
+      operador confiar que o job terminou e saber o saldo final da rodada.
+  */
+
+  if (!syncJobSnapshot || !syncJobSnapshot.is_finished) {
+    return "";
+  }
+
+  if (syncJobSnapshot.status === "failed") {
+    return syncJobSnapshot.error_message || "O lote terminou com falha antes de concluir todos os itens.";
+  }
+
+  return `Lote concluido: ${buildSyncJobCountsText(syncJobSnapshot)}.`;
+}
+
+function renderSyncJobSnapshot(syncJobRoot, rawSnapshot) {
+  /*
+    Responsabilidade:
+      Atualizar toda a area visual de progresso a partir do snapshot atual.
+
+    Parametros:
+      syncJobRoot: Card principal da tela de updates.
+      rawSnapshot: Snapshot bruto ou normalizado do job.
+
+    Retorno:
+      Snapshot normalizado usado na renderizacao.
+
+    Contexto de uso:
+      Centraliza a sincronizacao entre barra, metricas, contadores, texto do
+      item atual e estado do botao `Atualizar todos`.
+  */
+
+  if (!(syncJobRoot instanceof HTMLElement)) {
+    return null;
+  }
+
+  const syncJobSnapshot = normalizeSyncJobSnapshot(rawSnapshot);
+  const progressPanel = syncJobRoot.querySelector("[data-sync-progress-panel]");
+  const startButton = syncJobRoot.querySelector("[data-sync-job-start-button]");
+  const metricChecked = syncJobRoot.querySelector("[data-sync-metric-checked]");
+  const metricChanged = syncJobRoot.querySelector("[data-sync-metric-changed]");
+  const metricFailed = syncJobRoot.querySelector("[data-sync-metric-failed]");
+  const lastCycleLabel = syncJobRoot.querySelector("[data-sync-last-cycle-label]");
+  const statusLabel = syncJobRoot.querySelector("[data-sync-job-status-label]");
+  const percentageLabel = syncJobRoot.querySelector("[data-sync-job-percentage]");
+  const progressBarFill = syncJobRoot.querySelector("[data-sync-job-progress-bar]");
+  const summaryText = syncJobRoot.querySelector("[data-sync-job-summary-text]");
+  const countsText = syncJobRoot.querySelector("[data-sync-job-counts-text]");
+  const currentItemText = syncJobRoot.querySelector("[data-sync-job-current-item]");
+  const resultText = syncJobRoot.querySelector("[data-sync-job-result-text]");
+
+  if (!(startButton instanceof HTMLElement)) {
+    return syncJobSnapshot;
+  }
+
+  if (!startButton.dataset.defaultLabel) {
+    startButton.dataset.defaultLabel = startButton.textContent || "Atualizar todos";
+  }
+
+  if (!syncJobSnapshot) {
+    if (progressPanel instanceof HTMLElement) {
+      progressPanel.hidden = true;
+    }
+    startButton.removeAttribute("disabled");
+    startButton.classList.remove("button--busy");
+    startButton.textContent = startButton.dataset.defaultLabel || "Atualizar todos";
+    return null;
+  }
+
+  syncJobRoot.dataset.syncJobId = syncJobSnapshot.job_id;
+
+  if (progressPanel instanceof HTMLElement) {
+    progressPanel.hidden = false;
+  }
+
+  if (statusLabel instanceof HTMLElement) {
+    statusLabel.textContent = buildSyncJobStatusLabel(syncJobSnapshot);
+  }
+
+  if (percentageLabel instanceof HTMLElement) {
+    percentageLabel.textContent = `${syncJobSnapshot.percentage_complete}%`;
+  }
+
+  if (progressBarFill instanceof HTMLElement) {
+    progressBarFill.style.width = `${syncJobSnapshot.percentage_complete}%`;
+  }
+
+  if (summaryText instanceof HTMLElement) {
+    summaryText.textContent = buildSyncJobSummaryText(syncJobSnapshot);
+  }
+
+  if (countsText instanceof HTMLElement) {
+    countsText.textContent = buildSyncJobCountsText(syncJobSnapshot);
+  }
+
+  if (currentItemText instanceof HTMLElement) {
+    currentItemText.hidden = !syncJobSnapshot.current_item || syncJobSnapshot.is_finished;
+    currentItemText.textContent = syncJobSnapshot.current_item
+      ? `Processando agora: ${syncJobSnapshot.current_item}`
+      : "";
+  }
+
+  if (resultText instanceof HTMLElement) {
+    const finalMessage = buildSyncJobResultText(syncJobSnapshot);
+    resultText.hidden = !finalMessage;
+    resultText.textContent = finalMessage;
+    resultText.classList.toggle("sync-progress-card__result--error", syncJobSnapshot.status === "failed");
+  }
+
+  if (metricChecked instanceof HTMLElement) {
+    metricChecked.textContent = syncJobSnapshot.total > 0
+      ? `${syncJobSnapshot.processed}/${syncJobSnapshot.total}`
+      : "0";
+  }
+
+  if (metricChanged instanceof HTMLElement) {
+    metricChanged.textContent = String(syncJobSnapshot.updated);
+  }
+
+  if (metricFailed instanceof HTMLElement) {
+    metricFailed.textContent = String(syncJobSnapshot.failed);
+  }
+
+  if (lastCycleLabel instanceof HTMLElement) {
+    if (syncJobSnapshot.is_active) {
+      lastCycleLabel.textContent = "Sincronizacao em andamento";
+    } else if (syncJobSnapshot.status === "completed") {
+      lastCycleLabel.textContent = "Sincronizacao concluida agora";
+    } else if (syncJobSnapshot.status === "failed") {
+      lastCycleLabel.textContent = "Ultimo lote terminou com falha";
+    }
+  }
+
+  if (syncJobSnapshot.is_active) {
+    startButton.setAttribute("disabled", "disabled");
+    startButton.classList.add("button--busy");
+    startButton.textContent = "Sincronizando...";
+  } else {
+    startButton.removeAttribute("disabled");
+    startButton.classList.remove("button--busy");
+    startButton.textContent = syncJobSnapshot.status === "failed" ? "Tentar novamente" : "Atualizar novamente";
+  }
+
+  return syncJobSnapshot;
+}
+
+function stopSyncJobPolling() {
+  /*
+    Responsabilidade:
+      Encerrar o polling ativo do job de sincronizacao, quando existir.
+
+    Parametros:
+      Nenhum.
+
+    Retorno:
+      Nenhum.
+
+    Contexto de uso:
+      Evita timers duplicados quando o operador inicia novo job ou recarrega a
+      pagina de updates enquanto um polling anterior ainda estava agendado.
+  */
+
+  if (activeSyncJobPollerId) {
+    window.clearTimeout(activeSyncJobPollerId);
+    activeSyncJobPollerId = 0;
+  }
+}
+
+function persistSyncJobQueryParameter(syncJobId) {
+  /*
+    Responsabilidade:
+      Persistir o `job_id` atual na URL sem recarregar a pagina.
+
+    Parametros:
+      syncJobId: Identificador do job que deve ficar visivel na query string.
+
+    Retorno:
+      Nenhum.
+
+    Contexto de uso:
+      Se o operador navegar dentro do app e voltar para Updates, a tela consegue
+      recuperar o snapshot correto do job ainda em andamento ou do ultimo lote.
+  */
+
+  if (!syncJobId || !window.history?.replaceState) {
+    return;
+  }
+
+  const currentUrl = new URL(window.location.href);
+  currentUrl.searchParams.set("job_id", syncJobId);
+  window.history.replaceState({}, "", currentUrl.toString());
+}
+
+function scheduleSyncJobPolling(syncJobRoot, syncJobId) {
+  /*
+    Responsabilidade:
+      Consultar periodicamente o endpoint de status do job ate sua conclusao.
+
+    Parametros:
+      syncJobRoot: Card principal da tela de updates.
+      syncJobId: Identificador do job que sera acompanhado.
+
+    Retorno:
+      Nenhum.
+
+    Contexto de uso:
+      Implementa a UX de progresso vivo da aba Updates sem exigir websocket ou
+      SSE, reaproveitando o contrato simples de polling em JSON.
+  */
+
+  if (!(syncJobRoot instanceof HTMLElement) || !syncJobId) {
+    return;
+  }
+
+  const statusUrlTemplate = syncJobRoot.dataset.syncJobStatusUrlTemplate || "";
+  if (!statusUrlTemplate) {
+    return;
+  }
+
+  stopSyncJobPolling();
+
+  const pollOnce = async () => {
+    try {
+      const statusResponse = await window.fetch(
+        statusUrlTemplate.replace("__JOB_ID__", encodeURIComponent(syncJobId)),
+        { headers: { Accept: "application/json" } },
+      );
+      if (!statusResponse.ok) {
+        throw new Error("Nao foi possivel consultar o status do job.");
+      }
+
+      const statusPayload = await statusResponse.json();
+      const syncJobSnapshot = renderSyncJobSnapshot(syncJobRoot, statusPayload.job || {});
+      if (syncJobSnapshot?.is_active) {
+        activeSyncJobPollerId = window.setTimeout(pollOnce, 1200);
+        return;
+      }
+
+      stopSyncJobPolling();
+    } catch (error) {
+      stopSyncJobPolling();
+      showAppToast("Nao foi possivel atualizar o progresso do sync.", "error");
+    }
+  };
+
+  activeSyncJobPollerId = window.setTimeout(pollOnce, 1200);
+}
+
+function initializeSyncJobProgress() {
+  /*
+    Responsabilidade:
+      Ativar o fluxo assíncrono da tela de updates com start e polling.
+
+    Parametros:
+      Nenhum.
+
+    Retorno:
+      Nenhum.
+
+    Contexto de uso:
+      Substitui o antigo POST bloqueante por um job em background, mantendo a
+      mesma tela atualizada com barra de progresso, contagens e item corrente.
+  */
+
+  const syncJobRoot = document.querySelector("[data-sync-job-root]");
+  if (!(syncJobRoot instanceof HTMLElement)) {
+    return;
+  }
+
+  const initialStateElement = syncJobRoot.querySelector("[data-sync-job-initial-state]");
+  let initialSnapshot = null;
+  if (initialStateElement instanceof HTMLScriptElement && initialStateElement.textContent) {
+    try {
+      initialSnapshot = JSON.parse(initialStateElement.textContent);
+    } catch (error) {
+      initialSnapshot = null;
+    }
+  }
+
+  let latestRenderedSnapshot = renderSyncJobSnapshot(syncJobRoot, initialSnapshot);
+  if (latestRenderedSnapshot?.job_id) {
+    persistSyncJobQueryParameter(latestRenderedSnapshot.job_id);
+  }
+  if (latestRenderedSnapshot?.is_active) {
+    scheduleSyncJobPolling(syncJobRoot, latestRenderedSnapshot.job_id);
+  }
+
+  const startForm = syncJobRoot.querySelector("[data-sync-job-start-form]");
+  if (!(startForm instanceof HTMLFormElement)) {
+    return;
+  }
+
+  startForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const startButton = syncJobRoot.querySelector("[data-sync-job-start-button]");
+    const startUrl = startForm.dataset.syncJobStartUrl || "";
+    if (!startUrl || !(startButton instanceof HTMLElement) || startButton.hasAttribute("disabled")) {
+      return;
+    }
+
+    const previousSnapshot = latestRenderedSnapshot;
+    startButton.setAttribute("disabled", "disabled");
+    startButton.classList.add("button--busy");
+    startButton.textContent = "Iniciando...";
+
+    try {
+      const startResponse = await window.fetch(startUrl, {
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+        },
+      });
+      if (!startResponse.ok) {
+        throw new Error("Nao foi possivel iniciar a sincronizacao em lote.");
+      }
+
+      const startPayload = await startResponse.json();
+      const syncJobSnapshot = renderSyncJobSnapshot(syncJobRoot, startPayload.job || {});
+      if (!syncJobSnapshot?.job_id) {
+        throw new Error("O job foi iniciado sem identificador valido.");
+      }
+
+      latestRenderedSnapshot = syncJobSnapshot;
+      persistSyncJobQueryParameter(syncJobSnapshot.job_id);
+      scheduleSyncJobPolling(syncJobRoot, syncJobSnapshot.job_id);
+      showAppToast(
+        startPayload.started_new_job === false
+          ? "Um lote ja estava em andamento. Progresso retomado."
+          : "Sincronizacao em lote iniciada.",
+        "success",
+      );
+      if (initialStateElement instanceof HTMLScriptElement) {
+        initialStateElement.textContent = JSON.stringify(startPayload.job || {});
+      }
+    } catch (error) {
+      latestRenderedSnapshot = renderSyncJobSnapshot(syncJobRoot, previousSnapshot);
+      showAppToast("Nao foi possivel iniciar o sync em lote.", "error");
     }
   });
 }
@@ -1197,6 +1685,10 @@ function initializePostFormFeedback() {
   */
 
   document.querySelectorAll('form[method="post"]').forEach((formElement) => {
+    if (formElement.dataset.skipGlobalSubmitFeedback === "true") {
+      return;
+    }
+
     formElement.addEventListener("submit", (event) => {
       if (formElement.dataset.submitting === "true") {
         event.preventDefault();
@@ -1399,6 +1891,7 @@ document.querySelectorAll("[data-copy-text]").forEach((element) => {
 initializeVariantSwitchers();
 initializeInlineBarcodePanels();
 initializeCreateMenu();
+initializeSyncJobProgress();
 initializeManualProductForm();
 initializeImageInputPreviews();
 initializeContextualAutofocus();
