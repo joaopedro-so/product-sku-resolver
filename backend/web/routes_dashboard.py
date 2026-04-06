@@ -2788,6 +2788,9 @@ def _build_grouped_catalog_card(
             stock_qty=selected_variant.product.stock_qty,
             location_label=location_label,
         ),
+        "save_href": selected_variant_payload["save_href"],
+        "selected_is_saved": selected_variant_payload["is_saved"],
+        "save_button_label": selected_variant_payload["save_button_label"],
         "selected_alias": selected_variant.alias,
         "selected_variant_label": selected_variant.label,
         "variants": variant_options,
@@ -4354,26 +4357,40 @@ def dashboard_uploaded_image(request: Request, filename: str) -> FileResponse:
 
 
 @router.post("/products/{alias}/toggle-saved")
-async def dashboard_toggle_saved_product(request: Request, alias: str) -> RedirectResponse:
+async def dashboard_toggle_saved_product(request: Request, alias: str) -> Any:
     """
     Responsabilidade:
-        Alternar estado salvo de um produto e redirecionar para a origem.
+        Alternar estado salvo de um produto com suporte a resposta HTML ou JSON.
 
     Parametros:
-        request: Requisicao HTTP atual com possivel campo `next`.
+        request: Requisicao HTTP atual com possivel campo `next` e negociacao
+            simples por `Accept`.
         alias: Produto alvo do toggle de favoritos.
 
     Retorno:
-        RedirectResponse para a tela de origem.
+        RedirectResponse para a tela de origem ou JSONResponse com o novo estado.
 
     Contexto de uso:
-        Acao operacional usada nos cards de lista e na tela de detalhe.
+        Acao operacional usada nos cards de lista e na tela de detalhe. A
+        resposta em JSON permite um toggle instantaneo no frontend sem forcar
+        recarregamento completo da pagina.
     """
 
     form_data = await request.form()
     redirect_target = str(form_data.get("next") or request.headers.get("referer") or "/dashboard/saved")
     saved_tag = str(form_data.get("save_tag") or DEFAULT_SAVED_TAG).strip()
-    _get_saved_service(request).toggle_alias(alias, tag=saved_tag)
+    is_saved = _get_saved_service(request).toggle_alias(alias, tag=saved_tag)
+    normalized_accept = str(request.headers.get("accept") or "").lower()
+    if "application/json" in normalized_accept:
+        return JSONResponse(
+            {
+                "alias": alias,
+                "is_saved": is_saved,
+                "save_button_label": "Remover do acesso rápido" if is_saved else "Adicionar ao acesso rápido",
+                "saved_tag": saved_tag or DEFAULT_SAVED_TAG,
+            }
+        )
+
     return RedirectResponse(url=redirect_target, status_code=status.HTTP_303_SEE_OTHER)
 
 

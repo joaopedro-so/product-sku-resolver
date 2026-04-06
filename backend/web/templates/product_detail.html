@@ -41,15 +41,48 @@
           {% endif %}
         </div>
 
-        <div class="detail-hero__content">
-          <div class="detail-hero__badges detail-hero__badges--stacked">
-            <span class="status-badge status-badge--{{ activity.status_tone }}" data-variant-status-badge>{{ activity.badge_label }}</span>
-            <span
-              class="status-badge {% if selected_variant and selected_variant.source_type == 'legacy' %}status-badge--warning{% else %}status-badge--neutral{% endif %}"
-              data-variant-source-badge
+        <div class="detail-hero__content" data-quick-save-surface>
+          <div class="detail-hero__topbar">
+            <div class="detail-hero__badges detail-hero__badges--stacked">
+              <span class="status-badge status-badge--{{ activity.status_tone }}" data-variant-status-badge>{{ activity.badge_label }}</span>
+              <span
+                class="status-badge {% if selected_variant and selected_variant.source_type == 'legacy' %}status-badge--warning{% else %}status-badge--neutral{% endif %}"
+                data-variant-source-badge
+              >
+                {{ selected_variant.source_label if selected_variant else product.source_label }}
+              </span>
+            </div>
+            <form
+              class="detail-hero__quick-save"
+              method="post"
+              action="{{ selected_variant.save_href if selected_variant else '/dashboard/products/' ~ product.alias ~ '/toggle-saved' }}"
+              data-variant-save-form
+              data-quick-save-form
+              data-skip-global-submit-feedback="true"
             >
-              {{ selected_variant.source_label if selected_variant else product.source_label }}
-            </span>
+              <input type="hidden" name="next" value="{{ request.url }}" />
+              <input type="hidden" name="save_tag" value="quick_access" />
+              <button
+                class="quick-save-button quick-save-button--detail {% if is_saved %}quick-save-button--active{% endif %}"
+                type="submit"
+                data-variant-save-button
+                data-quick-save-button
+                aria-pressed="{{ 'true' if is_saved else 'false' }}"
+                aria-label="{{ 'Remover do acesso rápido' if is_saved else 'Adicionar ao acesso rápido' }}"
+                title="{{ 'Remover do acesso rápido' if is_saved else 'Adicionar ao acesso rápido' }}"
+              >
+                <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" data-quick-save-icon>
+                  <path
+                    d="M7.5 3.75h9a1.5 1.5 0 0 1 1.5 1.5v14.82a.3.3 0 0 1-.47.24L12 16.2l-5.53 4.11a.3.3 0 0 1-.47-.24V5.25a1.5 1.5 0 0 1 1.5-1.5Z"
+                    stroke="currentColor"
+                    stroke-width="1.75"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  />
+                </svg>
+                <span class="visually-hidden" data-variant-save-button-text>{{ 'Remover do acesso rápido' if is_saved else 'Adicionar ao acesso rápido' }}</span>
+              </button>
+            </form>
           </div>
 
           <h1 class="page-title">{{ parent_product.parent_name }}</h1>

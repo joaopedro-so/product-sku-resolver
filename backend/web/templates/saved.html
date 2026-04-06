@@ -20,7 +20,7 @@
     <a class="button button--secondary button--small" href="/dashboard/search">Buscar perfume</a>
   </div>
 
-  <div class="shelf-product-list shelf-product-list--adaptive">
+  <div class="shelf-product-list shelf-product-list--adaptive" data-saved-products-list>
     {% for card in products %}
       {% include "partials/grouped_scanning_card.html" %}
     {% else %}

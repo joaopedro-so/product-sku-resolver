@@ -80,6 +80,229 @@ function showTemporaryButtonLabel(buttonElement, temporaryLabel, durationInMilli
   }, durationInMilliseconds);
 }
 
+function buildQuickSaveLabel(isSaved) {
+  /*
+    Responsabilidade:
+      Definir o texto operacional correto para o estado atual do acesso rapido.
+
+    Parametros:
+      isSaved: Indica se o item termina salvo ou nao apos a interacao.
+
+    Retorno:
+      Texto curto usado em `aria-label`, tooltip e fallback textual.
+
+    Contexto de uso:
+      O atalho visual do card usa apenas um icone. Mesmo assim, o app precisa
+      manter uma descricao acessivel e consistente entre card, detalhe e
+      respostas JSON do backend.
+  */
+
+  return isSaved ? "Remover do acesso rápido" : "Adicionar ao acesso rápido";
+}
+
+function applyQuickSaveButtonState(buttonElement, isSaved, actionLabel) {
+  /*
+    Responsabilidade:
+      Sincronizar o estado visual e acessivel do botao de acesso rapido.
+
+    Parametros:
+      buttonElement: Botao visual que representa o atalho rapido.
+      isSaved: Define se o item esta salvo no momento.
+      actionLabel: Texto contextual para leitores de tela e tooltip.
+
+    Retorno:
+      Nenhum.
+
+    Contexto de uso:
+      O mesmo estado precisa alimentar o icone persistente dos cards e o
+      atalho do detalhe sem duplicar regras em cada template.
+  */
+
+  if (!(buttonElement instanceof HTMLElement)) {
+    return;
+  }
+
+  const resolvedLabel = actionLabel || buildQuickSaveLabel(isSaved);
+  buttonElement.classList.toggle("quick-save-button--active", isSaved);
+  buttonElement.setAttribute("aria-pressed", isSaved ? "true" : "false");
+  buttonElement.setAttribute("aria-label", resolvedLabel);
+  buttonElement.setAttribute("title", resolvedLabel);
+
+  const hiddenText = buttonElement.querySelector("[data-variant-save-button-text]");
+  if (hiddenText instanceof HTMLElement) {
+    hiddenText.textContent = resolvedLabel;
+    return;
+  }
+
+  buttonElement.textContent = resolvedLabel;
+}
+
+function applyQuickSaveSurfaceState(variantRoot, isSaved) {
+  /*
+    Responsabilidade:
+      Aplicar reforco visual leve no card ou painel que ganhou acesso rapido.
+
+    Parametros:
+      variantRoot: Bloco raiz que recebe destaque contextual.
+      isSaved: Define se o destaque deve ficar ativo ou nao.
+
+    Retorno:
+      Nenhum.
+
+    Contexto de uso:
+      O operador precisa bater o olho e perceber rapidamente quais itens estao
+      marcados para consulta recorrente, sem depender apenas da cor do icone.
+  */
+
+  if (!(variantRoot instanceof HTMLElement)) {
+    return;
+  }
+
+  variantRoot.classList.toggle("is-quick-saved", isSaved);
+}
+
+function animateQuickSaveFeedback(buttonElement) {
+  /*
+    Responsabilidade:
+      Aplicar uma animacao curta que confirme visualmente o toggle do icone.
+
+    Parametros:
+      buttonElement: Botao de acesso rapido que acabou de ser acionado.
+
+    Retorno:
+      Nenhum.
+
+    Contexto de uso:
+      A acao precisa acontecer em menos de um segundo e transmitir confianca.
+      Uma pulsacao curta reforca o clique sem virar microanimacao pesada.
+  */
+
+  if (!(buttonElement instanceof HTMLElement)) {
+    return;
+  }
+
+  buttonElement.classList.remove("quick-save-button--pulse");
+  void buttonElement.offsetWidth;
+  buttonElement.classList.add("quick-save-button--pulse");
+  window.setTimeout(() => {
+    buttonElement.classList.remove("quick-save-button--pulse");
+  }, 240);
+}
+
+function updateVariantSavedDataset(variantRoot, variantAlias, isSaved) {
+  /*
+    Responsabilidade:
+      Persistir no DOM o novo estado salvo da variante ativa apos o toggle.
+
+    Parametros:
+      variantRoot: Container que possui os chips e acoes da variante.
+      variantAlias: Alias real da variante cujo estado foi alterado.
+      isSaved: Novo estado salvo devolvido ou inferido pelo frontend.
+
+    Retorno:
+      Nenhum.
+
+    Contexto de uso:
+      Sem atualizar os `data-*`, a troca de variante poderia restaurar um
+      estado antigo e contradizer o toggle rapido acabado de executar.
+  */
+
+  if (!(variantRoot instanceof HTMLElement) || !variantAlias) {
+    return;
+  }
+
+  const matchingVariantOption = Array.from(variantRoot.querySelectorAll("[data-variant-option]")).find((element) => {
+    return element.dataset.variantAlias === variantAlias;
+  });
+
+  if (!(matchingVariantOption instanceof HTMLElement)) {
+    return;
+  }
+
+  matchingVariantOption.dataset.variantIsSaved = isSaved ? "1" : "0";
+  matchingVariantOption.dataset.variantSaveLabel = buildQuickSaveLabel(isSaved);
+}
+
+function syncSavedPageCardState(variantRoot) {
+  /*
+    Responsabilidade:
+      Remover do acesso rapido os cards que deixaram de ter qualquer variante salva.
+
+    Parametros:
+      variantRoot: Card agrupado atualmente visivel na aba de acesso rapido.
+
+    Retorno:
+      Nenhum.
+
+    Contexto de uso:
+      Na tela de acesso rapido, manter um card sem nenhuma variante salva cria
+      desconfiança. Por isso o card some imediatamente quando o ultimo atalho
+      daquele grupo e removido.
+  */
+
+  if (!(variantRoot instanceof HTMLElement) || !variantRoot.closest("[data-saved-products-list]")) {
+    return;
+  }
+
+  const hasAnySavedVariant = Array.from(variantRoot.querySelectorAll("[data-variant-option]")).some((element) => {
+    return element.dataset.variantIsSaved === "1";
+  });
+
+  if (hasAnySavedVariant) {
+    return;
+  }
+
+  const savedListElement = variantRoot.closest("[data-saved-products-list]");
+  variantRoot.remove();
+
+  if (!(savedListElement instanceof HTMLElement) || savedListElement.children.length > 0) {
+    return;
+  }
+
+  savedListElement.innerHTML = `
+    <article class="empty-card">
+      <h3>Nenhum item no acesso rápido.</h3>
+      <p>Abra um produto e use “Adicionar ao acesso rápido” para montar a sua área de consulta.</p>
+    </article>
+  `;
+}
+
+function syncQuickSaveControls(variantRoot, selectedSaveHref, selectedIsSaved, selectedSaveLabel) {
+  /*
+    Responsabilidade:
+      Atualizar formularios, botoes e destaque visual do acesso rapido.
+
+    Parametros:
+      variantRoot: Container que concentra a variante atualmente ativa.
+      selectedSaveHref: URL do toggle da variante ativa.
+      selectedIsSaved: Estado salvo da variante ativa.
+      selectedSaveLabel: Texto operacional do proximo clique.
+
+    Retorno:
+      Nenhum.
+
+    Contexto de uso:
+      O mesmo card pode trocar de 30ml para 50ml ou 80ml. Esta rotina garante
+      que o icone fixo do canto sempre represente a variante atual.
+  */
+
+  if (!(variantRoot instanceof HTMLElement)) {
+    return;
+  }
+
+  variantRoot.querySelectorAll("[data-variant-save-form]").forEach((element) => {
+    if (selectedSaveHref) {
+      element.setAttribute("action", selectedSaveHref);
+    }
+  });
+
+  variantRoot.querySelectorAll("[data-variant-save-button]").forEach((element) => {
+    applyQuickSaveButtonState(element, selectedIsSaved, selectedSaveLabel);
+  });
+
+  applyQuickSaveSurfaceState(variantRoot, selectedIsSaved);
+}
+
 function focusFieldWithoutScroll(targetElement, shouldSelectText = false) {
   /*
     Responsabilidade:
@@ -702,16 +925,7 @@ function applyVariantSelection(variantRoot, variantOption) {
     }
   });
 
-  variantRoot.querySelectorAll("[data-variant-save-form]").forEach((element) => {
-    if (selectedSaveHref) {
-      element.setAttribute("action", selectedSaveHref);
-    }
-  });
-
-  variantRoot.querySelectorAll("[data-variant-save-button]").forEach((element) => {
-    element.textContent = selectedSaveLabel;
-    element.setAttribute("aria-pressed", selectedIsSaved ? "true" : "false");
-  });
+  syncQuickSaveControls(variantRoot, selectedSaveHref, selectedIsSaved, selectedSaveLabel);
 
   variantRoot.querySelectorAll("[data-variant-product-link]").forEach((element) => {
     if (selectedProductUrl) {
@@ -1490,6 +1704,100 @@ function initializeImageInputPreviews() {
   });
 }
 
+function initializeQuickSaveForms() {
+  /*
+    Responsabilidade:
+      Tornar o toggle de acesso rapido instantaneo, sem recarregar a pagina.
+
+    Parametros:
+      Nenhum.
+
+    Retorno:
+      Nenhum.
+
+    Contexto de uso:
+      O operador usa o acesso rapido como atalho operacional. O clique precisa
+      responder na hora no card, com feedback visual, sem obrigar navegacao ou
+      busca por botoes secundarios.
+  */
+
+  document.querySelectorAll("[data-quick-save-form]").forEach((quickSaveForm) => {
+    if (!(quickSaveForm instanceof HTMLFormElement)) {
+      return;
+    }
+
+    quickSaveForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+
+      if (quickSaveForm.dataset.submitting === "true") {
+        return;
+      }
+
+      const actionUrl = quickSaveForm.getAttribute("action") || "";
+      const quickSaveButton = quickSaveForm.querySelector("[data-quick-save-button]");
+      const variantRoot = quickSaveForm.closest("[data-variant-switcher]");
+      const activeVariantOption = variantRoot?.querySelector("[data-variant-option].variant-chip--active");
+      const activeVariantAlias = activeVariantOption?.dataset.variantAlias || "";
+      const currentIsSaved = activeVariantOption?.dataset.variantIsSaved === "1";
+      const nextIsSaved = !currentIsSaved;
+
+      if (!actionUrl || !(quickSaveButton instanceof HTMLElement)) {
+        return;
+      }
+
+      quickSaveForm.dataset.submitting = "true";
+      quickSaveButton.setAttribute("disabled", "disabled");
+
+      try {
+        const toggleResponse = await window.fetch(actionUrl, {
+          method: "POST",
+          headers: {
+            Accept: "application/json",
+          },
+          body: new FormData(quickSaveForm),
+        });
+
+        if (!toggleResponse.ok) {
+          throw new Error("Nao foi possivel atualizar o acesso rapido.");
+        }
+
+        let resolvedIsSaved = nextIsSaved;
+        let resolvedLabel = buildQuickSaveLabel(nextIsSaved);
+        const responseContentType = String(toggleResponse.headers.get("content-type") || "").toLowerCase();
+        if (responseContentType.includes("application/json")) {
+          const responsePayload = await toggleResponse.json();
+          resolvedIsSaved = responsePayload.is_saved === true;
+          resolvedLabel = String(responsePayload.save_button_label || buildQuickSaveLabel(resolvedIsSaved));
+        }
+
+        if (variantRoot instanceof HTMLElement) {
+          updateVariantSavedDataset(variantRoot, activeVariantAlias, resolvedIsSaved);
+          syncQuickSaveControls(
+            variantRoot,
+            actionUrl,
+            resolvedIsSaved,
+            resolvedLabel,
+          );
+          syncSavedPageCardState(variantRoot);
+        } else {
+          applyQuickSaveButtonState(quickSaveButton, resolvedIsSaved, resolvedLabel);
+        }
+
+        animateQuickSaveFeedback(quickSaveButton);
+        showAppToast(
+          resolvedIsSaved ? "Adicionado ao acesso rápido." : "Removido do acesso rápido.",
+          "success",
+        );
+      } catch (error) {
+        showAppToast("Nao foi possivel atualizar o acesso rápido.", "error");
+      } finally {
+        quickSaveForm.dataset.submitting = "false";
+        quickSaveButton.removeAttribute("disabled");
+      }
+    });
+  });
+}
+
 function initializeContextualAutofocus() {
   /*
     Responsabilidade:
@@ -1892,6 +2200,7 @@ document.querySelectorAll("[data-copy-text]").forEach((element) => {
 
 initializeVariantSwitchers();
 initializeInlineBarcodePanels();
+initializeQuickSaveForms();
 initializeCreateMenu();
 initializeSyncJobProgress();
 initializeManualProductForm();

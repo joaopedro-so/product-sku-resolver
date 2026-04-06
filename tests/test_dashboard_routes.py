@@ -14,7 +14,7 @@ from urllib.parse import urlencode, urlsplit
 from fastapi import FastAPI
 from starlette.datastructures import UploadFile as StarletteUploadFile
 from starlette.requests import Request
-from starlette.responses import RedirectResponse
+from starlette.responses import JSONResponse, RedirectResponse
 from starlette.templating import _TemplateResponse
 
 from backend.models.product import ProductRecord
@@ -378,7 +378,14 @@ def _build_app_with_temp_storage(tmp_path: Path) -> FastAPI:
     return app
 
 
-def _build_request(app: FastAPI, method: str, path: str, body: bytes = b"", content_type: str = "") -> Request:
+def _build_request(
+    app: FastAPI,
+    method: str,
+    path: str,
+    body: bytes = b"",
+    content_type: str = "",
+    headers: dict[str, str] | None = None,
+) -> Request:
     """
     Responsabilidade:
         Construir objeto Request mínimo para invocar rota diretamente.
@@ -389,6 +396,7 @@ def _build_request(app: FastAPI, method: str, path: str, body: bytes = b"", cont
         path: Caminho da rota simulada.
         body: Corpo bruto da requisição para cenários de formulário.
         content_type: Content-Type necessário para parsing de formulário.
+        headers: Cabeçalhos extras usados em cenários como resposta JSON.
 
     Retorno:
         Request configurada com scope ASGI e receiver assíncrono.
@@ -408,9 +416,12 @@ def _build_request(app: FastAPI, method: str, path: str, body: bytes = b"", cont
         has_consumed = True
         return {"type": "http.request", "body": body, "more_body": False}
 
-    headers = []
+    request_headers = []
     if content_type:
-        headers.append((b"content-type", content_type.encode("utf-8")))
+        request_headers.append((b"content-type", content_type.encode("utf-8")))
+    if headers:
+        for header_name, header_value in headers.items():
+            request_headers.append((str(header_name).lower().encode("utf-8"), str(header_value).encode("utf-8")))
 
     parsed_path = urlsplit(path)
     normalized_path = parsed_path.path or path
@@ -423,7 +434,7 @@ def _build_request(app: FastAPI, method: str, path: str, body: bytes = b"", cont
         "path": normalized_path,
         "raw_path": path.encode("utf-8"),
         "query_string": query_string,
-        "headers": headers,
+        "headers": request_headers,
         "client": ("testclient", 50000),
         "server": ("testserver", 80),
         "scheme": "http",
@@ -1679,6 +1690,8 @@ def test_dashboard_detalhe_expone_estado_de_salvo_por_variante_no_html(tmp_path:
     assert 'data-variant-save-label="Adicionar ao acesso rápido"' in content
     assert "Remover do acesso rápido" in content
     assert 'name="save_tag" value="quick_access"' in content
+    assert 'data-quick-save-form' in content
+    assert 'data-quick-save-button' in content
 
 
 def test_dashboard_barcode_fullscreen_exibe_modo_operacional(tmp_path: Path) -> None:
@@ -1708,6 +1721,36 @@ def test_dashboard_barcode_fullscreen_exibe_modo_operacional(tmp_path: Path) -> 
     assert "Fechar" in content
     assert "sku-inicial" in content
     assert "Atualizar" in content
+
+
+def test_dashboard_prateleira_expone_atalho_visual_de_acesso_rapido_no_card(tmp_path: Path) -> None:
+    """
+    Responsabilidade:
+        Garantir que a prateleira exponha o atalho visual de acesso rapido.
+
+    Parametros:
+        tmp_path: Diretorio temporario usado para isolar o storage do teste.
+
+    Retorno:
+        Nenhum; valida a presenca do icone persistente no card agrupado.
+
+    Contexto de uso:
+        O operador precisa marcar itens em campanha sem abrir detalhe nem
+        procurar por botoes secundarios espalhados pela interface.
+    """
+
+    app = _build_app_with_temp_storage(tmp_path)
+    _seed_product(app)
+    request = _build_request(app, method="GET", path="/dashboard/prateleiras/4")
+
+    response = routes_dashboard.dashboard_shelf_detail(request, shelf_number=4)
+
+    assert isinstance(response, _TemplateResponse)
+    assert response.status_code == 200
+    content = response.body.decode("utf-8")
+    assert 'data-quick-save-form' in content
+    assert 'data-quick-save-button' in content
+    assert 'Adicionar ao acesso r' in content
 
 
 def test_dashboard_barcode_fullscreen_preserva_retorno_para_prateleira(tmp_path: Path) -> None:
@@ -2209,6 +2252,42 @@ def test_dashboard_salva_produto_em_saved(tmp_path: Path) -> None:
     assert response.status_code == 303
     assert response.headers["location"] == "/dashboard/saved"
     assert app.state.saved_product_service.is_saved("produto_teste") is True
+
+
+def test_dashboard_toggle_saved_product_responde_json_para_toggle_assincrono(tmp_path: Path) -> None:
+    """
+    Responsabilidade:
+        Garantir que o toggle de acesso rapido possa responder em JSON.
+
+    Parametros:
+        tmp_path: Diretorio temporario para isolamento do storage do teste.
+
+    Retorno:
+        Nenhum; valida o contrato usado pelo icone persistente dos cards.
+
+    Contexto de uso:
+        O atalho visual do card precisa atualizar estado e animacao sem
+        recarregar a pagina inteira. A resposta JSON viabiliza esse fluxo.
+    """
+
+    app = _build_app_with_temp_storage(tmp_path)
+    _seed_product(app)
+    payload = urlencode({"save_tag": "quick_access"}).encode("utf-8")
+    request = _build_request(
+        app,
+        method="POST",
+        path="/dashboard/products/produto_teste/toggle-saved",
+        body=payload,
+        content_type="application/x-www-form-urlencoded",
+        headers={"accept": "application/json"},
+    )
+
+    response = asyncio.run(routes_dashboard.dashboard_toggle_saved_product(request, alias="produto_teste"))
+
+    assert isinstance(response, JSONResponse)
+    assert response.status_code == 200
+    assert b'"is_saved":true' in response.body
+    assert b'"saved_tag":"quick_access"' in response.body
 
 
 def test_dashboard_saved_renderiza_acesso_rapido_com_card_agrupado(tmp_path: Path) -> None:
