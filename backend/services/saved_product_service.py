@@ -1,46 +1,105 @@
 """
-Servico de persistencia para atalhos de produtos salvos.
+Servico de persistencia para atalhos operacionais de acesso rapido.
 
-Este modulo mantem uma lista simples de aliases favoritos para alimentar a
-area "Saved" do dashboard mobile-first sem alterar o schema principal
-dos produtos monitorados.
+Este modulo deixa de tratar a funcionalidade apenas como uma lista generica
+de favoritos. O storage continua simples e leve, mas agora aceita metadados
+que ajudam a interpretar o item salvo como acesso rapido para campanha,
+monitoramento ou consulta recorrente.
 """
 
 from __future__ import annotations
 
 import json
+from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Set
+from typing import Dict, List, Set
+
+from backend.services.datetime_service import get_current_utc_isoformat
+
+DEFAULT_SAVED_TAG = "quick_access"
+
+
+@dataclass(slots=True)
+class SavedProductEntry:
+    """
+    Responsabilidade:
+        Representar um item salvo no acesso rapido com metadados opcionais.
+
+    Parametros:
+        alias: Alias real do produto salvo no catalogo.
+        tag: Motivo operacional resumido do salvamento.
+        saved_at: Timestamp UTC do momento em que o item entrou no acesso rapido.
+
+    Retorno:
+        Estrutura leve e tipada para transporte entre storage e camada web.
+
+    Contexto de uso:
+        Preserva compatibilidade com a lista antiga de aliases, mas abre caminho
+        para tratar a area como acesso rapido operacional em vez de "favoritos".
+    """
+
+    alias: str
+    tag: str = DEFAULT_SAVED_TAG
+    saved_at: str = ""
+
+
+def _normalize_saved_tag(raw_tag: str) -> str:
+    """
+    Responsabilidade:
+        Consolidar a tag operacional em um conjunto pequeno e previsivel.
+
+    Parametros:
+        raw_tag: Valor bruto vindo do formulario ou do storage persistido.
+
+    Retorno:
+        Tag normalizada, pronta para ser gravada ou comparada.
+
+    Contexto de uso:
+        Evita que o storage fique poluido com variacoes triviais como
+        "Quick Access", "quick-access" ou strings vazias.
+    """
+
+    normalized_tag = str(raw_tag or "").strip().lower().replace("-", "_").replace(" ", "_")
+    if not normalized_tag:
+        return DEFAULT_SAVED_TAG
+
+    allowed_tags = {"campaign", "quick_access", "monitoring"}
+    if normalized_tag in allowed_tags:
+        return normalized_tag
+
+    return DEFAULT_SAVED_TAG
 
 
 class SavedProductService:
     """
     Responsabilidade:
-        Gerenciar lista persistida de aliases salvos pelo operador.
+        Gerenciar a lista persistida de produtos marcados como acesso rapido.
 
     Parametros:
-        storage_file_path: Caminho do arquivo JSON de produtos salvos.
+        storage_file_path: Caminho do arquivo JSON de itens salvos.
 
     Retorno:
-        Instancia pronta para leitura e escrita dos atalhos.
+        Instancia pronta para leitura e escrita dos atalhos operacionais.
 
     Contexto de uso:
-        Utilizada pelo dashboard para a aba Saved e para a acao de salvar.
+        Utilizada pelo dashboard para a aba de acesso rapido, para filtros de
+        busca e para o toggle da acao "Adicionar ao acesso rapido".
     """
 
     def __init__(self, storage_file_path: Path) -> None:
         """
         Responsabilidade:
-            Inicializar o servico e garantir arquivo valido em disco.
+            Inicializar o servico e garantir um arquivo valido em disco.
 
         Parametros:
-            storage_file_path: Caminho persistente dos aliases salvos.
+            storage_file_path: Caminho persistente do JSON de acesso rapido.
 
         Retorno:
             Nenhum.
 
         Contexto de uso:
-            Construido no primeiro acesso da camada web para evitar setup manual.
+            Construido sob demanda pela camada web para funcionar tanto em
+            ambiente local quanto no storage persistente da Railway.
         """
 
         self.storage_file_path = storage_file_path
@@ -65,19 +124,20 @@ class SavedProductService:
         if not self.storage_file_path.exists():
             self.storage_file_path.write_text("[]", encoding="utf-8")
 
-    def _read_all(self) -> List[str]:
+    def _read_all_entries(self) -> List[SavedProductEntry]:
         """
         Responsabilidade:
-            Ler aliases salvos do arquivo com validacao estrutural simples.
+            Ler o storage de acesso rapido com retrocompatibilidade estrutural.
 
         Parametros:
             Nenhum.
 
         Retorno:
-            Lista ordenada de aliases persistidos.
+            Lista ordenada de entradas tipadas do acesso rapido.
 
         Contexto de uso:
-            Base para consultas da aba Saved e operacoes de toggle.
+            O app antigo gravava apenas strings com alias. O formato novo aceita
+            objetos com `alias`, `tag` e `saved_at`, sem exigir migracao manual.
         """
 
         try:
@@ -91,56 +151,124 @@ class SavedProductService:
         if not isinstance(raw_items, list):
             raise ValueError("Arquivo de produtos salvos deve conter lista JSON")
 
-        normalized_aliases = []
+        normalized_entries: List[SavedProductEntry] = []
+        seen_aliases: Set[str] = set()
         for raw_item in raw_items:
-            normalized_alias = str(raw_item).strip()
-            if normalized_alias:
-                normalized_aliases.append(normalized_alias)
+            parsed_entry = self._parse_raw_entry(raw_item)
+            if parsed_entry is None or parsed_entry.alias in seen_aliases:
+                continue
 
-        return normalized_aliases
+            normalized_entries.append(parsed_entry)
+            seen_aliases.add(parsed_entry.alias)
 
-    def _write_all(self, aliases: List[str]) -> None:
+        return normalized_entries
+
+    def _parse_raw_entry(self, raw_item: object) -> SavedProductEntry | None:
         """
         Responsabilidade:
-            Persistir aliases salvos em escrita atomica simplificada.
+            Converter uma linha bruta do JSON em uma entrada tipada e segura.
 
         Parametros:
-            aliases: Lista completa de aliases a ser gravada.
+            raw_item: Item bruto vindo da lista persistida em disco.
+
+        Retorno:
+            `SavedProductEntry` quando houver alias valido; caso contrario, None.
+
+        Contexto de uso:
+            Centraliza a compatibilidade entre o formato legado baseado em
+            strings e o formato novo baseado em objetos.
+        """
+
+        if isinstance(raw_item, str):
+            normalized_alias = raw_item.strip()
+            if not normalized_alias:
+                return None
+
+            return SavedProductEntry(alias=normalized_alias, tag=DEFAULT_SAVED_TAG, saved_at="")
+
+        if isinstance(raw_item, dict):
+            normalized_alias = str(raw_item.get("alias", "")).strip()
+            if not normalized_alias:
+                return None
+
+            return SavedProductEntry(
+                alias=normalized_alias,
+                tag=_normalize_saved_tag(str(raw_item.get("tag", DEFAULT_SAVED_TAG))),
+                saved_at=str(raw_item.get("saved_at", "")).strip(),
+            )
+
+        return None
+
+    def _write_all_entries(self, entries: List[SavedProductEntry]) -> None:
+        """
+        Responsabilidade:
+            Persistir todas as entradas do acesso rapido de forma atomica.
+
+        Parametros:
+            entries: Lista completa de entradas que deve substituir o storage.
 
         Retorno:
             Nenhum.
 
         Contexto de uso:
-            Metodo interno usado por save, unsave e toggle.
+            Mantem um formato unico de escrita para o schema novo, enquanto a
+            leitura continua aceitando os dados antigos em lista simples.
         """
 
+        serialized_entries = [
+            {
+                "alias": entry.alias,
+                "tag": _normalize_saved_tag(entry.tag),
+                "saved_at": entry.saved_at,
+            }
+            for entry in entries
+        ]
         temporary_file_path = self.storage_file_path.with_suffix(".tmp")
 
         try:
             temporary_file_path.write_text(
-                json.dumps(aliases, ensure_ascii=False, indent=2),
+                json.dumps(serialized_entries, ensure_ascii=False, indent=2),
                 encoding="utf-8",
             )
             temporary_file_path.replace(self.storage_file_path)
         except OSError as error:
             raise RuntimeError("Falha ao salvar arquivo de produtos salvos") from error
 
-    def list_saved_aliases(self) -> List[str]:
+    def list_entries(self) -> List[SavedProductEntry]:
         """
         Responsabilidade:
-            Retornar todos os aliases salvos em ordem de persistencia.
+            Retornar todas as entradas do acesso rapido em ordem de persistencia.
 
         Parametros:
             Nenhum.
 
         Retorno:
-            Lista de aliases salvos.
+            Lista tipada de itens salvos pelo operador.
 
         Contexto de uso:
-            Usada para montar a tela Saved e destacar itens em outras listas.
+            Base da tela de acesso rapido e de futuros resumos por tag.
         """
 
-        return self._read_all()
+        return self._read_all_entries()
+
+    def list_saved_aliases(self) -> List[str]:
+        """
+        Responsabilidade:
+            Expor a lista simples de aliases para camadas que ainda so precisam
+            da identidade operacional do produto.
+
+        Parametros:
+            Nenhum.
+
+        Retorno:
+            Lista de aliases salvos em ordem de persistencia.
+
+        Contexto de uso:
+            Preserva compatibilidade com chamadas antigas sem obrigar o resto
+            do app a conhecer o schema novo imediatamente.
+        """
+
+        return [entry.alias for entry in self._read_all_entries()]
 
     def get_saved_aliases_set(self) -> Set[str]:
         """
@@ -154,10 +282,51 @@ class SavedProductService:
             Conjunto com aliases persistidos.
 
         Contexto de uso:
-            Facilita renderizacao de listas grandes com badge de salvo.
+            Facilita renderizacao de listas grandes com estado de acesso rapido.
         """
 
-        return set(self._read_all())
+        return {entry.alias for entry in self._read_all_entries()}
+
+    def get_entries_map(self) -> Dict[str, SavedProductEntry]:
+        """
+        Responsabilidade:
+            Montar um mapa de acesso rapido indexado por alias.
+
+        Parametros:
+            Nenhum.
+
+        Retorno:
+            Dicionario `alias -> SavedProductEntry`.
+
+        Contexto de uso:
+            Permite que a camada web recupere rapidamente tag e timestamp do
+            item salvo sem varrer a lista toda a cada card.
+        """
+
+        return {entry.alias: entry for entry in self._read_all_entries()}
+
+    def count_by_tag(self) -> Dict[str, int]:
+        """
+        Responsabilidade:
+            Resumir quantos itens existem por tag operacional.
+
+        Parametros:
+            Nenhum.
+
+        Retorno:
+            Dicionario com contagem por tag normalizada.
+
+        Contexto de uso:
+            Base para pequenos resumos na tela de acesso rapido, sem exigir um
+            painel complexo de favoritos.
+        """
+
+        tag_counts: Dict[str, int] = {}
+        for entry in self._read_all_entries():
+            normalized_tag = _normalize_saved_tag(entry.tag)
+            tag_counts[normalized_tag] = tag_counts.get(normalized_tag, 0) + 1
+
+        return tag_counts
 
     def is_saved(self, alias: str) -> bool:
         """
@@ -168,74 +337,94 @@ class SavedProductService:
             alias: Alias a ser consultado.
 
         Retorno:
-            True quando o alias estiver presente no storage de salvos.
+            True quando o alias estiver presente no storage de acesso rapido.
 
         Contexto de uso:
-            Utilizada no dashboard para controlar estado visual do botao salvar.
+            Controla o estado visual do botao "Adicionar ao acesso rapido".
         """
 
         normalized_alias = alias.strip()
         return normalized_alias in self.get_saved_aliases_set()
 
-    def save_alias(self, alias: str) -> List[str]:
+    def save_alias(self, alias: str, tag: str = DEFAULT_SAVED_TAG) -> List[str]:
         """
         Responsabilidade:
-            Adicionar alias a lista de salvos sem duplicacao.
+            Adicionar ou atualizar um alias no acesso rapido sem duplicacao.
 
         Parametros:
-            alias: Alias do produto que deve virar atalho salvo.
+            alias: Alias do produto que deve entrar no acesso rapido.
+            tag: Motivo operacional opcional do salvamento.
 
         Retorno:
             Lista atualizada de aliases salvos.
 
         Contexto de uso:
-            Chamada por acoes explicitas de salvar no dashboard.
+            Chamada pela acao explicita do operador ao marcar itens recorrentes,
+            como produtos em campanha ou monitoramento.
         """
 
         normalized_alias = alias.strip()
         if not normalized_alias:
-            return self._read_all()
+            return self.list_saved_aliases()
 
-        saved_aliases = self._read_all()
-        if normalized_alias not in saved_aliases:
-            saved_aliases.append(normalized_alias)
-            self._write_all(saved_aliases)
+        normalized_tag = _normalize_saved_tag(tag)
+        saved_entries = self._read_all_entries()
+        for current_entry in saved_entries:
+            if current_entry.alias != normalized_alias:
+                continue
 
-        return saved_aliases
+            # Decisao tecnica:
+            # Quando o item ja existe, atualizamos apenas a tag operacional
+            # para refletir o ultimo contexto de uso sem perder a ordem nem o
+            # instante original em que ele entrou no acesso rapido.
+            current_entry.tag = normalized_tag
+            self._write_all_entries(saved_entries)
+            return [entry.alias for entry in saved_entries]
+
+        saved_entries.append(
+            SavedProductEntry(
+                alias=normalized_alias,
+                tag=normalized_tag,
+                saved_at=get_current_utc_isoformat(),
+            )
+        )
+        self._write_all_entries(saved_entries)
+        return [entry.alias for entry in saved_entries]
 
     def unsave_alias(self, alias: str) -> List[str]:
         """
         Responsabilidade:
-            Remover alias salvo sem falhar quando ele nao existir.
+            Remover um alias salvo sem falhar quando ele nao existir.
 
         Parametros:
-            alias: Alias que deve deixar a lista de atalhos.
+            alias: Alias que deve deixar o acesso rapido.
 
         Retorno:
             Lista atualizada de aliases salvos.
 
         Contexto de uso:
-            Utilizada pelo toggle de salvar/desalvar produtos.
+            Utilizada pelo toggle de adicionar/remover acesso rapido.
         """
 
         normalized_alias = alias.strip()
-        saved_aliases = [saved_alias for saved_alias in self._read_all() if saved_alias != normalized_alias]
-        self._write_all(saved_aliases)
-        return saved_aliases
+        saved_entries = [entry for entry in self._read_all_entries() if entry.alias != normalized_alias]
+        self._write_all_entries(saved_entries)
+        return [entry.alias for entry in saved_entries]
 
-    def toggle_alias(self, alias: str) -> bool:
+    def toggle_alias(self, alias: str, tag: str = DEFAULT_SAVED_TAG) -> bool:
         """
         Responsabilidade:
-            Alternar estado salvo/desalvado de um alias.
+            Alternar o estado de acesso rapido de um alias.
 
         Parametros:
             alias: Alias alvo da acao de toggle.
+            tag: Motivo operacional opcional quando a acao terminar em salvar.
 
         Retorno:
             True quando o alias terminar salvo; False quando terminar removido.
 
         Contexto de uso:
-            Acao principal do botao Save na interface mobile-first.
+            Acao principal do botao de acesso rapido na interface.
         """
 
         normalized_alias = alias.strip()
@@ -246,7 +435,7 @@ class SavedProductService:
             self.unsave_alias(normalized_alias)
             return False
 
-        self.save_alias(normalized_alias)
+        self.save_alias(normalized_alias, tag=tag)
         return True
 
     def replace_alias(self, old_alias: str, new_alias: str) -> List[str]:
@@ -262,35 +451,47 @@ class SavedProductService:
             Lista atualizada de aliases salvos apos a migracao.
 
         Contexto de uso:
-            Utilizada pelo fluxo de edicao do dashboard para evitar que um
-            produto perca o estado de salvo quando o operador altera o alias.
+            Evita que um produto perca o estado de acesso rapido quando o
+            operador altera o alias no dashboard.
         """
 
         normalized_old_alias = old_alias.strip()
         normalized_new_alias = new_alias.strip()
-        saved_aliases = self._read_all()
+        saved_entries = self._read_all_entries()
 
         if not normalized_old_alias or not normalized_new_alias:
-            return saved_aliases
+            return [entry.alias for entry in saved_entries]
 
         if normalized_old_alias == normalized_new_alias:
-            return saved_aliases
+            return [entry.alias for entry in saved_entries]
 
-        migrated_aliases: List[str] = []
+        migrated_entries: List[SavedProductEntry] = []
         has_inserted_new_alias = False
+        existing_new_entry = next(
+            (entry for entry in saved_entries if entry.alias == normalized_new_alias),
+            None,
+        )
 
-        for current_alias in saved_aliases:
-            if current_alias in {normalized_old_alias, normalized_new_alias}:
-                # Decisao tecnica:
-                # Se o alias antigo ja estava salvo, trocamos pelo novo sem
-                # duplicar a entrada caso o alias novo ja tenha aparecido por
-                # outro fluxo operacional ou por tentativa anterior de migracao.
+        for current_entry in saved_entries:
+            if current_entry.alias == normalized_old_alias:
                 if not has_inserted_new_alias:
-                    migrated_aliases.append(normalized_new_alias)
+                    migrated_entries.append(
+                        SavedProductEntry(
+                            alias=normalized_new_alias,
+                            tag=(existing_new_entry.tag if existing_new_entry else current_entry.tag),
+                            saved_at=(existing_new_entry.saved_at if existing_new_entry else current_entry.saved_at),
+                        )
+                    )
                     has_inserted_new_alias = True
                 continue
 
-            migrated_aliases.append(current_alias)
+            if current_entry.alias == normalized_new_alias:
+                if not has_inserted_new_alias:
+                    migrated_entries.append(current_entry)
+                    has_inserted_new_alias = True
+                continue
 
-        self._write_all(migrated_aliases)
-        return migrated_aliases
+            migrated_entries.append(current_entry)
+
+        self._write_all_entries(migrated_entries)
+        return [entry.alias for entry in migrated_entries]

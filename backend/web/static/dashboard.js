@@ -633,7 +633,9 @@ function applyVariantSelection(variantRoot, variantOption) {
   const selectedDeleteHref = variantOption.dataset.variantDeleteHref || "";
   const selectedSaveHref = variantOption.dataset.variantSaveHref || "";
   const selectedIsSaved = variantOption.dataset.variantIsSaved === "1";
-  const selectedSaveLabel = variantOption.dataset.variantSaveLabel || (selectedIsSaved ? "Remover dos salvos" : "Salvar");
+  const selectedSaveLabel =
+    variantOption.dataset.variantSaveLabel ||
+    (selectedIsSaved ? "Remover do acesso rápido" : "Adicionar ao acesso rápido");
   const selectedProductUrl = variantOption.dataset.variantProductUrl || "";
   const selectedImageUrl = variantOption.dataset.variantImageUrl || "";
   const selectedStatusKey = variantOption.dataset.variantStatusKey || "";

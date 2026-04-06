@@ -1,25 +1,32 @@
 {% extends "base.html" %}
 
-{% block title %}Salvos{% endblock %}
+{% block title %}Acesso rápido{% endblock %}
 
 {% block content %}
 <section class="page-section">
   <div class="section-heading">
     <div>
-      <p class="section-kicker">Salvos</p>
-      <h1 class="section-title">Atalhos do operador</h1>
-      <p class="section-text">Acesse rapidamente os produtos consultados com mais frequência.</p>
+      <p class="section-kicker">Acesso rápido</p>
+      <h1 class="section-title">Itens para consulta recorrente</h1>
+      <p class="section-text">Reúna aqui perfumes de campanha, promoção ou checagem frequente e abra o código sem perder tempo.</p>
+      {% if saved_summary_tags %}
+      <p class="section-text">
+        {% for summary in saved_summary_tags %}
+        <span>{{ summary.label }} {{ summary.count }}</span>{% if not loop.last %} • {% endif %}
+        {% endfor %}
+      </p>
+      {% endif %}
     </div>
-    <a class="button button--secondary button--small" href="/dashboard/search">Buscar mais</a>
+    <a class="button button--secondary button--small" href="/dashboard/search">Buscar perfume</a>
   </div>
 
-  <div class="product-list product-list--compact">
+  <div class="shelf-product-list shelf-product-list--adaptive">
     {% for card in products %}
-      {% include "partials/product_card.html" %}
+      {% include "partials/grouped_scanning_card.html" %}
     {% else %}
     <article class="empty-card">
-      <h3>Nenhum produto salvo.</h3>
-      <p>Salve um item pelo detalhe do produto para ele aparecer aqui.</p>
+      <h3>Nenhum item no acesso rápido.</h3>
+      <p>Abra um produto e use “Adicionar ao acesso rápido” para montar a sua área de consulta.</p>
     </article>
     {% endfor %}
   </div>

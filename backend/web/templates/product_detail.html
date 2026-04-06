@@ -280,7 +280,8 @@
               <a class="button button--secondary button--small" href="/dashboard/products/{{ product.alias }}/edit" data-variant-edit-link>Editar cadastro</a>
               <form method="post" action="/dashboard/products/{{ product.alias }}/toggle-saved" data-variant-save-form>
                 <input type="hidden" name="next" value="{{ request.url }}" />
-                <button class="button button--ghost button--small" type="submit" data-variant-save-button aria-pressed="{{ 'true' if is_saved else 'false' }}">{{ 'Remover dos salvos' if is_saved else 'Salvar' }}</button>
+                <input type="hidden" name="save_tag" value="quick_access" />
+                <button class="button button--ghost button--small" type="submit" data-variant-save-button aria-pressed="{{ 'true' if is_saved else 'false' }}">{{ 'Remover do acesso rápido' if is_saved else 'Adicionar ao acesso rápido' }}</button>
               </form>
               <form method="post" action="/dashboard/products/{{ product.alias }}/delete" data-variant-delete-form onsubmit="return confirm('Deseja excluir esta variante do catálogo?');">
                 <button class="button button--danger button--small" type="submit">Excluir variante</button>

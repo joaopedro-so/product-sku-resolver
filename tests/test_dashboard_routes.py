@@ -1676,8 +1676,9 @@ def test_dashboard_detalhe_expone_estado_de_salvo_por_variante_no_html(tmp_path:
     content = response.body.decode("utf-8")
     assert 'data-variant-is-saved="0"' in content
     assert 'data-variant-is-saved="1"' in content
-    assert 'data-variant-save-label="Salvar"' in content
-    assert "Remover dos salvos" in content
+    assert 'data-variant-save-label="Adicionar ao acesso rápido"' in content
+    assert "Remover do acesso rápido" in content
+    assert 'name="save_tag" value="quick_access"' in content
 
 
 def test_dashboard_barcode_fullscreen_exibe_modo_operacional(tmp_path: Path) -> None:
@@ -2208,6 +2209,65 @@ def test_dashboard_salva_produto_em_saved(tmp_path: Path) -> None:
     assert response.status_code == 303
     assert response.headers["location"] == "/dashboard/saved"
     assert app.state.saved_product_service.is_saved("produto_teste") is True
+
+
+def test_dashboard_saved_renderiza_acesso_rapido_com_card_agrupado(tmp_path: Path) -> None:
+    """
+    Responsabilidade:
+        Garantir que a aba `/saved` funcione como acesso rapido operacional.
+
+    Parametros:
+        tmp_path: Diretorio temporario para isolar storage e historico do teste.
+
+    Retorno:
+        Nenhum; valida titulo, agrupamento e CTA principal de barcode inline.
+
+    Contexto de uso:
+        Protege a mudanca de UX em que a area deixa de ser uma lista generica
+        de favoritos e passa a reutilizar o mesmo card de consulta rapida da
+        prateleira e da busca.
+    """
+
+    app = _build_app_with_temp_storage(tmp_path)
+    app.state.product_store_service.upsert_product(
+        ProductRecord(
+            alias="good_girl_50ml",
+            brand="Carolina Herrera",
+            name="Good Girl",
+            variant="50ml",
+            last_known_url="https://example.com/good-girl-50",
+            last_known_sku="111222333",
+            parent_reference="good_girl",
+            shelf_number=5,
+        )
+    )
+    app.state.product_store_service.upsert_product(
+        ProductRecord(
+            alias="good_girl_80ml",
+            brand="Carolina Herrera",
+            name="Good Girl",
+            variant="80ml",
+            last_known_url="https://example.com/good-girl-80",
+            last_known_sku="444555666",
+            parent_reference="good_girl",
+            shelf_number=5,
+        )
+    )
+    app.state.saved_product_service.save_alias("good_girl_80ml")
+
+    request = _build_request(app, method="GET", path="/dashboard/saved")
+
+    response = routes_dashboard.dashboard_saved(request)
+
+    assert isinstance(response, _TemplateResponse)
+    assert response.status_code == 200
+    content = response.body.decode("utf-8")
+    assert "Acesso rápido" in content
+    assert "Itens para consulta recorrente" in content
+    assert content.count('class="shelf-product-card"') == 1
+    assert "Good Girl" in content
+    assert "80ml" in content
+    assert "Código" in content
 
 
 def test_dashboard_exclui_produto_e_limpa_salvo(tmp_path: Path) -> None:

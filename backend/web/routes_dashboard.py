@@ -52,7 +52,11 @@ from backend.services.sync_job_service import (
 from backend.services.storage_path_service import resolve_default_data_file
 from backend.services.product_store_service import ProductStoreService
 from backend.services.resolver import ProductResolver, ResolveResult
-from backend.services.saved_product_service import SavedProductService
+from backend.services.saved_product_service import (
+    DEFAULT_SAVED_TAG,
+    SavedProductEntry,
+    SavedProductService,
+)
 from backend.services.uploaded_image_service import UploadedImageService, resolve_uploaded_images_directory
 from backend.utils.barcode import build_code128_svg_data_uri
 from backend.utils.fetcher import FetchResult, Fetcher
@@ -2609,7 +2613,7 @@ def _build_group_variant_payload(
         "delete_href": f"/dashboard/products/{variant_product.alias}/delete",
         "save_href": f"/dashboard/products/{variant_product.alias}/toggle-saved",
         "is_saved": is_saved,
-        "save_button_label": "Remover dos salvos" if is_saved else "Salvar",
+        "save_button_label": "Remover do acesso rápido" if is_saved else "Adicionar ao acesso rápido",
         "last_known_url": variant_product.last_known_url,
         "status_key": activity["status_key"],
         "status_label": activity.get("badge_label") or activity["status_label"],
@@ -2686,6 +2690,7 @@ def _build_grouped_catalog_card(
     return_query_params: Optional[Dict[str, Any]],
     *,
     variant_storage_prefix: str,
+    preferred_alias: Optional[str] = None,
     placement: Optional[ShelfPlacement] = None,
     include_barcode_data_uri: bool = True,
 ) -> Dict[str, Any]:
@@ -2701,6 +2706,7 @@ def _build_grouped_catalog_card(
         saved_aliases: Conjunto de aliases salvos pelo operador.
         return_query_params: Query params de contexto para detalhe/barcode.
         variant_storage_prefix: Prefixo usado no localStorage da variante ativa.
+        preferred_alias: Alias opcional que deve abrir selecionado no card.
         placement: Localização física opcional do produto selecionado.
         include_barcode_data_uri: Indica se o card precisa trazer o SVG inline.
 
@@ -2713,7 +2719,7 @@ def _build_grouped_catalog_card(
     """
 
     group_service = _get_product_group_service(request)
-    selected_variant = group_service.choose_default_variant(grouped_product)
+    selected_variant = group_service.choose_default_variant(grouped_product, preferred_alias=preferred_alias)
     selected_activity = _build_product_activity(
         selected_variant.product,
         latest_events.get(selected_variant.alias),
@@ -2788,6 +2794,61 @@ def _build_grouped_catalog_card(
         "search_text": _build_group_search_text(grouped_product),
         "is_saved": any(variant_option.get("is_saved") for variant_option in variant_options),
     }
+
+
+def _build_saved_tag_label(tag: str) -> str:
+    """
+    Responsabilidade:
+        Traduzir a tag persistida do acesso rapido para um rótulo amigável.
+
+    Parametros:
+        tag: Tag normalizada salva no storage.
+
+    Retorno:
+        Texto curto e operacional para uso em resumos da interface.
+
+    Contexto de uso:
+        Mantém o schema técnico pequeno (`quick_access`, `campaign`,
+        `monitoring`) sem expor nomenclatura interna ao operador.
+    """
+
+    normalized_tag = str(tag or "").strip().lower()
+    if normalized_tag == "campaign":
+        return "Campanha"
+    if normalized_tag == "monitoring":
+        return "Monitoramento"
+    return "Acesso rápido"
+
+
+def _build_saved_tag_summaries(saved_entries: List[SavedProductEntry]) -> List[Dict[str, Any]]:
+    """
+    Responsabilidade:
+        Consolidar pequenos resumos por motivo operacional do acesso rapido.
+
+    Parametros:
+        saved_entries: Lista completa de itens persistidos no acesso rapido.
+
+    Retorno:
+        Lista enxuta de rótulos com contagem, pronta para a tela `/saved`.
+
+    Contexto de uso:
+        Ajuda a reforçar que a área serve para itens de campanha, checagem e
+        retorno rápido, sem transformar a tela em um painel de gestão pesado.
+    """
+
+    tag_counts: Dict[str, int] = {}
+    for saved_entry in saved_entries:
+        normalized_tag = str(saved_entry.tag or DEFAULT_SAVED_TAG).strip().lower()
+        tag_counts[normalized_tag] = tag_counts.get(normalized_tag, 0) + 1
+
+    return [
+        {
+            "tag": tag,
+            "label": _build_saved_tag_label(tag),
+            "count": count,
+        }
+        for tag, count in sorted(tag_counts.items(), key=lambda item: (item[0] != DEFAULT_SAVED_TAG, item[0]))
+    ]
 
 
 def _append_dashboard_query_params(base_path: str, query_params: Optional[Dict[str, Any]]) -> str:
@@ -2903,7 +2964,7 @@ def _build_back_navigation(
         return {"href": explicit_return_to, "label": "Voltar para Buscar"}
 
     if explicit_return_to.startswith("/dashboard/saved"):
-        return {"href": explicit_return_to, "label": "Voltar para Salvos"}
+        return {"href": explicit_return_to, "label": "Voltar para acesso rápido"}
 
     if explicit_return_to == "/dashboard" or explicit_return_to.startswith("/dashboard?"):
         return {"href": explicit_return_to, "label": "Voltar para Início"}
@@ -3377,7 +3438,7 @@ def _build_home_context(request: Request) -> Dict[str, Any]:
 
     quick_actions = [
         {"label": "Recentes", "href": "/dashboard/search?updated_scope=recent", "count": len(recent_cards)},
-        {"label": "Salvos", "href": "/dashboard/saved", "count": len(saved_aliases)},
+        {"label": "Acesso rápido", "href": "/dashboard/saved", "count": len(saved_aliases)},
         {"label": "Atualizados hoje", "href": "/dashboard/search?updated_scope=today", "count": changed_today_count},
     ]
 
@@ -3522,32 +3583,59 @@ def _build_saved_context(request: Request) -> Dict[str, Any]:
 
     product_store = _get_store_service(request)
     saved_service = _get_saved_service(request)
-    saved_aliases_in_order = saved_service.list_saved_aliases()
-    all_products_by_alias = {product.alias: product for product in product_store.list_products()}
-    saved_products = [all_products_by_alias[alias] for alias in saved_aliases_in_order if alias in all_products_by_alias]
+    saved_entries = saved_service.list_entries()
+    products = product_store.list_products()
+    grouped_products = _get_product_group_service(request).group_products(products)
+    saved_aliases = saved_service.get_saved_aliases_set()
     history_events = _get_history_store(request).list_events()
     latest_events = _build_latest_event_map(history_events)
-    preview_map = _build_preview_map(request, saved_products, fetch_limit=8)
+    preview_map = _build_preview_map(request, products, fetch_limit=12)
     return_query_params = _resolve_return_query_params(request)
 
-    cards = [
-        _build_product_card(
-            product=product,
-            preview=preview_map.get(product.alias),
-            activity=_build_product_activity(product, latest_events.get(product.alias), last_update_by_alias.get(product.alias)),
-            is_saved=True,
-            return_query_params=return_query_params,
+    grouped_product_by_alias: Dict[str, GroupedParentProduct] = {}
+    for grouped_product in grouped_products:
+        for grouped_variant in grouped_product.variants:
+            grouped_product_by_alias[grouped_variant.alias] = grouped_product
+
+    cards: List[Dict[str, Any]] = []
+    displayed_saved_entries: List[SavedProductEntry] = []
+    used_group_ids: set[str] = set()
+    shelf_service = _get_shelf_service(request)
+    group_service = _get_product_group_service(request)
+    for saved_entry in saved_entries:
+        grouped_product = grouped_product_by_alias.get(saved_entry.alias)
+        if grouped_product is None or grouped_product.group_id in used_group_ids:
+            continue
+
+        preferred_variant = group_service.choose_default_variant(grouped_product, preferred_alias=saved_entry.alias)
+        used_group_ids.add(grouped_product.group_id)
+        displayed_saved_entries.append(saved_entry)
+        cards.append(
+            _build_grouped_catalog_card(
+                request=request,
+                grouped_product=grouped_product,
+                preview_map=preview_map,
+                latest_events=latest_events,
+                saved_aliases=saved_aliases,
+                return_query_params=return_query_params,
+                variant_storage_prefix="saved",
+                preferred_alias=preferred_variant.alias,
+                placement=shelf_service.get_product_placement(
+                    product=preferred_variant.product,
+                    all_products=products,
+                ),
+                include_barcode_data_uri=True,
+            )
         )
-        for product in saved_products
-    ]
 
     return _with_app_shell(
         request=request,
         active_tab="saved",
         context={
             "request": request,
-            "page_title": "Salvos",
-            "products": _sort_product_cards(cards, "recent"),
+            "page_title": "Acesso rápido",
+            "products": cards,
+            "saved_summary_tags": _build_saved_tag_summaries(displayed_saved_entries),
         },
     )
 
@@ -4284,7 +4372,8 @@ async def dashboard_toggle_saved_product(request: Request, alias: str) -> Redire
 
     form_data = await request.form()
     redirect_target = str(form_data.get("next") or request.headers.get("referer") or "/dashboard/saved")
-    _get_saved_service(request).toggle_alias(alias)
+    saved_tag = str(form_data.get("save_tag") or DEFAULT_SAVED_TAG).strip()
+    _get_saved_service(request).toggle_alias(alias, tag=saved_tag)
     return RedirectResponse(url=redirect_target, status_code=status.HTTP_303_SEE_OTHER)
 
 
