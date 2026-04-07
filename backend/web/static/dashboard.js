@@ -7,6 +7,253 @@
 
 let activeToastTimeoutId = 0;
 let activeSyncJobPollerId = 0;
+let deferredInstallPromptEvent = null;
+
+function resolveDashboardDisplayMode() {
+  /*
+    Responsabilidade:
+      Detectar o modo atual em que o dashboard esta sendo exibido.
+
+    Parametros:
+      Nenhum.
+
+    Retorno:
+      String com o modo corrente, como `browser`, `standalone` ou `fullscreen`.
+
+    Contexto de uso:
+      O shell precisa adaptar pequenos detalhes quando o app esta instalado,
+      principalmente para esconder o CTA de instalacao e aplicar o styling de
+      janela mais proximo de um aplicativo nativo.
+  */
+
+  if (window.matchMedia("(display-mode: window-controls-overlay)").matches) {
+    return "window-controls-overlay";
+  }
+
+  if (window.matchMedia("(display-mode: fullscreen)").matches) {
+    return "fullscreen";
+  }
+
+  if (window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone === true) {
+    return "standalone";
+  }
+
+  return "browser";
+}
+
+function isInstalledDashboardMode(displayMode) {
+  /*
+    Responsabilidade:
+      Informar se o modo atual representa uma execucao instalada do app.
+
+    Parametros:
+      displayMode: Rotulo retornado pela deteccao de display mode.
+
+    Retorno:
+      `true` quando o dashboard esta rodando sem chrome tradicional.
+
+    Contexto de uso:
+      O mesmo criterio governa tanto o visual do shell quanto a visibilidade do
+      botao de instalacao, evitando estados contraditorios na interface.
+  */
+
+  return ["standalone", "fullscreen", "window-controls-overlay"].includes(String(displayMode || ""));
+}
+
+function updatePwaInstallButtonVisibility() {
+  /*
+    Responsabilidade:
+      Exibir o CTA de instalacao apenas quando ele realmente faz sentido.
+
+    Parametros:
+      Nenhum.
+
+    Retorno:
+      Nenhum.
+
+    Contexto de uso:
+      Em navegadores que nao suportam install prompt, ou quando o app ja esta
+      instalado, o botao deve sumir para nao prometer uma acao impossivel.
+  */
+
+  const installButton = document.querySelector("[data-pwa-install-button]");
+  if (!(installButton instanceof HTMLButtonElement)) {
+    return;
+  }
+
+  const displayMode = document.body?.dataset.displayMode || resolveDashboardDisplayMode();
+  const shouldShowInstallButton = Boolean(deferredInstallPromptEvent) && !isInstalledDashboardMode(displayMode);
+
+  installButton.hidden = !shouldShowInstallButton;
+  installButton.disabled = !shouldShowInstallButton;
+}
+
+function applyDashboardDisplayModeState() {
+  /*
+    Responsabilidade:
+      Persistir no DOM o modo atual de exibicao do dashboard.
+
+    Parametros:
+      Nenhum.
+
+    Retorno:
+      Nenhum.
+
+    Contexto de uso:
+      O CSS usa `data-display-mode` para ajustar o shell instalado sem criar
+      bifurcacao de templates entre browser comum e PWA.
+  */
+
+  const displayMode = resolveDashboardDisplayMode();
+  if (document.body instanceof HTMLElement) {
+    document.body.dataset.displayMode = displayMode;
+  }
+
+  document.documentElement.setAttribute("data-display-mode", displayMode);
+  updatePwaInstallButtonVisibility();
+}
+
+function observeDashboardDisplayModeChanges() {
+  /*
+    Responsabilidade:
+      Reagir a mudancas de modo de exibicao suportadas pelo navegador.
+
+    Parametros:
+      Nenhum.
+
+    Retorno:
+      Nenhum.
+
+    Contexto de uso:
+      Alguns ambientes desktop atualizam o display mode sem recarregar a
+      pagina. Observar essa transicao mantem o shell consistente apos instalar.
+  */
+
+  ["(display-mode: standalone)", "(display-mode: fullscreen)", "(display-mode: window-controls-overlay)"].forEach((query) => {
+    const mediaQueryList = window.matchMedia(query);
+    if (typeof mediaQueryList.addEventListener === "function") {
+      mediaQueryList.addEventListener("change", applyDashboardDisplayModeState);
+      return;
+    }
+
+    if (typeof mediaQueryList.addListener === "function") {
+      mediaQueryList.addListener(applyDashboardDisplayModeState);
+    }
+  });
+}
+
+async function registerDashboardServiceWorker() {
+  /*
+    Responsabilidade:
+      Registrar o service worker do dashboard quando o ambiente permitir.
+
+    Parametros:
+      Nenhum.
+
+    Retorno:
+      Promise resolvida apos a tentativa de registro.
+
+    Contexto de uso:
+      O cache basico e o comportamento de PWA dependem desse registro, mas a
+      falha nao pode quebrar o uso normal do site em ambientes nao suportados.
+  */
+
+  const isServiceWorkerSupported = "serviceWorker" in navigator;
+  const isSecureContextLike =
+    window.location.protocol === "https:" ||
+    window.location.hostname === "localhost" ||
+    window.location.hostname === "127.0.0.1";
+
+  if (!isServiceWorkerSupported || !isSecureContextLike) {
+    return;
+  }
+
+  try {
+    await navigator.serviceWorker.register("/dashboard/service-worker.js", {
+      scope: "/dashboard",
+    });
+  } catch (error) {
+    console.error("Nao foi possivel registrar o service worker do dashboard.", error);
+  }
+}
+
+async function promptDashboardInstallation() {
+  /*
+    Responsabilidade:
+      Disparar o prompt nativo de instalacao quando ele estiver disponivel.
+
+    Parametros:
+      Nenhum.
+
+    Retorno:
+      Promise resolvida apos o navegador concluir o fluxo de escolha.
+
+    Contexto de uso:
+      O app interno ganha confiabilidade quando a equipe consegue instalar o
+      painel sem depender de menus escondidos do navegador.
+  */
+
+  if (!deferredInstallPromptEvent) {
+    return;
+  }
+
+  const installPromptEvent = deferredInstallPromptEvent;
+  deferredInstallPromptEvent = null;
+  updatePwaInstallButtonVisibility();
+
+  try {
+    await installPromptEvent.prompt();
+    const installChoiceResult = await installPromptEvent.userChoice;
+    if (installChoiceResult?.outcome === "accepted") {
+      showAppToast("Instalacao iniciada.", "success");
+    }
+  } catch (error) {
+    console.error("Nao foi possivel abrir o prompt de instalacao.", error);
+  } finally {
+    updatePwaInstallButtonVisibility();
+  }
+}
+
+function initializeProgressiveWebApp() {
+  /*
+    Responsabilidade:
+      Conectar o shell atual aos recursos de PWA do dashboard.
+
+    Parametros:
+      Nenhum.
+
+    Retorno:
+      Nenhum.
+
+    Contexto de uso:
+      Centraliza a inicializacao do modo instalado para manter a pagina base
+      pequena e garantir comportamento consistente em mobile e desktop.
+  */
+
+  applyDashboardDisplayModeState();
+  observeDashboardDisplayModeChanges();
+
+  const installButton = document.querySelector("[data-pwa-install-button]");
+  if (installButton instanceof HTMLButtonElement) {
+    installButton.addEventListener("click", () => {
+      void promptDashboardInstallation();
+    });
+  }
+
+  window.addEventListener("beforeinstallprompt", (event) => {
+    event.preventDefault();
+    deferredInstallPromptEvent = event;
+    updatePwaInstallButtonVisibility();
+  });
+
+  window.addEventListener("appinstalled", () => {
+    deferredInstallPromptEvent = null;
+    applyDashboardDisplayModeState();
+    showAppToast("App instalado neste dispositivo.", "success");
+  });
+
+  void registerDashboardServiceWorker();
+}
 
 function showAppToast(messageText, tone = "neutral") {
   /*
@@ -2198,6 +2445,7 @@ document.querySelectorAll("[data-copy-text]").forEach((element) => {
   }
 });
 
+initializeProgressiveWebApp();
 initializeVariantSwitchers();
 initializeInlineBarcodePanels();
 initializeQuickSaveForms();

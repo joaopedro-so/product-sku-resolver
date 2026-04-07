@@ -14,7 +14,7 @@ from urllib.parse import urlencode, urlsplit
 from fastapi import FastAPI
 from starlette.datastructures import UploadFile as StarletteUploadFile
 from starlette.requests import Request
-from starlette.responses import JSONResponse, RedirectResponse
+from starlette.responses import FileResponse, JSONResponse, RedirectResponse
 from starlette.templating import _TemplateResponse
 
 from backend.models.product import ProductRecord
@@ -564,6 +564,93 @@ def test_dashboard_home_renderiza_assets_estaticos_versionados(tmp_path: Path) -
     content = response.body.decode("utf-8")
     assert "/dashboard/static/styles.css?v=" in content
     assert "/dashboard/static/dashboard.js?v=" in content
+
+
+def test_dashboard_home_publica_metadados_pwa(tmp_path: Path) -> None:
+    """
+    Responsabilidade:
+        Garantir que o shell HTML publique os elementos essenciais do PWA.
+
+    Parametros:
+        tmp_path: Diretorio temporario usado para montar o app de teste.
+
+    Retorno:
+        Nenhum; valida a marcacao do shell retornado pela Home.
+
+    Contexto de uso:
+        Sem manifesto, viewport correto e CTA de instalacao, o dashboard perde
+        previsibilidade de instalacao e abertura em modo aplicativo.
+    """
+
+    app = _build_app_with_temp_storage(tmp_path)
+    request = _build_request(app, method="GET", path="/dashboard")
+
+    response = routes_dashboard.dashboard_home(request)
+
+    assert isinstance(response, _TemplateResponse)
+    assert response.status_code == 200
+    content = response.body.decode("utf-8")
+    assert 'content="width=device-width, initial-scale=1.0, viewport-fit=cover"' in content
+    assert 'rel="manifest" href="/dashboard/manifest.webmanifest"' in content
+    assert 'data-pwa-install-button' in content
+    assert 'apple-touch-icon' in content
+    assert 'data-display-mode="browser"' in content
+
+
+def test_dashboard_manifest_publica_configuracao_do_pwa() -> None:
+    """
+    Responsabilidade:
+        Garantir que a rota do manifesto exponha o contrato de instalacao.
+
+    Parametros:
+        Nenhum.
+
+    Retorno:
+        Nenhum; valida headers e conteudo base do manifesto publicado.
+
+    Contexto de uso:
+        Protege o fluxo de instalacao mobile/desktop e evita regressao em
+        campos criticos como `start_url`, `scope` e `display`.
+    """
+
+    response = routes_dashboard.dashboard_manifest()
+
+    assert isinstance(response, FileResponse)
+    assert response.media_type == "application/manifest+json"
+    assert response.headers["cache-control"] == "public, max-age=3600, must-revalidate"
+    manifest_content = Path(response.path).read_text(encoding="utf-8")
+    assert '"start_url": "/dashboard"' in manifest_content
+    assert '"scope": "/dashboard"' in manifest_content
+    assert '"display": "standalone"' in manifest_content
+    assert '"theme_color": "#fcfaf7"' in manifest_content
+
+
+def test_dashboard_service_worker_publica_script_com_escopo_correto() -> None:
+    """
+    Responsabilidade:
+        Garantir que o service worker seja servido no escopo do dashboard.
+
+    Parametros:
+        Nenhum.
+
+    Retorno:
+        Nenhum; valida headers e conteudo principal do script publicado.
+
+    Contexto de uso:
+        Se o service worker sair do escopo correto, o app instala mas nao
+        controla as navegacoes do dashboard nem oferece o cache basico esperado.
+    """
+
+    response = routes_dashboard.dashboard_service_worker()
+
+    assert isinstance(response, FileResponse)
+    assert response.media_type == "application/javascript"
+    assert response.headers["cache-control"] == "no-cache, no-store, must-revalidate"
+    assert response.headers["service-worker-allowed"] == "/dashboard"
+    service_worker_script = Path(response.path).read_text(encoding="utf-8")
+    assert 'self.addEventListener("install", handleInstallEvent);' in service_worker_script
+    assert 'self.addEventListener("fetch", handleFetchEvent);' in service_worker_script
+    assert 'const DASHBOARD_PWA_OFFLINE_FALLBACK_URL = "/dashboard";' in service_worker_script
 
 
 def test_dashboard_importa_seed_interno_pela_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

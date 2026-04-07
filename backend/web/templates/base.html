@@ -2,20 +2,26 @@
 <html lang="pt-BR">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>{% block title %}{{ page_title or 'Perfumaria Prestígio 394' }}{% endblock %}</title>
-    <meta name="theme-color" content="#fcfbf9" />
+    <meta name="application-name" content="Perfumaria Prestigio 394" />
+    <meta name="apple-mobile-web-app-title" content="Prestigio 394" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="theme-color" content="#fcfaf7" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="description" content="Ferramenta interna da Perfumaria Prestigio 394 para busca rapida, consulta de SKU e operacao por prateleira." />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link rel="icon" type="image/svg+xml" href="{{ static_asset_url('brand/favicon.svg') }}" />
-    <link rel="shortcut icon" type="image/svg+xml" href="{{ static_asset_url('brand/favicon.svg') }}" />
-    <link rel="apple-touch-icon" href="{{ static_asset_url('brand/prestigio-394-mark.svg') }}" />
-    <link rel="manifest" href="{{ static_asset_url('brand/manifest.webmanifest') }}" />
+    <link rel="icon" type="image/png" sizes="32x32" href="{{ static_asset_url('brand/favicon-32x32.png') }}" />
+    <link rel="icon" type="image/png" sizes="16x16" href="{{ static_asset_url('brand/favicon-16x16.png') }}" />
+    <link rel="shortcut icon" href="{{ static_asset_url('brand/favicon.ico') }}" />
+    <link rel="apple-touch-icon" sizes="180x180" href="{{ static_asset_url('brand/apple-touch-icon.png') }}" />
+    <link rel="manifest" href="/dashboard/manifest.webmanifest" />
     <link rel="stylesheet" href="{{ static_asset_url('styles.css') }}" />
   </head>
-  <body class="{{ body_class or '' }}">
+  <body class="{{ body_class or '' }}" data-display-mode="browser" data-dashboard-shell="web">
     <div class="app-shell">
       {% if not hide_app_chrome %}
       <aside class="desktop-sidebar" aria-label="Navegação principal desktop">
@@ -82,37 +88,49 @@
             <span class="brand__name">Prestígio 394</span>
           </a>
 
-          <div class="header-create" data-create-root>
-            <div class="header-create__menu" id="header-create-menu" aria-label="Ações de criação rápidas">
-              <a class="header-create__action" href="/dashboard/products/new#autofill">
-                <span class="header-create__action-label">Importar do site</span>
-              </a>
-              <a class="header-create__action" href="/dashboard/products/new#manual">
-                <span class="header-create__action-label">Cadastrar manualmente</span>
-              </a>
-              {% if internal_import_actions %}
-              <p class="header-create__section-label">Ferramentas internas</p>
-              {% for action in internal_import_actions %}
-              <form method="post" action="{{ action.href }}" class="header-create__action-form">
-                <button class="header-create__action header-create__action--admin" type="submit">
-                  <span class="header-create__action-label">{{ action.label }}</span>
-                </button>
-              </form>
-              {% endfor %}
-              {% endif %}
-            </div>
+          <div class="app-header__actions">
             <button
-              class="header-create__button"
+              class="header-install-button"
               type="button"
-              aria-label="Criar novo item"
-              aria-expanded="false"
-              aria-controls="header-create-menu"
-              data-create-trigger
+              hidden
+              data-pwa-install-button
+              aria-label="Instalar app"
             >
-              <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
-                <path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="2"/>
-              </svg>
+              Instalar
             </button>
+
+            <div class="header-create" data-create-root>
+              <div class="header-create__menu" id="header-create-menu" aria-label="Ações de criação rápidas">
+                <a class="header-create__action" href="/dashboard/products/new#autofill">
+                  <span class="header-create__action-label">Importar do site</span>
+                </a>
+                <a class="header-create__action" href="/dashboard/products/new#manual">
+                  <span class="header-create__action-label">Cadastrar manualmente</span>
+                </a>
+                {% if internal_import_actions %}
+                <p class="header-create__section-label">Ferramentas internas</p>
+                {% for action in internal_import_actions %}
+                <form method="post" action="{{ action.href }}" class="header-create__action-form">
+                  <button class="header-create__action header-create__action--admin" type="submit">
+                    <span class="header-create__action-label">{{ action.label }}</span>
+                  </button>
+                </form>
+                {% endfor %}
+                {% endif %}
+              </div>
+              <button
+                class="header-create__button"
+                type="button"
+                aria-label="Criar novo item"
+                aria-expanded="false"
+                aria-controls="header-create-menu"
+                data-create-trigger
+              >
+                <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+                  <path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="2"/>
+                </svg>
+              </button>
+            </div>
           </div>
         </div>
       </header>

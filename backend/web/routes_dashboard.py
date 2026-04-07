@@ -74,6 +74,9 @@ templates.env.globals["build_code128_svg_data_uri"] = build_code128_svg_data_uri
 # antigos ainda presentes no cache do navegador.
 STATIC_WEB_DIRECTORY = Path("backend/web/static")
 STATIC_ASSET_VERSION_CACHE: Dict[str, str] = {}
+PWA_MANIFEST_FILE_PATH = STATIC_WEB_DIRECTORY / "brand" / "manifest.webmanifest"
+PWA_SERVICE_WORKER_FILE_PATH = STATIC_WEB_DIRECTORY / "service-worker.js"
+DASHBOARD_PWA_SCOPE = "/dashboard"
 
 # Decisao tecnica:
 # Mantemos feedbacks recentes em memoria para exibir status imediato apos
@@ -736,6 +739,100 @@ def _with_app_shell(
         "saved_count": saved_count,
         "internal_import_actions": _build_internal_import_actions(),
     }
+
+
+def _build_dashboard_file_response(
+    file_path: Path,
+    media_type: str,
+    extra_headers: Optional[Dict[str, str]] = None,
+) -> FileResponse:
+    """
+    Responsabilidade:
+        Servir um arquivo publico do dashboard com headers previsiveis.
+
+    Parametros:
+        file_path: Caminho absoluto ou relativo do arquivo no projeto.
+        media_type: MIME type que deve ser enviado ao navegador.
+        extra_headers: Headers adicionais especificos para o arquivo servido.
+
+    Retorno:
+        `FileResponse` pronta para uso pela rota HTTP.
+
+    Contexto de uso:
+        Manifesto e service worker exigem headers mais controlados que os
+        assets comuns. Centralizar isso evita divergencia entre as duas rotas.
+    """
+
+    normalized_file_path = Path(file_path)
+    if not normalized_file_path.exists():
+        raise HTTPException(status_code=404, detail="Arquivo publico do dashboard nao encontrado.")
+
+    response_headers = {
+        "X-Content-Type-Options": "nosniff",
+    }
+    if extra_headers:
+        response_headers.update(extra_headers)
+
+    return FileResponse(
+        path=normalized_file_path,
+        media_type=media_type,
+        headers=response_headers,
+    )
+
+
+@router.get("/manifest.webmanifest", include_in_schema=False)
+def dashboard_manifest() -> FileResponse:
+    """
+    Responsabilidade:
+        Publicar o manifesto do PWA no mesmo escopo do dashboard.
+
+    Parametros:
+        Nenhum.
+
+    Retorno:
+        `FileResponse` com o manifesto usado para instalacao do app.
+
+    Contexto de uso:
+        Manter o manifesto sob `/dashboard/` deixa o contrato do PWA mais
+        previsivel para navegadores mobile e desktop, inclusive em cenarios de
+        install prompt e revalidacao de cache apos deploy.
+    """
+
+    return _build_dashboard_file_response(
+        file_path=PWA_MANIFEST_FILE_PATH,
+        media_type="application/manifest+json",
+        extra_headers={
+            "Cache-Control": "public, max-age=3600, must-revalidate",
+        },
+    )
+
+
+@router.get("/service-worker.js", include_in_schema=False)
+def dashboard_service_worker() -> FileResponse:
+    """
+    Responsabilidade:
+        Publicar o service worker do dashboard com escopo operacional correto.
+
+    Parametros:
+        Nenhum.
+
+    Retorno:
+        `FileResponse` com o script JavaScript do service worker.
+
+    Contexto de uso:
+        O arquivo precisa ser servido fora de `/dashboard/static/` para que o
+        navegador permita controlar navegacoes do dashboard inteiro e nao
+        apenas a pasta de assets estaticos.
+    """
+
+    return _build_dashboard_file_response(
+        file_path=PWA_SERVICE_WORKER_FILE_PATH,
+        media_type="application/javascript",
+        extra_headers={
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            "Service-Worker-Allowed": DASHBOARD_PWA_SCOPE,
+        },
+    )
 
 
 def _build_internal_import_actions() -> List[Dict[str, str]]:
